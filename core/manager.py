@@ -10,6 +10,7 @@ from core.risk_module import RiskModule
 from workers.worker_trend import TrendWorker
 from workers.worker_nlp import NLPWorker
 from workers.worker_flow import OrderFlowWorker
+from workers.worker_hurst import HurstWorker
 from config.notifier import (
     notificar_zona_caliente,
     notificar_orden_ejecutada,
@@ -40,6 +41,7 @@ class Manager:
         self.trend = TrendWorker(db, mt5)
         self.nlp   = NLPWorker(db)
         self.flow  = OrderFlowWorker(db, mt5)
+        self.hurst = HurstWorker(db, mt5)
 
     # ------------------------------------------------------------------
     # Ciclo principal
@@ -94,6 +96,11 @@ class Manager:
         v_trend = self.trend.analizar(simbolo_interno)
         v_nlp   = self.nlp.analizar(simbolo_interno, id_activo=id_activo, forzar_refresh=forzar_nlp)
         v_flow  = self.flow.analizar(simbolo_interno)
+        
+        # --- NUEVO: Juez de Persistencia (Hurst) ---
+        res_hurst = self.hurst.analizar(simbolo_interno)
+        h_val = res_hurst['h']
+        h_estado = res_hurst['estado']
 
         # 5. Reflejo de Combate: Alerta de Divergencia
         if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
@@ -101,6 +108,13 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     0.0, "CANCELADO_RIESGO", motivo)
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+
+        # --- NUEVO: VETO DE HURST ---
+        if h_estado != "PERSISTENTE":
+            motivo = f"VETO HURST: Mercado en estado {h_estado} (H: {h_val:.4f}). Abortando por falta de persistencia."
+            print(f"[GERENTE] 🛑 {motivo}")
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, 0.0, "VETO_HURST", motivo)
+            return {"decision": "VETO_HURST", "veredicto": 0.0, "motivo": motivo, "hurst": h_val}
 
         # 6. Suma ponderada -> Veredicto Final
         veredicto = round((v_trend * w_trend) + (v_nlp * w_nlp) + (v_flow * w_flow), 4)
@@ -114,7 +128,8 @@ class Manager:
             # --- NUEVO REPORTE DE GATILLO Y PROXIMIDAD ---
             confianza = abs(veredicto)
             if 0.38 <= confianza < 0.45:
-                notificar_proximidad(simbolo_interno, veredicto)
+                # Recuperar Hurst para telemetria
+                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado)
             elif 0.30 <= confianza < 0.38:
                 notificar_oportunidad_detectada(simbolo_interno, veredicto)
             
@@ -176,7 +191,9 @@ class Manager:
                 veredicto=veredicto, 
                 v_trend=v_trend, 
                 v_nlp=v_nlp, 
-                balance=balance
+                balance=balance,
+                hurst_h=h_val,
+                hurst_estado=h_estado
             )
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "EJECUTADO", motivo)
@@ -246,7 +263,8 @@ class Manager:
 
                 notificar_orden_ejecutada(
                     simbolo_interno, direccion, lotes, ticket, precio_real, 
-                    sl, tp, veredicto, v_trend, v_nlp, balance_real
+                    sl, tp, veredicto, v_trend, v_nlp, balance_real,
+                    hurst_h=h_val, hurst_estado=h_estado
                 )
                 
                 # Actualizar registro con veredicto y probabilidad

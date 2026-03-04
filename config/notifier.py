@@ -82,7 +82,8 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
         f"🎯 <b>Probabilidad Est. de Éxito:</b> {prob_exito:.1f}%\n"
         f"<b>Acción:</b> {direccion} @ {precio}\n"
         f"<b>Riesgo:</b> SL: {sl:.4f} | TP: {tp:.4f}\n"
-        f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n\n"
+        f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
+        f"📊 <b>Hurst:</b> {kwargs.get('hurst_h', 'N/A')} | <b>Estado:</b> {kwargs.get('hurst_estado', 'N/A')}\n\n"
         f"<b>Balance Actual:</b> ${balance:,.2f}"
     )
 
@@ -114,12 +115,13 @@ def notificar_kill_switch_activado(equity: float):
                      f"<b>Equity actual:</b> ${equity:,.2f}\n\n"
                      f"<i>El sistema ha cerrado todas las posiciones y ha entrado en hibernación.</i>")
 
-def notificar_proximidad(simbolo: str, veredicto: float):
+def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str):
     """Filtro de pre-alerta: Aviso de proximidad al gatillo (0.38 - 0.44)."""
-    msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f}"
+    msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f} | Hurst: {hurst_h} ({hurst_estado})"
     print(f"[NOTIFIER] {msg}")
     _enviar_telegram(f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
                      f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
+                     f"📊 <b>Hurst:</b> {hurst_h:.4f} | <b>Estado:</b> {hurst_estado}\n"
                      f"<b>Estado:</b> El Centinela está quitando el seguro. Esperando confirmación final (+0.45).")
 
 def notificar_oportunidad_detectada(simbolo: str, veredicto: float):
