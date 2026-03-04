@@ -86,18 +86,21 @@ class NLPWorker:
     def __init__(self, db):
         self.db = db
         self._api_disponible = bool(GEMINI_API_KEY)
+        self._ultimo_refresh = datetime.min.replace(tzinfo=timezone.utc)  # Para el guard de 5 min
         if not self._api_disponible:
             print("[NLP] ADVERTENCIA: GEMINI_API_KEY no configurada. "
                   "Usando fallback de impactos_regimen.")
 
     # ------------------------------------------------------------------
-    # API Pública (misma firma que v1)
+    # API Pública (misma firma que v1, ampliada v2)
     # ------------------------------------------------------------------
 
-    def analizar(self, simbolo_interno: str, id_activo: int = None) -> float:
+    def analizar(self, simbolo_interno: str, id_activo: int = None, forzar_refresh: bool = False) -> float:
         """
         Retorna el voto macro para el activo dado.
         Usa Gemini con caché inteligente. Fallback a 0.0 si no hay API key.
+        Si forzar_refresh es True (por volatilidad extrema), ignora el caché
+        y re-consulta Gemini (limitado a maximo 1 vez cada 5 min).
         """
         if id_activo is None:
             id_activo = self._resolver_id(simbolo_interno)
@@ -108,17 +111,33 @@ class NLPWorker:
         if not self._api_disponible:
             return self._fallback_impactos_regimen(simbolo_interno, id_activo)
 
+        # Evaluar límite de refresco forzado (Cooldown 5 min)
+        ahora = datetime.now(timezone.utc)
+        ignorar_cache_ahora = False
+        
+        if forzar_refresh:
+            if (ahora - self._ultimo_refresh).total_seconds() > 300:
+                print(f"[NLP-REFLEJO] ⚡ Volatilidad detectada en {simbolo_interno}. Forzando re-analisis Gemini.")
+                ignorar_cache_ahora = True
+                self._ultimo_refresh = ahora
+            else:
+                tiempo_restante = 300 - (ahora - self._ultimo_refresh).total_seconds()
+                print(f"[NLP] Refresco forzado ignorado (cooldown: {int(tiempo_restante)}s restantes)")
+
         # Obtener contexto macro y su hash
         regimenes  = self._obtener_regimenes_activos()
         hash_ctx   = self._calcular_hash(regimenes)
 
-        # Intentar leer del caché primero
-        voto_cache = self._leer_cache(hash_ctx, id_activo)
+        # Intentar leer del caché primero (si no hay refresco forzado)
+        voto_cache = None
+        if not ignorar_cache_ahora:
+            voto_cache = self._leer_cache(hash_ctx, id_activo)
+            
         if voto_cache is not None:
             print(f"[NLP] {simbolo_interno} (id={id_activo}) -> cache: {voto_cache:+.2f}")
             return voto_cache
 
-        # Caché inválido: llamar a Gemini para TODOS los activos a la vez
+        # Caché inválido o refresco forzado: llamar a Gemini para TODOS los activos
         activos_db = self.db.obtener_activos_patrullaje()
         resultados = self._llamar_gemini(regimenes, activos_db)
 

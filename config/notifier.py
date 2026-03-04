@@ -109,6 +109,21 @@ def notificar_inicio(activos: list):
     )
 
 
+def notificar_divergencia(simbolo: str, v_trend: float, v_nlp: float):
+    """
+    Alerta crítica de divergencia extrema entre lectura técnica (Trend) y macro (IA).
+    Bloquea operación por seguridad.
+    """
+    msg = f"DIVERGENCIA: Precio volando pero IA neutral o contraria. Operacion bloqueada por seguridad."
+    _print_alerta("ALERTA DIVERGENCIA", f"{simbolo} | Trend: {v_trend:+.2f} | IA: {v_nlp:+.2f}")
+    _enviar_telegram(
+        f"⚠️ <b>DIVERGENCIA DETECTADA -- {simbolo}</b>\n\n"
+        f"<b>Trend:</b> {v_trend:+.2f} (Técnico volando)\n"
+        f"<b>IA:</b> {v_nlp:+.2f} (Macro neutral/contrario)\n\n"
+        f"<i>Operación bloqueada por seguridad.</i>"
+    )
+
+
 def notificar_resumen_horario(ciclo: int, activos: list,
                                ciclos_hora: int, ordenes_hora: int,
                                uptime_minutos: int):

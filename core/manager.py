@@ -12,6 +12,7 @@ from config.notifier import (
     notificar_zona_caliente,
     notificar_orden_ejecutada,
     notificar_error_critico,
+    notificar_divergencia,
 )
 
 
@@ -73,13 +74,30 @@ class Manager:
               f"Tendencia={w_trend:.2f}  NLP={w_nlp:.2f}  Flow={w_flow:.2f}  "
               f"[Suma={w_trend+w_nlp+w_flow:.2f}]")
 
-        # 3. Consultar Obreros
+        # 3. Reflejo de Combate: Trigger de Volatilidad
+        simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
+        volatil_ahora = self._medir_volatilidad(simbolo_broker)
+        forzar_nlp = False
+        
+        if volatil_ahora >= 3.0:
+            print(f"[GERENTE] ⚡ PICO DE VOLATILIDAD IDENTIFICADO (Ratio: {volatil_ahora:.1f}x)")
+            print(f"[GERENTE] Forzando re-evaluacion macro de emergencia...")
+            forzar_nlp = True
+
+        # 4. Consultar Obreros
         print("\n[GERENTE] Consultando Obreros...")
         v_trend = self.trend.analizar(simbolo_interno)
-        v_nlp   = self.nlp.analizar(simbolo_interno, id_activo=id_activo)
+        v_nlp   = self.nlp.analizar(simbolo_interno, id_activo=id_activo, forzar_refresh=forzar_nlp)
         v_flow  = self.flow.analizar(simbolo_interno)
 
-        # 4. Suma ponderada → Veredicto Final
+        # 5. Reflejo de Combate: Alerta de Divergencia
+        if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
+            motivo = "Bloqueado por DIVERGENCIA extrema entre Trend e IA."
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                                    0.0, "CANCELADO_RIESGO", motivo)
+            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+
+        # 6. Suma ponderada -> Veredicto Final
         veredicto = round((v_trend * w_trend) + (v_nlp * w_nlp) + (v_flow * w_flow), 4)
         umbral    = params.get("GERENTE.umbral_disparo", 0.65)
 
@@ -169,3 +187,51 @@ class Manager:
             print(f"[GERENTE] Auditoria guardada en registro_senales ({decision})")
         except Exception as e:
             print(f"[GERENTE] ERROR guardando auditoria: {e}")
+
+    # ------------------------------------------------------------------
+    # Reflejos de Combate (Sensor de Inconsistencia)
+    # ------------------------------------------------------------------
+
+    def _medir_volatilidad(self, simbolo_broker: str) -> float:
+        """
+        Calcula el ratio de volatilidad de la vela actual (M1) respecto al promedio
+        de las 10 velas anteriores.
+        Retorna el ratio (ej: 3.5 significa que la vela actual es 3.5x más grande).
+        """
+        try:
+            import MetaTrader5 as mt5
+            velas = mt5.copy_rates_from_pos(simbolo_broker, mt5.TIMEFRAME_M1, 0, 11)
+            if velas is None or len(velas) < 11:
+                return 1.0
+
+            vela_actual = velas[-1]
+            velas_previas = velas[:-1]
+
+            tamano_actual = abs(vela_actual['high'] - vela_actual['low'])
+            
+            # Promedio de las ultimas 10 velas
+            suma_tamanos = sum(abs(v['high'] - v['low']) for v in velas_previas)
+            promedio_10 = suma_tamanos / 10.0
+
+            if promedio_10 == 0:
+                return 1.0
+
+            ratio = tamano_actual / promedio_10
+            return ratio
+        except Exception as e:
+            print(f"[GERENTE] ERROR midiendo volatilidad: {e}")
+            return 1.0
+
+    def _detectar_divergencia(self, simbolo: str, v_trend: float, v_nlp: float) -> bool:
+        """
+        Detecta si hay una contradiccion severa entre el analisis tecnico puro
+        (TrendWorker al maximo) y el analisis macroeconomico (NLPWorker).
+        """
+        # Condiciones de divergencia: precio explotando pero IA dice neutral/contrario
+        divergencia_alcista = (v_trend >= 0.90) and (v_nlp <= 0.0)
+        divergencia_bajista = (v_trend <= -0.90) and (v_nlp >= 0.0)
+
+        if divergencia_alcista or divergencia_bajista:
+            notificar_divergencia(simbolo, v_trend, v_nlp)
+            return True
+        return False
