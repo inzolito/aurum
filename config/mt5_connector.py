@@ -122,6 +122,18 @@ class MT5Connector:
         precio = mt5.symbol_info_tick(simbolo).ask if tipo == mt5.ORDER_TYPE_BUY \
                  else mt5.symbol_info_tick(simbolo).bid
 
+        # Determinar el modo de llenado soportado (Filling Mode)
+        filling_mode = mt5.ORDER_FILLING_FOK # Por defecto FOK
+        simbolo_info = mt5.symbol_info(simbolo)
+        if simbolo_info is not None:
+            # 1 = FOK, 2 = IOC, 3 = FOK|IOC
+            if (simbolo_info.filling_mode & 1):
+                filling_mode = mt5.ORDER_FILLING_FOK
+            elif (simbolo_info.filling_mode & 2):
+                filling_mode = mt5.ORDER_FILLING_IOC
+            else:
+                filling_mode = mt5.ORDER_FILLING_RETURN
+
         request = {
             "action":       mt5.TRADE_ACTION_DEAL,
             "symbol":       simbolo,
@@ -134,7 +146,7 @@ class MT5Connector:
             "magic":        20250101,    # ID único del bot
             "comment":      comentario,
             "type_time":    mt5.ORDER_TIME_GTC,
-            "type_filling": mt5.ORDER_FILLING_IOC,
+            "type_filling": filling_mode,
         }
 
         resultado = mt5.order_send(request)
