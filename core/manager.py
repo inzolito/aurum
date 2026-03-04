@@ -14,6 +14,7 @@ from workers.worker_flow import OrderFlowWorker
 from workers.worker_hurst import HurstWorker
 from workers.worker_volume import VolumeWorker
 from workers.worker_cross import CrossWorker
+from workers.worker_structure import StructureWorker
 from config.notifier import (
     notificar_zona_caliente,
     notificar_orden_ejecutada,
@@ -48,6 +49,7 @@ class Manager:
         self.hurst  = HurstWorker(db, mt5)
         self.volume = VolumeWorker(db, mt5)
         self.cross  = CrossWorker(db, mt5)
+        self.structure = StructureWorker(db, mt5)
 
     # ------------------------------------------------------------------
     # Ciclo principal
@@ -71,21 +73,8 @@ class Manager:
                                     "CANCELADO_RIESGO", motivo)
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
-        # 2. Obtener pesos desde BD
+        # 2. Obtener pesos desde BD (Solo para compatibilidad, V6 usa balance dinámico)
         params    = self.db.get_parametros()
-        w_trend   = params.get("TENDENCIA.peso_voto",  0.30)
-        w_nlp     = params.get("NLP.peso_voto",        0.20)
-        w_flow    = params.get("ORDER_FLOW.peso_voto", 0.50)
-
-        # Normalizar a 1.0 aunque los pesos cambien en la BD
-        total_pesos = w_trend + w_nlp + w_flow
-        w_trend /= total_pesos
-        w_nlp   /= total_pesos
-        w_flow  /= total_pesos
-
-        print(f"\n[GERENTE] Pesos normalizados: "
-              f"Tendencia={w_trend:.2f}  NLP={w_nlp:.2f}  Flow={w_flow:.2f}  "
-              f"[Suma={w_trend+w_nlp+w_flow:.2f}]")
 
         # 2. Verificar visibilidad en el Broker
         simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
@@ -94,6 +83,7 @@ class Manager:
             return {"decision": "ERROR_CONFIG"}
             
         # Hardened check for Market Watch (V6.1)
+        mt5.symbol_select(simbolo_broker, True)
         tick = mt5.symbol_info_tick(simbolo_broker)
         if tick is None:
             notificar_error_market_watch(simbolo_broker)
@@ -115,6 +105,8 @@ class Manager:
         v_flow   = self.flow.analizar(simbolo_interno)
         v_volume = self.volume.analizar(simbolo_interno)
         v_cross  = self.cross.analizar(simbolo_interno)
+        v_struct = self.structure.analizar(simbolo_interno)
+        print(f"[SNIPER] {simbolo_interno} | Estructura: {v_struct['estado_smc']} | Veredicto: {v_struct['sniper_veredicto']}")
         
         # --- Juez de Persistencia (Hurst) ---
         res_hurst = self.hurst.analizar(simbolo_interno)
@@ -135,17 +127,30 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, 0.0, "VETO_HURST", motivo)
             return {"decision": "VETO_HURST", "veredicto": 0.0, "motivo": motivo}
 
-        # --- RE-BALANCEO FINAL (V6.0) ---
-        # Pesos: Trend (35%), NLP (25%), Volume (15%), Flow (10%), Cross (15%)
-        # Total = 100%
+        # --- RE-BALANCEO FINAL (V7.0 Sniper) ---
+        # Pesos: Trend (30%), NLP (20%), Volume (15%), Cross (15%), Flow (10%), Structure (10%)
         veredicto = round(
-            (v_trend * 0.35) + 
-            (v_nlp * 0.25) + 
+            (v_trend * 0.30) + 
+            (v_nlp * 0.20) + 
             (v_volume['voto'] * 0.15) + 
             (v_flow * 0.10) + 
-            (v_cross['voto'] * 0.15), 
+            (v_cross['voto'] * 0.15) +
+            (v_struct['voto'] * 0.10),
             4
         )
+
+        # --- GATILLO QUIRÚRGICO (SNC Modifiers) ---
+        # OB Touch: +1.0 / -1.0 | In the air: -0.30 penalty
+        if v_struct['voto'] == 1.0:
+            veredicto += 1.0  # Gatillo Alcista
+        elif v_struct['voto'] == -1.0:
+            veredicto -= 1.0  # Gatillo Bajista
+        elif v_struct['voto'] == -0.30:
+            # Penalización "En el Aire" (reduce fuerza de señal)
+            if veredicto > 0: veredicto -= 0.30
+            elif veredicto < 0: veredicto += 0.30
+
+        veredicto = round(max(-1.0, min(1.0, veredicto)), 4)
 
         # 6. Decisión y Telemetría Extra
         # Black Swan Emergency
@@ -173,15 +178,15 @@ class Manager:
         # 5. Decisión
         umbral = params.get("GERENTE.umbral_disparo", 0.45)
         
-        print(f"\n[GERENTE] Votos    : Trend={v_trend:+.2f}  NLP={v_nlp:+.2f}  Flow={v_flow:+.2f}")
-        print(f"[GERENTE] Veredicto: {veredicto:+.4f}  (umbral: ±{umbral})")
+        print(f"\n[GERENTE] Pesos V7.0 Sniper: Trend(30%) NLP(20%) Vol(15%) Cross(15%) Flow(10%) Struct(10%)")
+        print(f"[GERENTE] Veredicto: {veredicto:+.4f} | Sniper: {v_struct['sniper_veredicto']} | Status: {'MODO EMERGENCIA' if v_cross['black_swan'] else 'Normal'}")
         
         if abs(veredicto) < umbral:
             # --- NUEVO REPORTE DE GATILLO Y PROXIMIDAD ---
             confianza = abs(veredicto)
             if 0.38 <= confianza < 0.45:
-                # Recuperar Hurst y Volumen para telemetria
-                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map)
+                # Recuperar Hurst, Volumen y Estructura para telemetria
+                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map, v_struct)
             elif 0.30 <= confianza < 0.38:
                 notificar_oportunidad_detectada(simbolo_interno, veredicto)
             
@@ -250,10 +255,11 @@ class Manager:
                 vol_va=vol_map['va'],
                 vol_ctx=vol_map['contexto'],
                 vol_ajuste=vol_map['ajuste'],
-                cross_dxy=cross_map['dxy'],
-                cross_spx=cross_map['spx'],
-                cross_div=cross_map['divergencia'],
-                cross_ajuste=cross_map['ajuste']
+                cross_div=cross_map['cross_div'] if 'cross_div' in cross_map else cross_map['divergencia'],
+                cross_ajuste=cross_map['cross_ajuste'] if 'cross_ajuste' in cross_map else cross_map['ajuste'],
+                smc_ob=v_struct['ob_precio'],
+                smc_estado=v_struct['estado_smc'],
+                smc_veredicto=v_struct['sniper_veredicto']
             )
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "EJECUTADO", motivo)
@@ -326,9 +332,11 @@ class Manager:
                     sl, tp, veredicto, v_trend, v_nlp, balance_real,
                     hurst_h=h_val, hurst_estado=h_estado,
                     vol_poc=vol_map['poc'], vol_va=vol_map['va'],
-                    vol_ctx=vol_map['contexto'], vol_ajuste=vol_map['ajuste'],
-                    cross_dxy=cross_map['dxy'], cross_spx=cross_map['spx'],
-                    cross_div=cross_map['divergencia'], cross_ajuste=cross_map['ajuste']
+                    cross_div=cross_map['cross_div'] if 'cross_div' in cross_map else cross_map['divergencia'], 
+                    cross_ajuste=cross_map['cross_ajuste'] if 'cross_ajuste' in cross_map else cross_map['ajuste'],
+                    smc_ob=v_struct['ob_precio'],
+                    smc_estado=v_struct['estado_smc'],
+                    smc_veredicto=v_struct['sniper_veredicto']
                 )
                 
                 # Actualizar registro con veredicto y probabilidad

@@ -88,8 +88,11 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
         f"POC: {kwargs.get('vol_poc', 'N/A')} | VA: {kwargs.get('vol_va', 'N/A')}\n\n"
         f"🌍 <b>SENSORES GLOBALES</b>\n"
         f"DXY: {kwargs.get('cross_dxy', 'N/A')}% | SPX: {kwargs.get('cross_spx', 'N/A')}%\n"
-        f"Divergencia: {kwargs.get('cross_div', 'N/A')}\n"
-        f"Veredicto Espía: {kwargs.get('cross_ajuste', 'N/A')}\n\n"
+        f"Divergencia: {kwargs.get('cross_div', 'N/A')}\n\n"
+        f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
+        f"Order Block: {kwargs.get('smc_ob', 'N/A')}\n"
+        f"Estructura: {kwargs.get('smc_estado', 'N/A')}\n"
+        f"Veredicto Sniper: {kwargs.get('smc_veredicto', 'N/A')}\n\n"
         f"<b>Balance Actual:</b> ${balance:,.2f}"
     )
 
@@ -121,13 +124,18 @@ def notificar_kill_switch_activado(equity: float):
                      f"<b>Equity actual:</b> ${equity:,.2f}\n\n"
                      f"<i>El sistema ha cerrado todas las posiciones y ha entrado en hibernación.</i>")
 
-def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str, vol_map: dict, cross_map: dict):
+def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str, vol_map: dict, cross_map: dict, v_struct: dict = None):
     """Filtro de pre-alerta: Aviso de proximidad al gatillo (0.38 - 0.44)."""
     msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f}"
     print(f"[NOTIFIER] {msg}")
     
     bs_alert = "🚨 <b>ESTADO DE EMERGENCIA: VOLATILIDAD EXTREMA</b>\n" if cross_map['black_swan'] else ""
     
+    # Datos de estructura
+    smc_ob = v_struct['ob_precio'] if v_struct else "N/A"
+    smc_estado = v_struct['estado_smc'] if v_struct else "N/A"
+    smc_v = v_struct['sniper_veredicto'] if v_struct else "N/A"
+
     _enviar_telegram(f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
                      f"{bs_alert}"
                      f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
@@ -137,6 +145,10 @@ def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_e
                      f"🌍 <b>SENSORES GLOBALES</b>\n"
                      f"DXY: {cross_map['dxy']}% | SPX: {cross_map['spx']}%\n"
                      f"Divergencia: {cross_map['divergencia']}\n\n"
+                     f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
+                     f"Order Block: {smc_ob}\n"
+                     f"Estructura: {smc_estado}\n"
+                     f"Veredicto Sniper: {smc_v}\n\n"
                      f"<b>Estado:</b> El Centinela { 'está en ALERTA MÁXIMA (+0.60)' if cross_map['black_swan'] else 'está quitando el seguro (+0.45)' }.")
 
 def notificar_error_market_watch(simbolo: str):
@@ -184,11 +196,11 @@ def notificar_inicio(activos: list):
     """
     lista = " | ".join(activos)
     _print_alerta("SISTEMA INICIADO",
-                  f"Aurum Omni V1.0 OPERATIVO | {len(activos)} activos | Umbral: 0.65 | Ciclo: 60s")
+                  f"Aurum Omni V1.0 OPERATIVO | {len(activos)} activos | Umbral: 0.45 | Ciclo: 60s")
     _enviar_telegram(
         f"<b>Aurum Omni V1.0 Operativo.</b>\n"
         f"Patrullando {len(activos)} activos en condiciones reales.\n"
-        f"Umbral: 0.65 | Ciclo: 60s\n\n"
+        f"Umbral: 0.45 | Ciclo: 60s\n\n"
         f"<b>Activos:</b> {lista}\n\n"
         f"Centinela apostado, Maikol!"
     )
