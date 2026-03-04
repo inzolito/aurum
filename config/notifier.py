@@ -90,3 +90,45 @@ def notificar_error_critico(modulo: str, mensaje: str):
     msg = f"ERROR CRITICO en {modulo}: {mensaje}"
     _print_alerta("ERROR CRITICO", msg)
     _enviar_telegram(f"<b>ERROR CRITICO</b>\nModulo: {modulo}\n{mensaje}")
+
+
+def notificar_inicio(activos: list):
+    """
+    Mensaje de bienvenida al arrancar el sistema.
+    Se dispara una sola vez al iniciar main.py.
+    """
+    lista = " | ".join(activos)
+    _print_alerta("SISTEMA INICIADO",
+                  f"Aurum Omni V1.0 OPERATIVO | {len(activos)} activos | Umbral: 0.65 | Ciclo: 60s")
+    _enviar_telegram(
+        f"<b>Aurum Omni V1.0 Operativo.</b>\n"
+        f"Patrullando {len(activos)} activos en condiciones reales.\n"
+        f"Umbral: 0.65 | Ciclo: 60s\n\n"
+        f"<b>Activos:</b> {lista}\n\n"
+        f"Centinela apostado, Maikol!"
+    )
+
+
+def notificar_resumen_horario(ciclo: int, activos: list,
+                               ciclos_hora: int, ordenes_hora: int,
+                               uptime_minutos: int):
+    """
+    Pulso de vida enviado cada 60 ciclos (~1 hora).
+    Confirma que el bot sigue corriendo y resume la actividad reciente.
+    """
+    import time as _t
+    hora_local = _t.strftime("%H:%M:%S")
+    lista = " | ".join(activos)
+    horas = uptime_minutos // 60
+    _print_alerta("PULSO HORARIO",
+                  f"Ciclo #{ciclo} | Uptime: {uptime_minutos}min | "
+                  f"Evaluaciones: {ciclos_hora} | Ordenes: {ordenes_hora}")
+    _enviar_telegram(
+        f"<b>Aurum — Pulso Horario</b> ({hora_local})\n\n"
+        f"Sistema OPERATIVO\n"
+        f"Uptime: {horas}h {uptime_minutos % 60}min | Ciclo: #{ciclo}\n"
+        f"Activos patrullados: {len(activos)}\n"
+        f"Evaluaciones en la hora: {ciclos_hora}\n"
+        f"Ordenes ejecutadas en la hora: {ordenes_hora}\n\n"
+        f"<b>Activos:</b> {lista}"
+    )

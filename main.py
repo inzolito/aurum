@@ -9,6 +9,7 @@ import sys
 from config.db_connector import DBConnector
 from config.mt5_connector import MT5Connector
 from core.manager import Manager
+from config.notifier import notificar_inicio, notificar_resumen_horario, notificar_error_critico
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
@@ -49,6 +50,16 @@ def main():
     print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
     print(f"[MAIN] Ciclo: cada {CICLO_SEGUNDOS}s | Activos: cargados dinamicamente desde BD\n")
 
+    # --- Mensaje de inicio a Telegram ---
+    activos_inicio  = db.obtener_activos_patrullaje()
+    simbolos_inicio = [a['simbolo'] for a in activos_inicio]
+    notificar_inicio(simbolos_inicio)
+
+    # Contadores para el pulso horario (cada 60 ciclos ~ 1 hora)
+    CICLOS_POR_HORA = 60
+    ciclos_hora     = 0
+    ordenes_hora    = 0
+
     ciclo = 0
     try:
         while True:
@@ -60,7 +71,7 @@ def main():
 
             # Obtener activos dinámicamente desde la BD (no hardcodeados)
             activos_db = db.obtener_activos_patrullaje()
-            simbolos = [a['simbolo'] for a in activos_db]
+            simbolos   = [a['simbolo'] for a in activos_db]
 
             # Heartbeat en cada ciclo
             db.update_estado_bot(
@@ -72,12 +83,33 @@ def main():
             for activo in activos_db:
                 print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
                 try:
-                    gerente.evaluar(activo['simbolo'], modo_simulacion=False,
-                                   id_activo=activo['id'])  # PRODUCCION DEMO
+                    resultado = gerente.evaluar(
+                        activo['simbolo'],
+                        modo_simulacion=False,
+                        id_activo=activo['id']   # PRODUCCION DEMO
+                    )
+                    # Contar órdenes realmente disparadas
+                    if resultado.get("decision") not in ("IGNORADO", "CANCELADO_RIESGO"):
+                        ordenes_hora += 1
                 except Exception as e:
                     print(f"[MAIN] ERROR evaluando {activo['simbolo']}: {e}")
                     db.registrar_log("ERROR", "MAIN",
-                                    f"Excepcion en ciclo de {activo['simbolo']}: {e}")
+                                     f"Excepcion en ciclo de {activo['simbolo']}: {e}")
+
+            ciclos_hora    += 1
+            uptime_minutos  = (ciclo * CICLO_SEGUNDOS) // 60
+
+            # --- Pulso horario: cada 60 ciclos (~1h) ---
+            if ciclo % CICLOS_POR_HORA == 0:
+                notificar_resumen_horario(
+                    ciclo          = ciclo,
+                    activos        = simbolos,
+                    ciclos_hora    = ciclos_hora,
+                    ordenes_hora   = ordenes_hora,
+                    uptime_minutos = uptime_minutos
+                )
+                ciclos_hora  = 0
+                ordenes_hora = 0
 
             # Reconexión automática a MT5 si se desconecta
             import MetaTrader5 as mt5_lib
