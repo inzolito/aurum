@@ -113,6 +113,30 @@ class MT5Connector:
         asks = [(e.price, e.volume) for e in book if e.type == mt5.BOOK_TYPE_SELL]
         return {"bids": bids, "asks": asks}
 
+    def obtener_ticks_24h(self, simbolo: str) -> pd.DataFrame | None:
+        """
+        Descarga todos los ticks de las últimas 24 horas para un símbolo.
+        Útil para Volume Profile de alta precisión.
+        """
+        from datetime import datetime, timedelta
+        
+        # Suscripción forzada si no está en Market Watch
+        if not mt5.symbol_select(simbolo, True):
+            print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo} para ticks.")
+            return None
+
+        ahora = datetime.now()
+        hace_24h = ahora - timedelta(hours=24)
+        
+        ticks = mt5.copy_ticks_from(simbolo, hace_24h, 1000000, mt5.COPY_TICKS_ALL)
+        if ticks is None or len(ticks) == 0:
+            print(f"[MT5] No se pudieron obtener ticks para {simbolo}")
+            return None
+        
+        df = pd.DataFrame(ticks)
+        df['time'] = pd.to_datetime(df['time'], unit='s')
+        return df
+
     def obtener_precio_actual(self, simbolo: str) -> dict | None:
         """Retorna el bid y ask actuales del símbolo."""
         tick = mt5.symbol_info_tick(simbolo)

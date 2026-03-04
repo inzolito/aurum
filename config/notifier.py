@@ -83,7 +83,11 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
         f"<b>Acción:</b> {direccion} @ {precio}\n"
         f"<b>Riesgo:</b> SL: {sl:.4f} | TP: {tp:.4f}\n"
         f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
-        f"📊 <b>Hurst:</b> {kwargs.get('hurst_h', 'N/A')} | <b>Estado:</b> {kwargs.get('hurst_estado', 'N/A')}\n\n"
+        f"📊 <b>Hurst:</b> {kwargs.get('hurst_h', 'N/A')} | <b>Estado:</b> {kwargs.get('hurst_estado', 'N/A')}\n"
+        f"📍 <b>MAPA DE VOLUMEN</b>\n"
+        f"POC: {kwargs.get('vol_poc', 'N/A')} | VA: {kwargs.get('vol_va', 'N/A')}\n"
+        f"Contexto: {kwargs.get('vol_ctx', 'N/A')}\n"
+        f"Ajuste: {kwargs.get('vol_ajuste', 'N/A')}\n\n"
         f"<b>Balance Actual:</b> ${balance:,.2f}"
     )
 
@@ -115,13 +119,17 @@ def notificar_kill_switch_activado(equity: float):
                      f"<b>Equity actual:</b> ${equity:,.2f}\n\n"
                      f"<i>El sistema ha cerrado todas las posiciones y ha entrado en hibernación.</i>")
 
-def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str):
+def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str, vol_map: dict):
     """Filtro de pre-alerta: Aviso de proximidad al gatillo (0.38 - 0.44)."""
-    msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f} | Hurst: {hurst_h} ({hurst_estado})"
+    msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f}"
     print(f"[NOTIFIER] {msg}")
     _enviar_telegram(f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
                      f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
                      f"📊 <b>Hurst:</b> {hurst_h:.4f} | <b>Estado:</b> {hurst_estado}\n"
+                     f"📍 <b>MAPA DE VOLUMEN</b>\n"
+                     f"POC: {vol_map['poc']} | VAH/VAL: {vol_map['va']}\n"
+                     f"Contexto: {vol_map['contexto']}\n"
+                     f"Ajuste: {vol_map['ajuste']}\n\n"
                      f"<b>Estado:</b> El Centinela está quitando el seguro. Esperando confirmación final (+0.45).")
 
 def notificar_oportunidad_detectada(simbolo: str, veredicto: float):
