@@ -1,0 +1,11 @@
+# Entorno Python
+venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Credenciales — NUNCA subir a Git
+.env
+
+# Logs locales
+*.log
