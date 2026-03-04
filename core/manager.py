@@ -1,4 +1,6 @@
 import sys
+import os
+import time
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -141,12 +143,16 @@ class Manager:
         tp = (ask + sl_distancia * ratio_tp) if direccion == "COMPRA" \
              else (bid - sl_distancia * ratio_tp)
 
-        lotes = self.risk.calcular_lotes(simbolo_interno, sl)
-        if not lotes:
-            motivo = "RiskModule no pudo calcular lotaje. Orden abortada."
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                    veredicto, "CANCELADO_RIESGO", motivo)
-            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+        # ----------------------------------------------------
+        # HARD-CODING DE SEGURIDAD (NO NEGOCIABLE)
+        # ----------------------------------------------------
+        lotes = 0.01
+        print(f"[RISK] Lotaje hardcodeado por seguridad: {lotes} (Ignora cálculos)")
+        # lotes = self.risk.calcular_lotes(simbolo_interno, sl)
+        # if not lotes:
+        #     motivo = "RiskModule no pudo calcular lotaje. Orden abortada."
+        #     return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+        # ----------------------------------------------------
 
         # 7. Justificación Glass Box
         motivo = (
@@ -166,6 +172,16 @@ class Manager:
                                     veredicto, "EJECUTADO", motivo)
             return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
         else:
+            # 8.a Validación de seguridad (Cuenta MT5)
+            import MetaTrader5 as mt5_api
+            cuenta_esperada = os.environ.get("MT5_LOGIN", "")
+            info_oc = mt5_api.account_info()
+            if not info_oc or str(info_oc.login) != cuenta_esperada:
+                err_msg = f"Rechazo de Seguridad: Intento de operar en cuenta {info_oc.login if info_oc else 'Desconocida'} en vez de {cuenta_esperada}"
+                print(f"[GERENTE] 🚨 {err_msg}")
+                notificar_error_critico("SEGURIDAD_PRE_TRADE", err_msg)
+                return {"decision": "ERROR_BROKER", "motivo": err_msg}
+
             obj_ticket = self.mt5.enviar_orden(
                 self.db.obtener_simbolo_broker(simbolo_interno),
                 direccion, lotes, sl, tp
@@ -193,8 +209,28 @@ class Manager:
                 return {"decision": "ERROR_BROKER", "motivo": err_msg}
             else:
                 ticket = obj_ticket.get("ticket")
-                print(f"\n[GERENTE] ORDEN EJECUTADA (CONFIRMADA) — Ticket: {ticket}")
-                notificar_orden_ejecutada(simbolo_interno, direccion, lotes, veredicto, motivo)
+                print(f"\n[GERENTE] ORDEN RECIBIDA (10009) — Ticket: {ticket}")
+                
+                # Bucle de Verificación Post-Trade
+                time.sleep(1)
+                posiciones = mt5_api.positions_get(ticket=ticket)
+                if not posiciones:
+                    err_msg = f"Discrepancia MT5: Ticket {ticket} reportado como DONE pero no aparece en posiciones abiertas."
+                    print(f"[GERENTE] 🚨 {err_msg}")
+                    notificar_error_critico("DISCREPANCIA_BROKER", err_msg)
+                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, veredicto, "ERROR_BROKER", err_msg)
+                    return {"decision": "ERROR_BROKER", "motivo": err_msg}
+                
+                # Obtener detalles reales
+                pos = posiciones[0]
+                precio_real = pos.price_open
+                info_acc = mt5_api.account_info()
+                balance_real = info_acc.balance if info_acc else 0.0
+
+                notificar_orden_ejecutada(
+                    simbolo_interno, direccion, lotes, ticket, precio_real, 
+                    veredicto, v_trend, v_nlp, balance_real
+                )
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                         veredicto, "EJECUTADO", motivo)
                 return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}

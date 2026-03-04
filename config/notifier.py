@@ -48,23 +48,30 @@ def _enviar_telegram(mensaje: str):
 # API pública
 # ------------------------------------------------------------------
 
-def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
-                               veredicto: float, motivo: str):
+def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float, 
+                               ticket: int, precio: float,
+                               veredicto: float, v_trend: float, v_nlp: float,
+                               balance: float):
     """
-    Alerta de MÁXIMA PRIORIDAD — se dispara cuando el Manager ejecuta una orden real.
+    Protocolo Truth-Only: Alerta confirmada con ticket real en MetaTrader.
     """
     msg = (
-        f">> ORDEN EJECUTADA\n"
-        f"Símbolo  : {simbolo}\n"
-        f"Dirección: {direccion}\n"
-        f"Lotes    : {lotes}\n"
-        f"Veredicto: {veredicto:+.4f}\n"
-        f"Motivo   : {motivo[:200]}"
+        f">> ORDEN CONFIRMADA\n"
+        f"Activo: {simbolo} | Ticket: #{ticket}\n"
+        f"Accion: {direccion} | Lotes: {lotes}\n"
+        f"Precio: {precio}\n"
+        f"Veredicto IA: {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
+        f"Balance Actual: ${balance:,.2f}"
     )
-    _print_alerta("ORDEN EJECUTADA", msg.replace("\n", " | "))
-    _enviar_telegram(f"<b>ORDEN EJECUTADA -- {simbolo}</b>\n"
-                     f"Dirección: {direccion} | Lotes: {lotes}\n"
-                     f"Veredicto: {veredicto:+.4f}")
+    _print_alerta("ORDEN CONFIRMADA", msg.replace("\n", " | "))
+    _enviar_telegram(
+        f"🟢 <b>ORDEN CONFIRMADA</b>\n"
+        f"<b>Activo:</b> {simbolo} | <b>Ticket:</b> #{ticket}\n"
+        f"<b>Acción:</b> {direccion} | <b>Lotes:</b> {lotes}\n"
+        f"<b>Precio Entrada:</b> {precio}\n"
+        f"<b>Veredicto IA:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
+        f"<b>Balance Actual:</b> ${balance:,.2f}"
+    )
 
 
 def notificar_zona_caliente(simbolo: str, veredicto: float,
@@ -99,11 +106,10 @@ def notificar_rechazo_broker(simbolo: str, retcode: int, causa: str):
     msg = f"RECHAZO BROKER — {simbolo} (Err {retcode}): {causa}"
     _print_alerta("ALERTA ROJA", msg)
     _enviar_telegram(
-        f"🚨 <b>ALERTA ROJA DE RECHAZO</b> 🚨\n\n"
-        f"<b>Activo:</b> {simbolo}\n"
-        f"<b>Código Error:</b> {retcode}\n"
-        f"<b>Causa Probable:</b> {causa}\n\n"
-        f"<i>El bot abortó el registro de ejecución y la orden NO está en el mercado.</i>"
+        f"🔴 <b>FALLO DE EJECUCIÓN</b>\n"
+        f"<b>Activo:</b> {simbolo} | <b>Error:</b> {retcode}\n"
+        f"<b>Descripción:</b> {causa}\n"
+        f"<b>Acción:</b> La orden ha sido descartada. Revisar terminal."
     )
 
 

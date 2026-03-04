@@ -5,11 +5,13 @@ Ciclo: evalúa cada activo activo cada 60 segundos (1 vela M1).
 """
 import time
 import sys
+import os
+from datetime import datetime
 
 from config.db_connector import DBConnector
 from config.mt5_connector import MT5Connector
 from core.manager import Manager
-from config.notifier import notificar_inicio, notificar_resumen_horario, notificar_error_critico
+from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario, notificar_error_critico
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
@@ -40,11 +42,32 @@ def main():
     print("  AURUM OMNI V1.0.0 — INICIANDO")
     print("=" * 60)
 
-    db, mt5 = inicializar()
+    db, mt5_conn = inicializar()
     if not db:
         sys.exit(1)
 
-    gerente = Manager(db, mt5)
+    # --- 1. KILL-SWITCH & PID LOGGING ---
+    pid = os.getpid()
+    
+    # --- 2. VALIDACION HARDCODEADA DE CUENTA MT5 ---
+    cuenta_esperada = os.environ.get("MT5_LOGIN", "")
+    import MetaTrader5 as mt_api
+    info_cuenta = mt_api.account_info()
+    
+    if not info_cuenta:
+        print("[MAIN] CRITICO: No se pudo obtener la informacion de la cuenta MT5.")
+        sys.exit(1)
+        
+    cuenta_real = str(info_cuenta.login)
+    print(f"\n[MAIN] SISTEMA INICIADO - PID: {pid} - CUENTA MT5: {cuenta_real}")
+    
+    if cuenta_real != cuenta_esperada:
+        print(f"[MAIN] 🚨 FATAL: Cuenta MT5 incorrecta! Esperada: {cuenta_esperada}, Real: {cuenta_real}")
+        print("[MAIN] Auto-destruccion de seguridad activada (Kill-Switch).")
+        notificar_error_critico("SEGURIDAD", f"Intento de operacion en cuenta equivocada ({cuenta_real}). Bot abortado.")
+        sys.exit(1)
+
+    gerente = Manager(db, mt5_conn)
 
     db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
     print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
