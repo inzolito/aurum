@@ -161,17 +161,28 @@ class Manager:
         if modo_simulacion:
             print(f"\n[GERENTE] Simulando ejecucion de {direccion} con {lotes} lotes")
             notificar_orden_ejecutada(simbolo_interno, direccion, lotes, veredicto, motivo)
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                                    veredicto, "EJECUTADO", motivo)
+            return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
         else:
             ticket = self.mt5.enviar_orden(
                 self.db.obtener_simbolo_broker(simbolo_interno),
                 direccion, lotes, sl, tp
             )
-            print(f"\n[GERENTE] ORDEN ENVIADA — Ticket: {ticket}")
-            notificar_orden_ejecutada(simbolo_interno, direccion, lotes, veredicto, motivo)
-
-        self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                veredicto, "EJECUTADO", motivo)
-        return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
+            
+            if ticket is None:
+                err_msg = f"MT5 ROJA — Orden Rechazada (AutoTrading off o sin margen). Ticket: None"
+                print(f"\n[GERENTE] ERROR CRITICO: {err_msg}")
+                notificar_error_critico("Broker/MT5", f"{simbolo_interno} {direccion} falló. Revisa terminal MT5 (AutoTrading = ON?).")
+                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                                        veredicto, "ERROR_BROKER", err_msg)
+                return {"decision": "ERROR_BROKER", "motivo": err_msg}
+            else:
+                print(f"\n[GERENTE] ORDEN ENVIADA — Ticket: {ticket}")
+                notificar_orden_ejecutada(simbolo_interno, direccion, lotes, veredicto, motivo)
+                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                                        veredicto, "EJECUTADO", motivo)
+                return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
 
     # ------------------------------------------------------------------
     # Auditoría obligatoria (Glass Box)
