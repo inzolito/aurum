@@ -26,7 +26,25 @@ load_dotenv()
 
 GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "")
 CACHE_TTL_MIN    = int(os.getenv("NLP_CACHE_TTL_MIN", "30"))
-GEMINI_MODEL     = "gemini-1.5-flash"
+GEMINI_MODEL     = "gemini-2.5-flash"
+
+
+def _llamar_gemini_api(prompt: str) -> str:
+    """
+    Llama a Gemini usando el SDK google.genai (v1.65+, no deprecado).
+    Retorna el texto de la respuesta o string vacio si falla.
+    """
+    try:
+        from google import genai
+        client = genai.Client(api_key=GEMINI_API_KEY)
+        respuesta = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt
+        )
+        return respuesta.text.strip()
+    except Exception as e:
+        print(f"[NLP] ERROR en API Gemini: {e}")
+        return ""
 
 
 def _clamp(v) -> float:
@@ -125,7 +143,7 @@ class NLPWorker:
         fallback  = {s: 0.0 for s in simbolos}
 
         if not regimenes:
-            print("[NLP] Sin regímenes activos. Retornando neutrales.")
+            print("[NLP] Sin regimenes activos. Retornando neutrales.")
             return fallback
 
         # Construir contexto legible para el prompt
@@ -139,32 +157,24 @@ class NLPWorker:
         json_vacio   = json.dumps({s: 0.0 for s in simbolos})
 
         prompt = (
-            "Actúa como un analista macro senior de mercados financieros. "
-            "Analiza el siguiente contexto macroeconómico actual:\n\n"
+            "Actua como un analista macro senior de mercados financieros. "
+            "Analiza el siguiente contexto macroeconomico actual:\n\n"
             f"{contexto_str}\n\n"
-            "Devuelve ÚNICAMENTE un JSON válido (sin markdown, sin texto adicional) "
+            "Devuelve UNICAMENTE un JSON valido (sin markdown, sin texto adicional) "
             "con el impacto estimado de -1.0 (muy bajista) a 1.0 (muy alcista) "
             f"para cada uno de estos activos: {activos_str}\n\n"
-            f"Formato requerido: {json_vacio}\n\n"
-            "Considera correlaciones entre activos (ej: tensiones geopolíticas "
-            "suben Oro y Petróleo, bajan S&P500; recorte de tasas FED sube acciones "
-            "y debilita USD). Sé preciso y coherente entre activos."
+            f"Formato requerido exacto: {json_vacio}\n\n"
+            "Considera correlaciones entre activos (ej: tensiones geopoliticas "
+            "suben Oro y Petroleo, bajan S&P500; recorte de tasas FED sube acciones "
+            "y debilita USD). Se preciso y coherente entre activos."
         )
 
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=GEMINI_API_KEY)
-            modelo   = genai.GenerativeModel(GEMINI_MODEL)
-            respuesta = modelo.generate_content(prompt)
-            texto    = respuesta.text.strip()
-            print(f"[NLP] Gemini respondio ({len(texto)} chars)")
-
-            # Parsear JSON con guardrails
-            return self._parsear_respuesta(texto, simbolos)
-
-        except Exception as e:
-            print(f"[NLP] ERROR llamando a Gemini: {e}. Retornando neutrales.")
+        texto = _llamar_gemini_api(prompt)
+        if not texto:
             return fallback
+
+        print(f"[NLP] Gemini respondio ({len(texto)} chars)")
+        return self._parsear_respuesta(texto, simbolos)
 
     def _parsear_respuesta(self, texto: str, simbolos: list) -> dict:
         """
@@ -232,7 +242,11 @@ class NLPWorker:
                     return float(voto)
                 print(f"[NLP] Caché expirado (edad: {int(edad.total_seconds()//60)}min). Reconsultando Gemini.")
         except Exception as e:
-            print(f"[NLP] ERROR leyendo caché: {e}")
+            print(f"[NLP] ERROR leyendo cache: {e}")
+            try:
+                self.db.conn.rollback()  # Recuperar transaccion abortada
+            except Exception:
+                pass
         return None
 
     def _guardar_cache(self, hash_ctx: str, activos: list, resultados: dict, regimenes: list):
@@ -258,7 +272,11 @@ class NLPWorker:
             self.db.conn.commit()
             print(f"[NLP] Caché guardado para hash={hash_ctx} ({len(activos)} activos)")
         except Exception as e:
-            print(f"[NLP] ERROR guardando caché: {e}")
+            print(f"[NLP] ERROR guardando cache: {e}")
+            try:
+                self.db.conn.rollback()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------
     # Fallback (sin API key)
