@@ -12,6 +12,7 @@ from workers.worker_nlp import NLPWorker
 from workers.worker_flow import OrderFlowWorker
 from workers.worker_hurst import HurstWorker
 from workers.worker_volume import VolumeWorker
+from workers.worker_cross import CrossWorker
 from config.notifier import (
     notificar_zona_caliente,
     notificar_orden_ejecutada,
@@ -44,6 +45,7 @@ class Manager:
         self.flow   = OrderFlowWorker(db, mt5)
         self.hurst  = HurstWorker(db, mt5)
         self.volume = VolumeWorker(db, mt5)
+        self.cross  = CrossWorker(db, mt5)
 
     # ------------------------------------------------------------------
     # Ciclo principal
@@ -99,6 +101,7 @@ class Manager:
         v_nlp    = self.nlp.analizar(simbolo_interno, id_activo=id_activo, forzar_refresh=forzar_nlp)
         v_flow   = self.flow.analizar(simbolo_interno)
         v_volume = self.volume.analizar(simbolo_interno)
+        v_cross  = self.cross.analizar(simbolo_interno)
         
         # --- Juez de Persistencia (Hurst) ---
         res_hurst = self.hurst.analizar(simbolo_interno)
@@ -119,18 +122,40 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, 0.0, "VETO_HURST", motivo)
             return {"decision": "VETO_HURST", "veredicto": 0.0, "motivo": motivo}
 
-        # --- RE-BALANCEO PARA VOLUMEN (V5.0) ---
-        # Pesos Propuestos: Trend (40%), NLP (30%), Flow (10%), Volume (20%)
-        # Nota: W_FLOW se mantiene bajo por ser L2.
-        veredicto = round((v_trend * 0.40) + (v_nlp * 0.30) + (v_flow * 0.10) + (v_volume['voto'] * 0.20), 4)
+        # --- RE-BALANCEO FINAL (V6.0) ---
+        # Pesos: Trend (35%), NLP (25%), Volume (15%), Flow (10%), Cross (15%)
+        # Total = 100%
+        veredicto = round(
+            (v_trend * 0.35) + 
+            (v_nlp * 0.25) + 
+            (v_volume['voto'] * 0.15) + 
+            (v_flow * 0.10) + 
+            (v_cross['voto'] * 0.15), 
+            4
+        )
 
         # 6. Decisión y Telemetría Extra
+        # Black Swan Emergency
+        umbral_base = params.get("GERENTE.umbral_disparo", 0.45)
+        umbral = 0.60 if v_cross['black_swan'] else umbral_base
+        
+        if v_cross['black_swan']:
+            print(f"[GERENTE] 🚨 MODO EMERGENCIA: DXY Volátil. Umbral elevado a {umbral}")
+
         # Prep data para notificaciones
         vol_map = {
             "poc": v_volume['poc'],
             "va": f"{v_volume['val']} - {v_volume['vah']}",
             "contexto": v_volume['contexto'],
             "ajuste": v_volume['ajuste']
+        }
+        
+        cross_map = {
+            "dxy": v_cross['var_dxy'],
+            "spx": v_cross['var_spx'],
+            "divergencia": v_cross['divergencia'],
+            "ajuste": v_cross['ajuste'],
+            "black_swan": v_cross['black_swan']
         }
         # 5. Decisión
         umbral = params.get("GERENTE.umbral_disparo", 0.45)
@@ -143,7 +168,7 @@ class Manager:
             confianza = abs(veredicto)
             if 0.38 <= confianza < 0.45:
                 # Recuperar Hurst y Volumen para telemetria
-                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map)
+                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map)
             elif 0.30 <= confianza < 0.38:
                 notificar_oportunidad_detectada(simbolo_interno, veredicto)
             
@@ -211,7 +236,11 @@ class Manager:
                 vol_poc=vol_map['poc'],
                 vol_va=vol_map['va'],
                 vol_ctx=vol_map['contexto'],
-                vol_ajuste=vol_map['ajuste']
+                vol_ajuste=vol_map['ajuste'],
+                cross_dxy=cross_map['dxy'],
+                cross_spx=cross_map['spx'],
+                cross_div=cross_map['divergencia'],
+                cross_ajuste=cross_map['ajuste']
             )
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "EJECUTADO", motivo)
@@ -284,7 +313,9 @@ class Manager:
                     sl, tp, veredicto, v_trend, v_nlp, balance_real,
                     hurst_h=h_val, hurst_estado=h_estado,
                     vol_poc=vol_map['poc'], vol_va=vol_map['va'],
-                    vol_ctx=vol_map['contexto'], vol_ajuste=vol_map['ajuste']
+                    vol_ctx=vol_map['contexto'], vol_ajuste=vol_map['ajuste'],
+                    cross_dxy=cross_map['dxy'], cross_spx=cross_map['spx'],
+                    cross_div=cross_map['divergencia'], cross_ajuste=cross_map['ajuste']
                 )
                 
                 # Actualizar registro con veredicto y probabilidad
