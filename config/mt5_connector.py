@@ -133,6 +133,12 @@ class MT5Connector:
                 filling_mode = mt5.ORDER_FILLING_IOC
             else:
                 filling_mode = mt5.ORDER_FILLING_RETURN
+                
+            # Normalizar decimales a los permitidos por el broker (evita errores 10030/10016)
+            digitos = simbolo_info.digits
+            precio  = round(precio, digitos)
+            sl      = round(sl, digitos)
+            tp      = round(tp, digitos)
 
         request = {
             "action":       mt5.TRADE_ACTION_DEAL,
