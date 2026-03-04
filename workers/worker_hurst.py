@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import MetaTrader5 as mt5
 
 class HurstWorker:
     """
@@ -12,6 +13,7 @@ class HurstWorker:
     def __init__(self, db, mt5):
         self.db  = db
         self.mt5 = mt5
+        self._cache = {} # {simbolo: {'time': float, 'price': float, 'result': dict}}
 
     def calcular_hurst(self, series: pd.Series) -> float:
         """
@@ -59,12 +61,28 @@ class HurstWorker:
     def analizar(self, simbolo_interno: str) -> dict:
         """
         Analiza la persistencia del activo usando 1,024 velas M1.
-        Retorna un dict con el valor H y el veredicto.
+        Usa caché dinámico para optimizar latencia (Lazy Refresh).
         """
         simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
         if not simbolo_broker:
             return {"h": 0.5, "estado": "RUIDO"}
 
+        # --- LÓGICA DE CACHÉ (Lazy Refresh) ---
+        import time
+        ahora = time.time()
+        tick_actual = mt5.symbol_info_tick(simbolo_broker)
+        precio_actual = tick_actual.last if tick_actual else 0
+        
+        if simbolo_broker in self._cache:
+            cache = self._cache[simbolo_broker]
+            diff_tiempo = ahora - cache['time']
+            diff_precio = abs(precio_actual - cache['price']) / cache['price'] if cache['price'] > 0 else 1.0
+            
+            # Solo recalcular si han pasado > 5 min o el precio movio > 0.1%
+            if diff_tiempo < 300 and diff_precio < 0.001:
+                return cache['result']
+
+        # --- PROCESAMIENTO REAL ---
         # Pedir 1,024 velas como solicitó el usuario
         df = self.mt5.obtener_velas(simbolo_broker, 1024)
         if df is None or df.empty or len(df) < 1024:
@@ -85,8 +103,17 @@ class HurstWorker:
         else:
             estado = "RUIDO"
 
+        res = {"h": h, "estado": estado}
+        
+        # Guardar en caché
+        self._cache[simbolo_broker] = {
+            'time': ahora,
+            'price': precio_actual,
+            'result': res
+        }
+        
         print(f"[HURST] {simbolo_interno} | H: {h:.4f} | Estado: {estado}")
-        return {"h": h, "estado": estado}
+        return res
 
 # Test rápido
 if __name__ == "__main__":

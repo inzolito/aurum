@@ -12,16 +12,33 @@ class VolumeWorker:
     def __init__(self, db, mt5):
         self.db  = db
         self.mt5 = mt5
+        self._cache = {} # {simbolo: {'time': float, 'price': float, 'result': dict}}
 
     def analizar(self, simbolo_interno: str) -> dict:
         """
         Analiza el perfil de volumen de las últimas 24 horas.
+        Usa caché dinámico para optimizar latencia (Lazy Refresh).
         """
         simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
         if not simbolo_broker:
             return self._datos_vacios()
 
-        # 1. Obtener datos (Ticks preferido, M1 como fallback)
+        # --- LÓGICA DE CACHÉ (Lazy Refresh) ---
+        import time
+        ahora = time.time()
+        tick_actual = mt5.symbol_info_tick(simbolo_broker)
+        precio_actual = tick_actual.last if tick_actual else 0
+        
+        if simbolo_broker in self._cache:
+            cache = self._cache[simbolo_broker]
+            diff_tiempo = ahora - cache['time']
+            diff_precio = abs(precio_actual - cache['price']) / cache['price'] if cache['price'] > 0 else 1.0
+            
+            # Solo recalcular si han pasado > 5 min o el precio movio > 0.1%
+            if diff_tiempo < 300 and diff_precio < 0.001:
+                return cache['result']
+
+        # --- PROCESAMIENTO REAL ---
         df_ticks = self.mt5.obtener_ticks_24h(simbolo_broker)
         
         if df_ticks is not None and not df_ticks.empty:
@@ -128,7 +145,7 @@ class VolumeWorker:
                     voto = 0.0
                     ajuste = "Reduciendo confianza (Falta liquidez)"
             
-        return {
+        res = {
             "voto": round(voto, 2),
             "poc": poc,
             "vah": vah,
@@ -136,6 +153,15 @@ class VolumeWorker:
             "contexto": contexto,
             "ajuste": ajuste
         }
+        
+        # Guardar en caché
+        self._cache[simbolo_broker] = {
+            'time': ahora,
+            'price': precio_actual,
+            'result': res
+        }
+        
+        return res
 
     def _datos_vacios(self):
         return {"voto": 0.0, "poc": 0, "vah": 0, "val": 0, "contexto": "Sin Datos", "ajuste": "N/A"}

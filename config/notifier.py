@@ -139,6 +139,14 @@ def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_e
                      f"Divergencia: {cross_map['divergencia']}\n\n"
                      f"<b>Estado:</b> El Centinela { 'está en ALERTA MÁXIMA (+0.60)' if cross_map['black_swan'] else 'está quitando el seguro (+0.45)' }.")
 
+def notificar_error_market_watch(simbolo: str):
+    """Alerta roja si un activo no es visible en la terminal."""
+    msg = f"🚨 ERROR DE MARKET WATCH: Símbolo {simbolo} no visible en la terminal."
+    print(f"[NOTIFIER] {msg}")
+    _enviar_telegram(f"🚨 <b>ERROR DE MARKET WATCH</b>\n"
+                     f"El símbolo <b>{simbolo}</b> no está respondiendo en la terminal.\n\n"
+                     f"<i>El Centinela no puede patrullar este activo hasta que se resuelva la conexión.</i>")
+
 def notificar_oportunidad_detectada(simbolo: str, veredicto: float):
     """Reporte de Gatillo: Señal en radar pero sin llegar al umbral de ejecución."""
     emoji = "🔭" if veredicto > 0 else "📡"

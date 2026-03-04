@@ -2,6 +2,7 @@ import sys
 import os
 import time
 from pathlib import Path
+import MetaTrader5 as mt5
 
 sys.path.append(str(Path(__file__).parent.parent))
 from config.db_connector import DBConnector
@@ -20,7 +21,8 @@ from config.notifier import (
     notificar_divergencia,
     notificar_rechazo_broker,
     notificar_oportunidad_detectada,
-    notificar_proximidad
+    notificar_proximidad,
+    notificar_error_market_watch
 )
 
 
@@ -85,8 +87,19 @@ class Manager:
               f"Tendencia={w_trend:.2f}  NLP={w_nlp:.2f}  Flow={w_flow:.2f}  "
               f"[Suma={w_trend+w_nlp+w_flow:.2f}]")
 
-        # 3. Reflejo de Combate: Trigger de Volatilidad
+        # 2. Verificar visibilidad en el Broker
         simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
+        if not simbolo_broker:
+            print(f"[GERENTE] Activo {simbolo_interno} no tiene mapeo en el broker.")
+            return {"decision": "ERROR_CONFIG"}
+            
+        # Hardened check for Market Watch (V6.1)
+        tick = mt5.symbol_info_tick(simbolo_broker)
+        if tick is None:
+            notificar_error_market_watch(simbolo_broker)
+            return {"decision": "ERROR_CONEXION", "motivo": "Market Watch invisible"}
+
+        # 3. Reflejo de Combate: Trigger de Volatilidad
         volatil_ahora = self._medir_volatilidad(simbolo_broker)
         forzar_nlp = False
         

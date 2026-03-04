@@ -71,8 +71,15 @@ class MT5Connector:
             print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo}")
             return pd.DataFrame()
 
-        # 2. Intentar obtener tasas
-        rates = mt5.copy_rates_from_pos(simbolo, timeframe, 0, cantidad)
+        # 1.5 Check if symbol is actually visible/active
+        if mt5.symbol_info_tick(simbolo) is None:
+            print(f"[MT5] 🚨 ALERTA: {simbolo} no es visible en Market Watch.")
+            # La alerta real a Telegram se dispara desde el Manager/Notifier
+            return pd.DataFrame()
+
+        # 2. Intentar obtener tasas (Mínimo 1,000 barras para estabilidad)
+        n_velas = max(cantidad, 1000)
+        rates = mt5.copy_rates_from_pos(simbolo, timeframe, 0, n_velas)
         
         # 3. Si falla y es un índice/volátil, intentar forzar descarga sincronizando
         if rates is None or len(rates) == 0:
