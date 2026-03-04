@@ -102,6 +102,24 @@ def main():
                 f"Ciclo #{ciclo} en curso. Monitoreando: {', '.join(simbolos)}."
             )
 
+            # --- NUEVO: Gestión de Riesgo y Auditoría de Cierre ---
+            gerente.gestionar_posiciones_abiertas() # Breakeven
+            gerente.auditar_precision_cierres()     # Log de Precisión
+
+            # --- NUEVA LOGICA DE CORTACORRIENTE (KILL-SWITCH) ---
+            import MetaTrader5 as mt5_api
+            info_acc = mt5_api.account_info()
+            if info_acc and info_acc.equity < 2850.0:
+                msg_kill = "🚨 MAX DRAWDOWN ALCANZADO ($2,850). SISTEMA HIBERNANDO HASTA MAÑANA."
+                print(f"\n[MAIN] {msg_kill}")
+                db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
+                notificar_error_critico("KILL-SWITCH", msg_kill)
+                mt5_conn.cerrar_todas_las_posiciones()
+                break # Detener el bot
+
+            # --- GESTIÓN DE POSICIONES ABIERTAS (BREAKEVEN) ---
+            gerente.gestionar_posiciones_abiertas()
+
             # Evaluar cada activo con su id real de BD
             for activo in activos_db:
                 print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
@@ -139,7 +157,7 @@ def main():
             if not mt5_lib.terminal_info():
                 print("[MAIN] MT5 desconectado. Intentando reconectar...")
                 db.update_estado_bot("ERROR", "MT5 desconectado. Reconectando...")
-                if mt5.conectar():
+                if mt5_conn.conectar():
                     print("[MAIN] MT5 reconectado exitosamente.")
                     db.update_estado_bot("OPERANDO", "MT5 reconectado. Reanudando ciclos.")
                 else:

@@ -16,6 +16,8 @@ from config.notifier import (
     notificar_error_critico,
     notificar_divergencia,
     notificar_rechazo_broker,
+    notificar_oportunidad_detectada,
+    notificar_proximidad
 )
 
 
@@ -102,57 +104,47 @@ class Manager:
 
         # 6. Suma ponderada -> Veredicto Final
         veredicto = round((v_trend * w_trend) + (v_nlp * w_nlp) + (v_flow * w_flow), 4)
-        umbral    = params.get("GERENTE.umbral_disparo", 0.65)
-
+        # 5. Decisión
+        umbral = params.get("GERENTE.umbral_disparo", 0.45)
+        
         print(f"\n[GERENTE] Votos    : Trend={v_trend:+.2f}  NLP={v_nlp:+.2f}  Flow={v_flow:+.2f}")
         print(f"[GERENTE] Veredicto: {veredicto:+.4f}  (umbral: ±{umbral})")
-
-        # 5. Decisión
+        
         if abs(veredicto) < umbral:
-            motivo = (f"Veredicto {veredicto:+.4f} no supera el umbral +-{umbral}. "
-                      f"Votos: Trend={v_trend:+.2f}, NLP={v_nlp:+.2f}, Flow={v_flow:+.2f}.")
-            print(f"\n[GERENTE] IGNORADO — {motivo}")
-
-            # ⚠️ Alerta de Zona Caliente si veredicto supera 0.50
-            UMBRAL_OBSERVACION = 0.50
-            if abs(veredicto) >= UMBRAL_OBSERVACION:
-                notificar_zona_caliente(simbolo_interno, veredicto, v_trend, v_nlp, v_flow)
-
+            # --- NUEVO REPORTE DE GATILLO Y PROXIMIDAD ---
+            confianza = abs(veredicto)
+            if 0.38 <= confianza < 0.45:
+                notificar_proximidad(simbolo_interno, veredicto)
+            elif 0.30 <= confianza < 0.38:
+                notificar_oportunidad_detectada(simbolo_interno, veredicto)
+            
+            if confianza >= 0.30:
+                motivo = f"Oportunidad detectada ({confianza:.2f}), pero debajo del umbral ({umbral})."
+            else:
+                motivo = f"Veredicto {veredicto:+.4f} insuficiente (Umbral: {umbral})"
+            
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "IGNORADO", motivo)
             return {"decision": "IGNORADO", "veredicto": veredicto, "motivo": motivo}
 
         # 6. Aprobado — calcular dirección y lotaje
         direccion = "COMPRA" if veredicto > 0 else "VENTA"
-        ratio_tp  = params.get("GERENTE.ratio_tp", 2.0)
-
-        precio_actual = self.mt5.obtener_precio_actual(
-            self.db.obtener_simbolo_broker(simbolo_interno)
-        )
-        if not precio_actual:
-            motivo = "No se pudo obtener precio actual. Orden abortada."
+        
+        # --- NUEVA LOGICA DE RIESGO DINAMICO ---
+        simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
+        
+        # 6.a Calculo de SL y TP via ATR
+        sl, tp = self.risk.obtener_sl_tp_atr(simbolo_broker, direccion)
+        if sl is None or tp is None:
+            motivo = "Error calculando SL/TP via ATR. Orden abortada."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "CANCELADO_RIESGO", motivo)
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
-        ask = precio_actual["ask"]
-        bid = precio_actual["bid"]
-        sl_distancia = 5.0  # USD de SL por defecto (configurable en BD)
-
-        sl = (ask - sl_distancia) if direccion == "COMPRA" else (bid + sl_distancia)
-        tp = (ask + sl_distancia * ratio_tp) if direccion == "COMPRA" \
-             else (bid - sl_distancia * ratio_tp)
-
-        # ----------------------------------------------------
-        # HARD-CODING DE SEGURIDAD (NO NEGOCIABLE)
-        # ----------------------------------------------------
-        lotes = 0.01
-        print(f"[RISK] Lotaje hardcodeado por seguridad: {lotes} (Ignora cálculos)")
-        # lotes = self.risk.calcular_lotes(simbolo_interno, sl)
-        # if not lotes:
-        #     motivo = "RiskModule no pudo calcular lotaje. Orden abortada."
-        #     return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
-        # ----------------------------------------------------
+        # 6.b Calculo de Lotaje Dinamico (Confianza)
+        lotes = self.risk.calcular_lotes_dinamicos(veredicto)
+        
+        print(f"[GERENTE] Riesgo Dinamico -> Conviccion: {abs(veredicto)*100:.1f}% | Lotes: {lotes} | SL: {sl:.4f} | TP: {tp:.4f}")
 
         # 7. Justificación Glass Box
         motivo = (
@@ -167,7 +159,25 @@ class Manager:
         # 8. Ejecutar o simular
         if modo_simulacion:
             print(f"\n[GERENTE] Simulando ejecucion de {direccion} con {lotes} lotes")
-            notificar_orden_ejecutada(simbolo_interno, direccion, lotes, veredicto, motivo)
+            
+            # Obtener balance actual para la notificación
+            import MetaTrader5 as mt5_api
+            acc_info = mt5_api.account_info()
+            balance = acc_info.balance if acc_info else 0.0
+            
+            notificar_orden_ejecutada(
+                simbolo=simbolo_interno, 
+                direccion=direccion, 
+                lotes=lotes, 
+                ticket=999999, # Ticket ficticio para simulacion
+                precio=self.mt5.obtener_precio_actual(self.db.obtener_simbolo_broker(simbolo_interno))['ask'] if direccion == "COMPRA" else self.mt5.obtener_precio_actual(self.db.obtener_simbolo_broker(simbolo_interno))['bid'],
+                sl=sl, 
+                tp=tp, 
+                veredicto=veredicto, 
+                v_trend=v_trend, 
+                v_nlp=v_nlp, 
+                balance=balance
+            )
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "EJECUTADO", motivo)
             return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
@@ -227,13 +237,121 @@ class Manager:
                 info_acc = mt5_api.account_info()
                 balance_real = info_acc.balance if info_acc else 0.0
 
+                # --- NUEVO: Cálculo de Probabilidad ---
+                # Confianza [0.45 - 1.0] -> Probabilidad [65% - 98%]
+                # Fórmula: 65 + ((abs(veredicto) - 0.45) / (1.0 - 0.45)) * (98 - 65)
+                confianza = abs(veredicto)
+                prob_exito = 65 + ((confianza - 0.45) / (0.55)) * (33)
+                prob_exito = max(65, min(98, round(prob_exito, 1)))
+
                 notificar_orden_ejecutada(
                     simbolo_interno, direccion, lotes, ticket, precio_real, 
-                    veredicto, v_trend, v_nlp, balance_real
+                    sl, tp, veredicto, v_trend, v_nlp, balance_real
                 )
+                
+                # Actualizar registro con veredicto y probabilidad
+                try:
+                    self.db.cursor.execute("""
+                        UPDATE registro_operaciones 
+                        SET veredicto_apertura = %s, probabilidad_est = %s
+                        WHERE ticket_mt5 = %s
+                    """, (veredicto, prob_exito, ticket))
+                    self.db.conn.commit()
+                except Exception as e_reg:
+                    print(f"[GERENTE] Error actualizando precision inicial: {e_reg}")
+
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                         veredicto, "EJECUTADO", motivo)
                 return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
+
+    # ------------------------------------------------------------------
+    # Gestión de Posiciones Abiertas (Breakeven)
+    # ------------------------------------------------------------------
+
+    def gestionar_posiciones_abiertas(self):
+        """
+        Cicla por las posiciones abiertas y aplica la logica de Breakeven.
+        Si el precio recorrio el 50% del camino al TP, mueve SL a BE.
+        """
+        import MetaTrader5 as mt5_api
+        posiciones = mt5_api.positions_get()
+        if not posiciones:
+            return
+
+        for pos in posiciones:
+            # Solo gestionamos posiciones del bot (opcional: filtrar por magic number)
+            # if pos.magic != 20250101: continue
+            
+            # Si el SL ya esta en el precio de entrada (o mejor), ignorar
+            if (pos.type == mt5_api.POSITION_TYPE_BUY and pos.sl >= pos.price_open) or \
+               (pos.type == mt5_api.POSITION_TYPE_SELL and pos.sl <= pos.price_open and pos.sl != 0):
+                continue
+
+            precio_actual = mt5_api.symbol_info_tick(pos.symbol).bid if pos.type == mt5_api.POSITION_TYPE_BUY \
+                            else mt5_api.symbol_info_tick(pos.symbol).ask
+            
+            # Calcular progreso hacia el TP
+            distancia_total = abs(pos.tp - pos.price_open)
+            if distancia_total == 0: continue
+            
+            progreso = abs(precio_actual - pos.price_open) / distancia_total
+            
+            if progreso >= 0.50:
+                print(f"[GERENTE] 🛡️ Aplicando Breakeven a #{pos.ticket} ({pos.symbol}). Progreso: {progreso*100:.1f}%")
+                if self.mt5.mover_sl(pos.ticket, pos.price_open):
+                    self.db.registrar_log("INFO", "MANAGER", f"Breakeven aplicado a #{pos.ticket} ({pos.symbol})")
+
+    def auditar_precision_cierres(self):
+        """
+        Escanea el historial de MT5 para detectar cierres de órdenes del bot.
+        Calcula la Divergencia de Precisión y actualiza la BD.
+        """
+        import MetaTrader5 as mt5_api
+        from datetime import datetime, timedelta
+
+        # 1. Obtener trades cerrados sin resultado en la BD
+        self.db.cursor.execute("""
+            SELECT ticket_mt5, veredicto_apertura, probabilidad_est, precio_entrada, take_profit, stop_loss
+            FROM registro_operaciones 
+            WHERE resultado_final IS NULL AND ticket_mt5 != 999999
+        """)
+        pendientes = self.db.cursor.fetchall()
+        if not pendientes:
+            return
+
+        # 2. Consultar historial de MT5 (últimas 24h para estar seguros)
+        from_date = datetime.now() - timedelta(days=1)
+        history = mt5_api.history_deals_get(from_date, datetime.now())
+        if history is None:
+            return
+
+        for ticket, veredicto, prob, p_ent, tp, sl in pendientes:
+            # Buscar el deal de salida para este ticket de orden
+            # MT5: El deal de salida suele tener el entry == DEAL_ENTRY_OUT
+            deals = [d for d in history if d.order == ticket and d.entry == mt5_api.DEAL_ENTRY_OUT]
+            
+            if deals:
+                deal = deals[0]
+                ganancia = deal.profit
+                resultado = "GANADO" if ganancia > 0 else "PERDIDO"
+                
+                # Calcular Divergencia de Precisión
+                # Si probabilidad_est era 90% y ganó, divergencia = 10 (pequeña)
+                # Si era 90% y perdió, divergencia = 90 (grande)
+                exito_real = 100.0 if resultado == "GANADO" else 0.0
+                divergencia = abs(exito_real - float(prob))
+                
+                print(f"[GERENTE] 📊 Auditoria de Cierre #{ticket}: Result={resultado} | Prob={prob}% | Div={divergencia:.1f}")
+                
+                try:
+                    self.db.cursor.execute("""
+                        UPDATE registro_operaciones 
+                        SET resultado_final = %s, divergencia_precision = %s, pnl_usd = %s
+                        WHERE ticket_mt5 = %s
+                    """, (resultado, divergencia, ganancia, ticket))
+                    self.db.conn.commit()
+                except Exception as e:
+                    print(f"[GERENTE] Error actualizando precision de cierre #{ticket}: {e}")
 
     # ------------------------------------------------------------------
     # Auditoría obligatoria (Glass Box)
@@ -246,6 +364,25 @@ class Manager:
         try:
             self.db.guardar_senal(simbolo, v_trend, v_nlp, v_flow,
                                   veredicto, decision, motivo)
+            
+            # --- NUEVO: Persistencia de Veredicto en registro_operaciones si fue ejecutado ---
+            if decision in ("COMPRA", "VENTA", "EJECUTADO") and not motivo.startswith("Simulando"):
+                # Intentamos actualizar la última operación abierta para este activo con el veredicto
+                try:
+                    query = """
+                        UPDATE registro_operaciones 
+                        SET veredicto_apertura = %s
+                        WHERE id = (
+                            SELECT id FROM registro_operaciones 
+                            WHERE activo_id = (SELECT id FROM activos WHERE simbolo = %s)
+                            ORDER BY tiempo_entrada DESC LIMIT 1
+                        )
+                    """
+                    self.db.cursor.execute(query, (veredicto, simbolo))
+                    self.db.conn.commit()
+                except Exception as e_db:
+                    print(f"[GERENTE] Error guardando veredicto_apertura: {e_db}")
+
             print(f"[GERENTE] Auditoria guardada en registro_senales ({decision})")
         except Exception as e:
             print(f"[GERENTE] ERROR guardando auditoria: {e}")

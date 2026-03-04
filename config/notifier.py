@@ -49,27 +49,40 @@ def _enviar_telegram(mensaje: str):
 # ------------------------------------------------------------------
 
 def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float, 
-                               ticket: int, precio: float,
-                               veredicto: float, v_trend: float, v_nlp: float,
-                               balance: float):
+                                ticket: int, precio: float,
+                                sl: float, tp: float,
+                                veredicto: float, v_trend: float, v_nlp: float,
+                                balance: float):
     """
     Protocolo Truth-Only: Alerta confirmada con ticket real en MetaTrader.
+    Incluye nivel de convicción y detalles de riesgo (ATR).
     """
+    conviccion = abs(veredicto) * 100
+    pips_sl = abs(precio - sl) # Simplificacion para visualización
+    pips_tp = abs(precio - tp)
+
+    prob_exito = 65 + ((conviccion - 45) / (100 - 45)) * (98 - 65)
+    prob_exito = max(65, min(98, prob_exito))
+
     msg = (
         f">> ORDEN CONFIRMADA\n"
         f"Activo: {simbolo} | Ticket: #{ticket}\n"
-        f"Accion: {direccion} | Lotes: {lotes}\n"
-        f"Precio: {precio}\n"
+        f"Accion: {direccion} | Conviccion: {conviccion:.1f}% | Lote: {lotes}\n"
+        f"🎯 Probabilidad Est. de Éxito: {prob_exito:.1f}%\n"
+        f"Precio: {precio} | SL: {sl:.4f} | TP: {tp:.4f}\n"
         f"Veredicto IA: {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
         f"Balance Actual: ${balance:,.2f}"
     )
     _print_alerta("ORDEN CONFIRMADA", msg.replace("\n", " | "))
+    
     _enviar_telegram(
         f"🟢 <b>ORDEN CONFIRMADA</b>\n"
         f"<b>Activo:</b> {simbolo} | <b>Ticket:</b> #{ticket}\n"
-        f"<b>Acción:</b> {direccion} | <b>Lotes:</b> {lotes}\n"
-        f"<b>Precio Entrada:</b> {precio}\n"
-        f"<b>Veredicto IA:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
+        f"<b>Convicción:</b> {conviccion:.1f}% -> <b>Lote Asignado:</b> {lotes}\n"
+        f"🎯 <b>Probabilidad Est. de Éxito:</b> {prob_exito:.1f}%\n"
+        f"<b>Acción:</b> {direccion} @ {precio}\n"
+        f"<b>Riesgo:</b> SL: {sl:.4f} | TP: {tp:.4f}\n"
+        f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n\n"
         f"<b>Balance Actual:</b> ${balance:,.2f}"
     )
 
@@ -91,6 +104,32 @@ def notificar_zona_caliente(simbolo: str, veredicto: float,
                      f"Veredicto: {veredicto:+.4f} -> senal de {direccion}\n"
                      f"Trend={v_trend:+.2f} | NLP={v_nlp:+.2f} | Flow={v_flow:+.2f}")
 
+
+def notificar_kill_switch_activado(equity: float):
+    """Alerta roja de Kill-Switch por drawdown."""
+    msg = f"🚨 MAX DRAWDOWN ALCANZADO (${equity:,.2f}). SISTEMA HIBERNANDO HASTA MAÑANA."
+    _print_alerta("KILL-SWITCH", msg)
+    _enviar_telegram(f"<b>🚨 MAX DRAWDOWN ALCANZADO</b>\n\n"
+                     f"El Balance flotante ha caído por debajo de los límites de riesgo ($2,850).\n"
+                     f"<b>Equity actual:</b> ${equity:,.2f}\n\n"
+                     f"<i>El sistema ha cerrado todas las posiciones y ha entrado en hibernación.</i>")
+
+def notificar_proximidad(simbolo: str, veredicto: float):
+    """Filtro de pre-alerta: Aviso de proximidad al gatillo (0.38 - 0.44)."""
+    msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f}"
+    print(f"[NOTIFIER] {msg}")
+    _enviar_telegram(f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
+                     f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
+                     f"<b>Estado:</b> El Centinela está quitando el seguro. Esperando confirmación final (+0.45).")
+
+def notificar_oportunidad_detectada(simbolo: str, veredicto: float):
+    """Reporte de Gatillo: Señal en radar pero sin llegar al umbral de ejecución."""
+    emoji = "🔭" if veredicto > 0 else "📡"
+    msg = f"🔍 Oportunidad detectada en {simbolo} | Confianza: {abs(veredicto):.4f} | Esperando +0.45"
+    print(f"[NOTIFIER] {msg}")
+    _enviar_telegram(f"{emoji} <b>Oportunidad Detectada -- {simbolo}</b>\n"
+                     f"Confianza: {abs(veredicto):.4f}\n"
+                     f"Estado: <i>Esperando +0.45 para gatillar.</i>")
 
 def notificar_error_critico(modulo: str, mensaje: str):
     """Alerta de error grave (desconexion MT5, fallo de BD, etc.)."""

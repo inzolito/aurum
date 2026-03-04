@@ -63,14 +63,28 @@ class MT5Connector:
     def obtener_velas(self, simbolo: str, cantidad: int = 100,
                       timeframe=mt5.TIMEFRAME_M1) -> pd.DataFrame:
         """
-        Trae las últimas `cantidad` velas del símbolo en el timeframe dado.
-        Por defecto: velas de 1 minuto (M1).
-        Retorna un DataFrame de pandas con columnas OHLCV + tiempo UTC.
+        Trae las últimas `cantidad` velas del símbolo.
+        Incluye lógica de suscripción forzada para evitar 'puntos ciegos' en índices.
         """
+        # 1. Asegurar que el símbolo esté en el Market Watch
+        if not mt5.symbol_select(simbolo, True):
+            print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo}")
+            return pd.DataFrame()
+
+        # 2. Intentar obtener tasas
         rates = mt5.copy_rates_from_pos(simbolo, timeframe, 0, cantidad)
+        
+        # 3. Si falla y es un índice/volátil, intentar forzar descarga sincronizando
+        if rates is None or len(rates) == 0:
+            print(f"[MT5] Reintentando captura forzada de {simbolo}...")
+            # Forzamos una pequeña espera para sincronización de terminal
+            import time
+            time.sleep(0.5)
+            rates = mt5.copy_rates_from_pos(simbolo, timeframe, 0, cantidad)
+
         if rates is None or len(rates) == 0:
             error = mt5.last_error()
-            print(f"[MT5] ERROR obteniendo velas de {simbolo}: {error}")
+            print(f"[MT5] ERROR final obteniendo velas de {simbolo}: {error}")
             return pd.DataFrame()
 
         df = pd.DataFrame(rates)
@@ -106,6 +120,28 @@ class MT5Connector:
             print(f"[MT5] No se pudo obtener precio de {simbolo}")
             return None
         return {"bid": tick.bid, "ask": tick.ask, "spread": round(tick.ask - tick.bid, 5)}
+
+    def obtener_atr(self, simbolo: str, periodo: int = 14, timeframe=mt5.TIMEFRAME_M15) -> float | None:
+        """
+        Calcula el ATR (Average True Range) del símbolo.
+        Por defecto: 14 periodos en M15.
+        """
+        # Pedimos periodo + 1 para calcular las diferencias
+        rates = mt5.copy_rates_from_pos(simbolo, timeframe, 0, periodo + 1)
+        if rates is None or len(rates) < periodo:
+            return None
+        
+        df = pd.DataFrame(rates)
+        # TR = max(high-low, abs(high-prev_close), abs(low-prev_close))
+        df['prev_close'] = df['close'].shift(1)
+        df['tr'] = pd.concat([
+            df['high'] - df['low'],
+            (df['high'] - df['prev_close']).abs(),
+            (df['low'] - df['prev_close']).abs()
+        ], axis=1).max(axis=1)
+        
+        atr = df['tr'].rolling(window=periodo).mean().iloc[-1]
+        return float(atr) if not pd.isna(atr) else None
 
     # ------------------------------------------------------------------
     # Ejecución de Órdenes
@@ -167,3 +203,63 @@ class MT5Connector:
 
         print(f"[MT5] Orden ejecutada -> Ticket: {resultado.order} | {direccion} {lotes} lotes {simbolo} @ {precio}")
         return {"status": "ok", "ticket": resultado.order}
+
+    def mover_sl(self, ticket: int, nuevo_sl: float) -> bool:
+        """
+        Modifica el Stop Loss de una posición abierta.
+        Utilizado para la lógica de Breakeven.
+        """
+        posiciones = mt5.positions_get(ticket=ticket)
+        if not posiciones:
+            return False
+        
+        pos = posiciones[0]
+        simbolo_info = mt5.symbol_info(pos.symbol)
+        if simbolo_info is None:
+            return False
+            
+        nuevo_sl = round(nuevo_sl, simbolo_info.digits)
+        
+        request = {
+            "action": mt5.TRADE_ACTION_SLTP,
+            "position": ticket,
+            "sl": nuevo_sl,
+            "tp": pos.tp,
+            "symbol": pos.symbol
+        }
+        
+        resultado = mt5.order_send(request)
+        if resultado is None or resultado.retcode != mt5.TRADE_RETCODE_DONE:
+            print(f"[MT5] ERROR moviendo SL ticket {ticket}: {resultado.comment if resultado else 'N/A'}")
+            return False
+        return True
+
+    def cerrar_todas_las_posiciones(self):
+        """
+        Cierra TODAS las posiciones abiertas por mercado.
+        Procedimiento de emergencia para Kill-Switch.
+        """
+        posiciones = mt5.positions_get()
+        if not posiciones:
+            return
+        
+        for pos in posiciones:
+            tipo_cierre = mt5.ORDER_TYPE_SELL if pos.type == mt5.ORDER_TYPE_BUY else mt5.ORDER_TYPE_BUY
+            precio = mt5.symbol_info_tick(pos.symbol).bid if pos.type == mt5.ORDER_TYPE_BUY \
+                     else mt5.symbol_info_tick(pos.symbol).ask
+            
+            request = {
+                "action": mt5.TRADE_ACTION_DEAL,
+                "position": pos.ticket,
+                "symbol": pos.symbol,
+                "volume": pos.volume,
+                "type": tipo_cierre,
+                "price": precio,
+                "deviation": 20,
+                "magic": 20250101,
+                "comment": "Aurum Kill-Switch",
+                "type_time": mt5.ORDER_TIME_GTC,
+                "type_filling": mt5.ORDER_FILLING_IOC,
+            }
+            mt5.order_send(request)
+            print(f"[MT5] Kill-Switch: Cerrada posicion {pos.ticket} {pos.symbol}")
