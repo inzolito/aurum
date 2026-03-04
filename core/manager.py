@@ -13,6 +13,7 @@ from config.notifier import (
     notificar_orden_ejecutada,
     notificar_error_critico,
     notificar_divergencia,
+    notificar_rechazo_broker,
 )
 
 
@@ -165,20 +166,34 @@ class Manager:
                                     veredicto, "EJECUTADO", motivo)
             return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
         else:
-            ticket = self.mt5.enviar_orden(
+            obj_ticket = self.mt5.enviar_orden(
                 self.db.obtener_simbolo_broker(simbolo_interno),
                 direccion, lotes, sl, tp
             )
             
-            if ticket is None:
-                err_msg = f"MT5 ROJA — Orden Rechazada (AutoTrading off o sin margen). Ticket: None"
-                print(f"\n[GERENTE] ERROR CRITICO: {err_msg}")
-                notificar_error_critico("Broker/MT5", f"{simbolo_interno} {direccion} falló. Revisa terminal MT5 (AutoTrading = ON?).")
+            if obj_ticket.get("status") == "error":
+                retcode = obj_ticket.get("retcode", -1)
+                causa   = obj_ticket.get("comment", "Desconocido")
+                err_msg = f"Rechazo del Broker. Retcode: {retcode} | {causa}"
+                
+                print(f"\n[GERENTE] ERROR DE EJECUCION: {err_msg}")
+                # Registrar en la nueva tabla de errores
+                self.db.guardar_error_ejecucion(
+                    simbolo=simbolo_interno,
+                    retcode=retcode,
+                    mensaje=causa,
+                    decision=direccion,
+                    lotes=lotes,
+                    contexto=motivo
+                )
+                notificar_rechazo_broker(simbolo_interno, retcode, causa)
+                
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                         veredicto, "ERROR_BROKER", err_msg)
                 return {"decision": "ERROR_BROKER", "motivo": err_msg}
             else:
-                print(f"\n[GERENTE] ORDEN ENVIADA — Ticket: {ticket}")
+                ticket = obj_ticket.get("ticket")
+                print(f"\n[GERENTE] ORDEN EJECUTADA (CONFIRMADA) — Ticket: {ticket}")
                 notificar_orden_ejecutada(simbolo_interno, direccion, lotes, veredicto, motivo)
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                         veredicto, "EJECUTADO", motivo)

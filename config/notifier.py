@@ -92,6 +92,21 @@ def notificar_error_critico(modulo: str, mensaje: str):
     _enviar_telegram(f"<b>ERROR CRITICO</b>\nModulo: {modulo}\n{mensaje}")
 
 
+def notificar_rechazo_broker(simbolo: str, retcode: int, causa: str):
+    """
+    Se dispara cuando el broker rechaza una orden en el ciclo final de envío.
+    """
+    msg = f"RECHAZO BROKER — {simbolo} (Err {retcode}): {causa}"
+    _print_alerta("ALERTA ROJA", msg)
+    _enviar_telegram(
+        f"🚨 <b>ALERTA ROJA DE RECHAZO</b> 🚨\n\n"
+        f"<b>Activo:</b> {simbolo}\n"
+        f"<b>Código Error:</b> {retcode}\n"
+        f"<b>Causa Probable:</b> {causa}\n\n"
+        f"<i>El bot abortó el registro de ejecución y la orden NO está en el mercado.</i>"
+    )
+
+
 def notificar_inicio(activos: list):
     """
     Mensaje de bienvenida al arrancar el sistema.

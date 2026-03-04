@@ -112,11 +112,13 @@ class MT5Connector:
     # ------------------------------------------------------------------
 
     def enviar_orden(self, simbolo: str, direccion: str, lotes: float,
-                     sl: float, tp: float, comentario: str = "AurumBot") -> int | None:
+                     sl: float, tp: float, comentario: str = "AurumBot") -> dict:
         """
         Envía una orden de mercado al broker vía MT5.
         direccion: 'COMPRA' | 'VENTA'
-        Retorna el número de ticket si es exitosa, None si falla.
+        Retorna un diccionario:
+            {'status': 'ok', 'ticket': int} si es exitosa.
+            {'status': 'error', 'retcode': int, 'comment': str} si falla.
         """
         tipo = mt5.ORDER_TYPE_BUY if direccion == "COMPRA" else mt5.ORDER_TYPE_SELL
         precio = mt5.symbol_info_tick(simbolo).ask if tipo == mt5.ORDER_TYPE_BUY \
@@ -159,8 +161,9 @@ class MT5Connector:
 
         if resultado is None or resultado.retcode != mt5.TRADE_RETCODE_DONE:
             error = resultado.retcode if resultado else mt5.last_error()
-            print(f"[MT5] ERROR al enviar orden {direccion} {simbolo}: retcode={error}")
-            return None
+            msg_error = resultado.comment if resultado else "Failed to send request"
+            print(f"[MT5] ERROR al enviar orden {direccion} {simbolo}: retcode={error} ({msg_error})")
+            return {"status": "error", "retcode": error, "comment": msg_error}
 
         print(f"[MT5] Orden ejecutada -> Ticket: {resultado.order} | {direccion} {lotes} lotes {simbolo} @ {precio}")
-        return resultado.order
+        return {"status": "ok", "ticket": resultado.order}

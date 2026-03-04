@@ -178,6 +178,20 @@ class DBConnector:
         )
         self.conn.commit()
 
+    def guardar_error_ejecucion(self, simbolo: str, retcode: int, mensaje: str,
+                                decision: str, lotes: float, contexto: str):
+        """
+        Inserta un fallo de MT5 (Retcode != 10009) en la tabla errores_ejecucion.
+        """
+        self.cursor.execute(
+            """
+            INSERT INTO errores_ejecucion (simbolo, retcode, mensaje_error, decision_intentada, lotes, contexto_bot)
+            VALUES (%s, %s, %s, %s, %s, %s);
+            """,
+            (simbolo, retcode, mensaje, decision, lotes, contexto),
+        )
+        self.conn.commit()
+
     # ------------------------------------------------------------------
     # Estado en vivo (Heartbeat)
     # ------------------------------------------------------------------
