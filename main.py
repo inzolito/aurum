@@ -11,6 +11,7 @@ from datetime import datetime
 from config.db_connector import DBConnector
 from config.mt5_connector import MT5Connector
 from core.manager import Manager
+from core.scheduler import AurumScheduler
 from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario, notificar_error_critico
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
@@ -68,6 +69,8 @@ def main():
         sys.exit(1)
 
     gerente = Manager(db, mt5_conn)
+    programador = AurumScheduler(gerente)
+    programador.start()
 
     db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
     print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
@@ -169,7 +172,8 @@ def main():
     except KeyboardInterrupt:
         print("\n\n--- Apagando Aurum de forma segura (Ctrl+C) ---")
         db.update_estado_bot("APAGADO", "Cierre manual por el usuario.")
-        mt5.desconectar()
+        programador.stop_event.set()
+        mt5_conn.desconectar()
         db.desconectar()
         print("[MAIN] Sistema apagado. Hasta la proxima.")
         sys.exit(0)

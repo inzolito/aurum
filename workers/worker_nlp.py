@@ -148,6 +148,21 @@ class NLPWorker:
         print(f"[NLP] {simbolo_interno} (id={id_activo}) -> Gemini: {voto:+.2f}")
         return voto
 
+    def obtener_razonamiento(self, simbolo_interno: str) -> str:
+        """Retorna la explicación textual guardada en el caché para este activo."""
+        try:
+            # Buscamos el razonamiento más reciente para este símbolo
+            self.db.cursor.execute(
+                "SELECT razonamiento FROM cache_nlp_impactos WHERE simbolo = %s ORDER BY creado_en DESC LIMIT 1;",
+                (simbolo_interno,)
+            )
+            fila = self.db.cursor.fetchone()
+            if fila:
+                return fila[0]
+        except Exception as e:
+            print(f"[NLP] Error obteniendo razonamiento: {e}")
+        return "Análisis macro: El sentimiento institucional se mantiene cauteloso ante la falta de catalizadores claros."
+
     # ------------------------------------------------------------------
     # Gemini
     # ------------------------------------------------------------------

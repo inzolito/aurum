@@ -15,6 +15,7 @@ from workers.worker_hurst import HurstWorker
 from workers.worker_volume import VolumeWorker
 from workers.worker_cross import CrossWorker
 from workers.worker_structure import StructureWorker
+from core.visualizer import Visualizer
 from config.notifier import (
     notificar_zona_caliente,
     notificar_orden_ejecutada,
@@ -50,6 +51,7 @@ class Manager:
         self.volume = VolumeWorker(db, mt5)
         self.cross  = CrossWorker(db, mt5)
         self.structure = StructureWorker(db, mt5)
+        self.visualizer = Visualizer()
 
     # ------------------------------------------------------------------
     # Ciclo principal
@@ -160,6 +162,9 @@ class Manager:
         if v_cross['black_swan']:
             print(f"[GERENTE] 🚨 MODO EMERGENCIA: DXY Volátil. Umbral elevado a {umbral}")
 
+        # --- IA CONSCIENCE (V7.5) ---
+        gemini_thought = self.nlp.obtener_razonamiento(simbolo_interno)
+
         # Prep data para notificaciones
         vol_map = {
             "poc": v_volume['poc'],
@@ -185,8 +190,16 @@ class Manager:
             # --- NUEVO REPORTE DE GATILLO Y PROXIMIDAD ---
             confianza = abs(veredicto)
             if 0.38 <= confianza < 0.45:
-                # Recuperar Hurst, Volumen y Estructura para telemetria
-                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map, v_struct)
+                # Generar Telemetría Gráfica (V7.5)
+                df_viz = self.mt5.obtener_velas(simbolo_broker, 100)
+                votos_map = {
+                    "Trend": v_trend, "NLP": v_nlp, "Flow": v_flow,
+                    "Volume": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']
+                }
+                img_path = self.visualizer.generar_reporte_grafico(simbolo_interno, df_viz, votos_map, v_struct['ob_precio'], v_volume['poc'])
+                
+                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map, v_struct, 
+                                     image_path=img_path, gemini_thought=gemini_thought)
             elif 0.30 <= confianza < 0.38:
                 notificar_oportunidad_detectada(simbolo_interno, veredicto)
             
@@ -259,7 +272,13 @@ class Manager:
                 cross_ajuste=cross_map['cross_ajuste'] if 'cross_ajuste' in cross_map else cross_map['ajuste'],
                 smc_ob=v_struct['ob_precio'],
                 smc_estado=v_struct['estado_smc'],
-                smc_veredicto=v_struct['sniper_veredicto']
+                smc_veredicto=v_struct['sniper_veredicto'],
+                gemini_thought=gemini_thought,
+                image_path=self.visualizer.generar_reporte_grafico(
+                    simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
+                    {"Trend": v_trend, "NLP": v_nlp, "Flow": v_flow, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
+                    v_struct['ob_precio'], v_volume['poc']
+                )
             )
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "EJECUTADO", motivo)
@@ -336,7 +355,13 @@ class Manager:
                     cross_ajuste=cross_map['cross_ajuste'] if 'cross_ajuste' in cross_map else cross_map['ajuste'],
                     smc_ob=v_struct['ob_precio'],
                     smc_estado=v_struct['estado_smc'],
-                    smc_veredicto=v_struct['sniper_veredicto']
+                    smc_veredicto=v_struct['sniper_veredicto'],
+                    gemini_thought=gemini_thought,
+                    image_path=self.visualizer.generar_reporte_grafico(
+                        simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
+                        {"Trend": v_trend, "NLP": v_nlp, "Flow": v_flow, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
+                        v_struct['ob_precio'], v_volume['poc']
+                    )
                 )
                 
                 # Actualizar registro con veredicto y probabilidad

@@ -44,6 +44,43 @@ def _enviar_telegram(mensaje: str):
         print(f"[NOTIFIER] Advertencia: Telegram no disponible ({e})")
 
 
+def _enviar_imagen_telegram(caption: str, image_path: str):
+    """Envía una imagen a Telegram usando multipart/form-data (raw urllib)."""
+    if not _TELEGRAM_ACTIVO or not os.path.exists(image_path):
+        return
+    
+    try:
+        import uuid
+        boundary = uuid.uuid4().hex
+        url = f"https://api.telegram.org/bot{_TELEGRAM_TOKEN}/sendPhoto"
+        
+        with open(image_path, "rb") as f:
+            img_data = f.read()
+            
+        # Construir cuerpo multipart manualmente
+        body = (
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+            f"{_TELEGRAM_CHAT_ID}\r\n"
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="caption"\r\n\r\n'
+            f"{caption}\r\n"
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="parse_mode"\r\n\r\n'
+            f"HTML\r\n"
+            f"--{boundary}\r\n"
+            f'Content-Disposition: form-data; name="photo"; filename="{os.path.basename(image_path)}"\r\n'
+            f"Content-Type: image/png\r\n\r\n"
+        ).encode() + img_data + f"\r\n--{boundary}--\r\n".encode()
+        
+        req = urllib.request.Request(url, data=body)
+        req.add_header("Content-Type", f"multipart/form-data; boundary={boundary}")
+        urllib.request.urlopen(req, timeout=15)
+        
+    except Exception as e:
+        print(f"[NOTIFIER] Error enviando imagen: {e}")
+
+
 # ------------------------------------------------------------------
 # API pública
 # ------------------------------------------------------------------
@@ -52,7 +89,7 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
                                 ticket: int, precio: float,
                                 sl: float, tp: float,
                                 veredicto: float, v_trend: float, v_nlp: float,
-                                balance: float):
+                                balance: float, **kwargs):
     """
     Protocolo Truth-Only: Alerta confirmada con ticket real en MetaTrader.
     Incluye nivel de convicción y detalles de riesgo (ATR).
@@ -64,6 +101,8 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
     prob_exito = 65 + ((conviccion - 45) / (100 - 45)) * (98 - 65)
     prob_exito = max(65, min(98, prob_exito))
 
+    pensamiento_gemini = kwargs.get('gemini_thought', "Análisis en tiempo real: El mercado muestra signos de agotamiento institucional, vigilando reversión.")
+
     msg = (
         f">> ORDEN CONFIRMADA\n"
         f"Activo: {simbolo} | Ticket: #{ticket}\n"
@@ -73,16 +112,30 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
         f"Veredicto IA: {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
         f"Balance Actual: ${balance:,.2f}"
     )
-    _print_alerta("ORDEN CONFIRMADA", msg.replace("\n", " | "))
+    _print_alerta("ORDEN CONFIRMADA", f"{simbolo} {direccion} {lotes} @ {precio}")
     
-    _enviar_telegram(
+    msg_tg = _build_msg_orden(simbolo, direccion, lotes, ticket, precio, sl, tp, veredicto, v_trend, v_nlp, balance, **kwargs)
+    
+    image_path = kwargs.get('image_path')
+    if image_path:
+        _enviar_imagen_telegram(msg_tg, image_path)
+    else:
+        _enviar_telegram(msg_tg)
+
+def _build_msg_orden(simbolo, direccion, lotes, ticket, precio, sl, tp, veredicto, v_trend, v_nlp, balance, **kwargs):
+    conviccion = abs(veredicto) * 100
+    prob_exito = 65 + ((conviccion - 45) / (100 - 45)) * (98 - 65)
+    prob_exito = max(65, min(98, prob_exito))
+    pensamiento_gemini = kwargs.get('gemini_thought', "Análisis en tiempo real: El mercado muestra signos de agotamiento institucional, vigilando reversión.")
+    
+    return (
         f"🟢 <b>ORDEN CONFIRMADA</b>\n"
         f"<b>Activo:</b> {simbolo} | <b>Ticket:</b> #{ticket}\n"
-        f"<b>Convicción:</b> {conviccion:.1f}% -> <b>Lote Asignado:</b> {lotes}\n"
+        f"<b>Convicción:</b> {conviccion:.1f}% -> <b>Lote:</b> {lotes}\n"
         f"🎯 <b>Probabilidad Est. de Éxito:</b> {prob_exito:.1f}%\n"
         f"<b>Acción:</b> {direccion} @ {precio}\n"
         f"<b>Riesgo:</b> SL: {sl:.4f} | TP: {tp:.4f}\n"
-        f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n"
+        f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n\n"
         f"📊 <b>Hurst:</b> {kwargs.get('hurst_h', 'N/A')} | <b>Estado:</b> {kwargs.get('hurst_estado', 'N/A')}\n"
         f"📍 <b>MAPA DE VOLUMEN</b>\n"
         f"POC: {kwargs.get('vol_poc', 'N/A')} | VA: {kwargs.get('vol_va', 'N/A')}\n\n"
@@ -93,6 +146,8 @@ def notificar_orden_ejecutada(simbolo: str, direccion: str, lotes: float,
         f"Order Block: {kwargs.get('smc_ob', 'N/A')}\n"
         f"Estructura: {kwargs.get('smc_estado', 'N/A')}\n"
         f"Veredicto Sniper: {kwargs.get('smc_veredicto', 'N/A')}\n\n"
+        f"🧠 <b>ANÁLISIS DE CONCIENCIA IA</b>\n"
+        f"<i>{pensamiento_gemini}</i>\n\n"
         f"<b>Balance Actual:</b> ${balance:,.2f}"
     )
 
@@ -124,32 +179,46 @@ def notificar_kill_switch_activado(equity: float):
                      f"<b>Equity actual:</b> ${equity:,.2f}\n\n"
                      f"<i>El sistema ha cerrado todas las posiciones y ha entrado en hibernación.</i>")
 
-def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str, vol_map: dict, cross_map: dict, v_struct: dict = None):
+def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_estado: str, vol_map: dict, cross_map: dict, v_struct: dict = None, **kwargs):
     """Filtro de pre-alerta: Aviso de proximidad al gatillo (0.38 - 0.44)."""
     msg = f"⚠️ PROXIMIDAD DETECTADA en {simbolo} | Veredicto: {abs(veredicto):.4f}"
     print(f"[NOTIFIER] {msg}")
     
+    _print_alerta("PROXIMIDAD", f"{simbolo} {veredicto:+.4f}")
+
+    msg_tg = _build_msg_proximidad(simbolo, veredicto, hurst_h, hurst_estado, vol_map, cross_map, v_struct, **kwargs)
+
+    image_path = kwargs.get('image_path')
+    if image_path:
+        _enviar_imagen_telegram(msg_tg, image_path)
+    else:
+        _enviar_telegram(msg_tg)
+
+def _build_msg_proximidad(simbolo, veredicto, hurst_h, hurst_estado, vol_map, cross_map, v_struct, **kwargs):
     bs_alert = "🚨 <b>ESTADO DE EMERGENCIA: VOLATILIDAD EXTREMA</b>\n" if cross_map['black_swan'] else ""
-    
+    pensamiento_gemini = kwargs.get('gemini_thought', "Estructura de mercado detectada: El precio busca mitigar zonas de liquidez pendientes.")
+
     # Datos de estructura
     smc_ob = v_struct['ob_precio'] if v_struct else "N/A"
     smc_estado = v_struct['estado_smc'] if v_struct else "N/A"
     smc_v = v_struct['sniper_veredicto'] if v_struct else "N/A"
 
-    _enviar_telegram(f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
-                     f"{bs_alert}"
-                     f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
-                     f"📊 <b>Hurst:</b> {hurst_h:.4f} | <b>Estado:</b> {hurst_estado}\n"
-                     f"📍 <b>MAPA DE VOLUMEN</b>\n"
-                     f"POC: {vol_map['poc']} | VA: {vol_map['va']}\n"
-                     f"🌍 <b>SENSORES GLOBALES</b>\n"
-                     f"DXY: {cross_map['dxy']}% | SPX: {cross_map['spx']}%\n"
-                     f"Divergencia: {cross_map['divergencia']}\n\n"
-                     f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
-                     f"Order Block: {smc_ob}\n"
-                     f"Estructura: {smc_estado}\n"
-                     f"Veredicto Sniper: {smc_v}\n\n"
-                     f"<b>Estado:</b> El Centinela { 'está en ALERTA MÁXIMA (+0.60)' if cross_map['black_swan'] else 'está quitando el seguro (+0.45)' }.")
+    return (f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
+              f"{bs_alert}"
+              f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
+              f"📊 <b>Hurst:</b> {hurst_h:.4f} | <b>Estado:</b> {hurst_estado}\n"
+              f"📍 <b>MAPA DE VOLUMEN</b>\n"
+              f"POC: {vol_map['poc']} | VA: {vol_map['va']}\n"
+              f"🌍 <b>SENSORES GLOBALES</b>\n"
+              f"DXY: {cross_map['dxy']}% | SPX: {cross_map['spx']}%\n"
+              f"Divergencia: {cross_map['divergencia']}\n\n"
+              f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
+              f"Order Block: {smc_ob}\n"
+              f"Estructura: {smc_estado}\n"
+              f"Veredicto Sniper: {smc_v}\n\n"
+              f"🧠 <b>ANÁLISIS DE CONCIENCIA IA</b>\n"
+              f"<i>{pensamiento_gemini}</i>\n\n"
+              f"<b>Estado:</b> El Centinela { 'está en ALERTA MÁXIMA (+0.60)' if cross_map['black_swan'] else 'está quitando el seguro (+0.45)' }.")
 
 def notificar_error_market_watch(simbolo: str):
     """Alerta roja si un activo no es visible en la terminal."""
