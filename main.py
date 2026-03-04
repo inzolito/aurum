@@ -45,9 +45,9 @@ def main():
 
     gerente = Manager(db, mt5)
 
-    db.update_estado_bot("OPERANDO", "Sistema iniciado. Monitoreando Oro y Euro.")
+    db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
     print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
-    print(f"[MAIN] Activos: {ACTIVOS} | Ciclo: cada {CICLO_SEGUNDOS}s\n")
+    print(f"[MAIN] Ciclo: cada {CICLO_SEGUNDOS}s | Activos: cargados dinamicamente desde BD\n")
 
     ciclo = 0
     try:
