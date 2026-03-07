@@ -70,47 +70,52 @@ class StructureWorker:
         
         last_high = 0.0
         last_low = 999999.0
+        idx_high = -1
+        idx_low = -1
         
         for i in range(len(highs)-3, 2, -1):
             if highs[i] > highs[i-1] and highs[i] > highs[i-2] and \
                highs[i] > highs[i+1] and highs[i] > highs[i+2]:
                 last_high = highs[i]
+                idx_high = i
                 break
                 
         for i in range(len(lows)-3, 2, -1):
             if lows[i] < lows[i-1] and lows[i] < lows[i-2] and \
                lows[i] < lows[i+1] and lows[i] < lows[i+2]:
                 last_low = lows[i]
+                idx_low = i
                 break
 
-        # B. Detección de BOS (Break of Structure)
-        # Simplificación: ¿Hemos roto el último swing relevante con CUERPO?
         bos_bullish = False
         bos_bearish = False
         ob_precio = 0.0
         
-        # Buscamos BOS en las últimas 50 velas
-        for i in range(len(closes)-50, len(closes)):
-            if closes[i] > last_high:
-                bos_bullish = True
-                # El OB es la última vela bajista antes del impulso
-                # Buscamos hacia atrás desde el BOS
-                for j in range(i, i-20, -1):
-                    if j < 1: break
-                    if closes[j] < opens[j]: # Vela bajista
-                        ob_precio = lows[j]
-                        break
-                break
+        # Buscamos BOS solo DESPUÉS de que se formó el fractal
+        if idx_high != -1:
+            for i in range(idx_high + 1, len(closes)):
+                if closes[i] > last_high:
+                    bos_bullish = True
+                    # El OB es la última vela bajista antes del impulso
+                    # Buscamos hacia atrás desde el BOS, pero no más atrás del fractal anterior
+                    limite_atras = max(1, idx_high - 10) 
+                    for j in range(i, limite_atras, -1):
+                        if closes[j] < opens[j]: # Vela bajista
+                            ob_precio = lows[j]
+                            break
+                    break
             
-            if closes[i] < last_low:
-                bos_bearish = True
-                # El OB es la última vela alcista antes del impulso
-                for j in range(i, i-20, -1):
-                    if j < 1: break
-                    if closes[j] > opens[j]: # Vela alcista
-                        ob_precio = highs[j]
-                        break
-                break
+        if idx_low != -1 and not bos_bullish: # Si ya es bullish, priorizamos ese
+            for i in range(idx_low + 1, len(closes)):
+                if closes[i] < last_low:
+                    bos_bearish = True
+                    # El OB es la última vela alcista antes del impulso
+                    limite_atras = max(1, idx_low - 10)
+                    for j in range(i, limite_atras, -1):
+                        if closes[j] > opens[j]: # Vela alcista
+                            ob_precio = highs[j]
+                            break
+                    break
 
         # C. Detección de FVG (Fair Value Gap)
         fvg_presente = False

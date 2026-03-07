@@ -12,7 +12,7 @@ from config.db_connector import DBConnector
 from config.mt5_connector import MT5Connector
 from core.manager import Manager
 from core.scheduler import AurumScheduler
-from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario, notificar_error_critico
+from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
@@ -47,6 +47,16 @@ def main():
     if not db:
         sys.exit(1)
 
+    # --- 0. VALIDACION V9.0 DE CACHE ---
+    try:
+        db.cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='cache_nlp_impactos' AND column_name='hash_contexto';")
+        if db.cursor.fetchone():
+            print("[MAIN] Conexión a BD exitosa - Columna hash_contexto detectada.")
+        else:
+            print("[MAIN] ⚠️ ADVERTENCIA: Columna hash_contexto NO detectada en la BD.")
+    except Exception as e:
+        print(f"[MAIN] Error verificando columna hash_contexto: {e}")
+
     # --- 1. KILL-SWITCH & PID LOGGING ---
     pid = os.getpid()
     
@@ -72,14 +82,20 @@ def main():
     programador = AurumScheduler(gerente)
     programador.start()
 
+    # V10.0: UI de Telegram Interactiva en Background
+    import threading
+    from config.telegram_bot import run_telegram_bot
+    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+    bot_thread.start()
+
     db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
     print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
     print(f"[MAIN] Ciclo: cada {CICLO_SEGUNDOS}s | Activos: cargados dinamicamente desde BD\n")
 
-    # --- Mensaje de inicio a Telegram ---
-    activos_inicio  = db.obtener_activos_patrullaje()
-    simbolos_inicio = [a['simbolo'] for a in activos_inicio]
-    notificar_inicio(simbolos_inicio)
+    # --- Mensaje de inicio a Telegram: Silenciado por V10.3 ---
+    # activos_inicio  = db.obtener_activos_patrullaje()
+    # simbolos_inicio = [a['simbolo'] for a in activos_inicio]
+    # notificar_inicio(simbolos_inicio)
 
     # Contadores para el pulso horario (cada 60 ciclos ~ 1 hora)
     CICLOS_POR_HORA = 60
@@ -90,7 +106,29 @@ def main():
     try:
         while True:
             ciclo += 1
-            hora = time.strftime('%H:%M:%S')
+            ahora_dt = datetime.now()
+            hora = ahora_dt.strftime('%H:%M:%S')
+            
+            # --- PROTOCOLO GATEKEEPER V13.0: Bypass de Fin de Semana ---
+            # Viernes 18:00 (Chile) a Domingo 18:00 (Chile)
+            # Python weekday: 4=Viernes, 5=Sabado, 6=Domingo
+            dia = ahora_dt.weekday()
+            hora_int = ahora_dt.hour
+            
+            es_finde = False
+            if dia == 4 and hora_int >= 18: # Viernes noche
+                es_finde = True
+            elif dia == 5: # Sabado total
+                es_finde = True
+            elif dia == 6 and hora_int < 18: # Domingo mañana/tarde
+                es_finde = True
+                
+            if es_finde:
+                print(f"\n[GATEKEEPER] {ahora_dt.strftime('%A %H:%M')} -> MODO VIGILANCIA (Fin de semana).")
+                gerente.mantener_vigilancia()
+                time.sleep(600) # Dormir 10 minutos antes de volver a patrullar news
+                continue
+
             print(f"\n{'-'*60}")
             print(f"  CICLO #{ciclo}  |  {hora}")
             print(f"{'-'*60}")
@@ -120,9 +158,6 @@ def main():
                 mt5_conn.cerrar_todas_las_posiciones()
                 break # Detener el bot
 
-            # --- GESTIÓN DE POSICIONES ABIERTAS (BREAKEVEN) ---
-            gerente.gestionar_posiciones_abiertas()
-
             # Evaluar cada activo con su id real de BD
             for activo in activos_db:
                 print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
@@ -143,15 +178,10 @@ def main():
             ciclos_hora    += 1
             uptime_minutos  = (ciclo * CICLO_SEGUNDOS) // 60
 
-            # --- Pulso horario: cada 60 ciclos (~1h) ---
+            # --- Pulso horario: desactivado por V10.2 (Silent Mode) ---
+            # if ciclo % CICLOS_POR_HORA == 0:
+            #     notificar_resumen_horario(...)
             if ciclo % CICLOS_POR_HORA == 0:
-                notificar_resumen_horario(
-                    ciclo          = ciclo,
-                    activos        = simbolos,
-                    ciclos_hora    = ciclos_hora,
-                    ordenes_hora   = ordenes_hora,
-                    uptime_minutos = uptime_minutos
-                )
                 ciclos_hora  = 0
                 ordenes_hora = 0
 

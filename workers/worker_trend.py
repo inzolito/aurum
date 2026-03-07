@@ -60,21 +60,36 @@ class TrendWorker:
         # 5. LÓGICA DE VOTACIÓN (Price Action)
         voto = 0.0
 
-        # ESCENARIO ALCISTA
-        if cierre_actual > fast_now and fast_now > slow_now:
-            voto += 0.5              # Estructura alcista básica
-            if rsi_now < 70:
-                voto += 0.3          # Hay espacio para subir (no sobrecomprado)
-            if rsi_now < 30:
-                voto += 0.2          # Rebote en sobreventa extrema
+        if "US30" in simbolo_interno:
+            # Lógica especial V10.0: Ruptura de EMAs (20, 50, 200)
+            ema_20 = _ema(df['cierre'], 20).iloc[-1]
+            ema_50 = _ema(df['cierre'], 50).iloc[-1]
+            ema_200 = _ema(df['cierre'], 200).iloc[-1]
+            
+            if not pd.isna(ema_200):
+                if cierre_actual < ema_20 and cierre_actual < ema_50 and cierre_actual < ema_200:
+                    voto -= 1.0 # Máxima prioridad bajista local
+                    print(f"[TREND] {simbolo_interno}: Ruptura bajista EMAs (20, 50, 200) detectada.")
+                elif cierre_actual > ema_20 and cierre_actual > ema_50 and cierre_actual > ema_200:
+                    voto += 1.0 # Máxima prioridad alcista local
+                    print(f"[TREND] {simbolo_interno}: Ruptura alcista EMAs (20, 50, 200) detectada.")
 
-        # ESCENARIO BAJISTA
-        elif cierre_actual < fast_now and fast_now < slow_now:
-            voto -= 0.5              # Estructura bajista básica
-            if rsi_now > 30:
-                voto -= 0.3          # Hay espacio para bajar (no sobrevendido)
-            if rsi_now > 70:
-                voto -= 0.2          # Rebote en sobrecompra extrema
+        if voto == 0.0:
+            # ESCENARIO ALCISTA (Default)
+            if cierre_actual > fast_now and fast_now > slow_now:
+                voto += 0.5              # Estructura alcista básica
+                if rsi_now < 70:
+                    voto += 0.3          # Hay espacio para subir (no sobrecomprado)
+                if rsi_now < 30:
+                    voto += 0.2          # Rebote en sobreventa extrema
+    
+            # ESCENARIO BAJISTA
+            elif cierre_actual < fast_now and fast_now < slow_now:
+                voto -= 0.5              # Estructura bajista básica
+                if rsi_now > 30:
+                    voto -= 0.3          # Hay espacio para bajar (no sobrevendido)
+                if rsi_now > 70:
+                    voto -= 0.2          # Rebote en sobrecompra extrema
 
         # 6. FILTRO DE VOLATILIDAD — Neutralizar en mercado lateral (rango)
         distancia_ema = abs(fast_now - slow_now) / cierre_actual

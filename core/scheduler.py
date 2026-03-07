@@ -19,13 +19,19 @@ class AurumScheduler:
 
     def start(self):
         """Inicia el hilo del programador."""
-        schedule.every().day.at("08:30").do(self.reporte_apertura)
-        schedule.every().day.at("13:00").do(self.reporte_mediodia)
-        schedule.every().day.at("20:00").do(self.reporte_cierre)
+        # V10.1: Silent Hunter - Reportes automaticos desactivados
+        # schedule.every().day.at("08:30").do(self.reporte_apertura)
+        # schedule.every().day.at("13:00").do(self.reporte_mediodia)
+        # schedule.every().day.at("20:00").do(self.reporte_cierre)
+        
+        # Eventos de Sesión (V7.6) - También desactivados para silencio total
+        # schedule.every().day.at("00:00").do(self.evento_sesion, "Tokio")
+        # schedule.every().day.at("08:00").do(self.evento_sesion, "Londres")
+        # schedule.every().day.at("14:30").do(self.evento_sesion, "Nueva York")
         
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
-        print("[SCHEDULER] Programador iniciado (08:30, 13:00, 20:00)")
+        print("[SCHEDULER] Programador iniciado (Reportes + Sesiones + Pulso IA)")
 
     def _run_loop(self):
         while not self.stop_event.is_set():
@@ -84,3 +90,8 @@ class AurumScheduler:
             _enviar_telegram(resumen)
         except Exception as e:
             print(f"[SCHEDULER] Error en reporte cierre: {e}")
+
+    def evento_sesion(self, sesion):
+        """Notificación de apertura de sesión."""
+        msg = f"🔔 <b>Apertura de {sesion}</b>. Escaneando volatilidad en activos clave..."
+        _enviar_telegram(msg)

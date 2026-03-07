@@ -135,20 +135,24 @@ def _build_msg_orden(simbolo, direccion, lotes, ticket, precio, sl, tp, veredict
         f"🎯 <b>Probabilidad Est. de Éxito:</b> {prob_exito:.1f}%\n"
         f"<b>Acción:</b> {direccion} @ {precio}\n"
         f"<b>Riesgo:</b> SL: {sl:.4f} | TP: {tp:.4f}\n"
-        f"<b>Veredicto:</b> {veredicto:+.4f} (Trend: {v_trend:+.2f} | NLP: {v_nlp:+.2f})\n\n"
-        f"📊 <b>Hurst:</b> {kwargs.get('hurst_h', 'N/A')} | <b>Estado:</b> {kwargs.get('hurst_estado', 'N/A')}\n"
-        f"📍 <b>MAPA DE VOLUMEN</b>\n"
-        f"POC: {kwargs.get('vol_poc', 'N/A')} | VA: {kwargs.get('vol_va', 'N/A')}\n\n"
-        f"🌍 <b>SENSORES GLOBALES</b>\n"
-        f"DXY: {kwargs.get('cross_dxy', 'N/A')}% | SPX: {kwargs.get('cross_spx', 'N/A')}%\n"
-        f"Divergencia: {kwargs.get('cross_div', 'N/A')}\n\n"
+        f"<b>Veredicto Final:</b> {veredicto:+.4f}\n\n"
+        f"🗳️ <b>DETALLE DE VOTACIÓN:</b>\n"
+        f"• Trend: {v_trend:+.2f} (40%)\n"
+        f"• NLP IA: {v_nlp:+.2f} (30%)\n"
+        f"• Flow: {kwargs.get('v_flow', 0.0):+.2f} (15%)\n"
+        f"• Sniper: {kwargs.get('smc_voto_raw', 0.0):+.2f} (15%)\n\n"
+        f"📉 <b>FILTROS TÉCNICOS:</b>\n"
+        f"• Vol: {kwargs.get('v_vol', 0.0):+.2f} | Cross: {kwargs.get('v_cross', 0.0):+.2f}\n"
+        f"• Hurst: {kwargs.get('v_hurst', 0.0):+.2f}\n\n"
+        f"📊 <b>CONTEXTO:</b> {kwargs.get('hurst_estado', 'N/A')}\n"
         f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
-        f"Order Block: {kwargs.get('smc_ob', 'N/A')}\n"
+        f"OB: {kwargs.get('smc_ob', 'N/A')}\n"
         f"Estructura: {kwargs.get('smc_estado', 'N/A')}\n"
-        f"Veredicto Sniper: {kwargs.get('smc_veredicto', 'N/A')}\n\n"
+        f"Sniper V: {kwargs.get('smc_veredicto', 'N/A')}\n\n"
+        f"⚖️ <b>Fuerza Dominante:</b> {kwargs.get('fuerza_dominante', 'N/A')}\n\n"
         f"🧠 <b>ANÁLISIS DE CONCIENCIA IA</b>\n"
-        f"<i>{pensamiento_gemini}</i>\n\n"
-        f"<b>Balance Actual:</b> ${balance:,.2f}"
+        f"<i>{kwargs.get('gemini_thought', 'Análisis macro dinámico...')}</i>\n\n"
+        f"💰 Balance actual: {balance:,.2f} USD"
     )
 
 
@@ -194,7 +198,27 @@ def notificar_proximidad(simbolo: str, veredicto: float, hurst_h: float, hurst_e
     else:
         _enviar_telegram(msg_tg)
 
+def _check_impulse_radar(cross_map: dict) -> str:
+    """V10.0: Genera un encabezado prioritario si el Petróleo o el VIX explotan."""
+    oil_var = cross_map.get('oil', 0.0)
+    vix_var = cross_map.get('vix', 0.0)
+    
+    alertas = []
+    if abs(oil_var) >= 2.0:
+        alertas.append(f"🛢️ <b>IMPULSO PETRÓLEO: {oil_var:+.2f}%</b>")
+    if abs(vix_var) >= 3.0:
+        alertas.append(f"📉 <b>IMPULSO VIX (MIEDO): {vix_var:+.2f}%</b>")
+        
+    if alertas:
+        header = "🚨 <b>RADAR DE IMPULSO - PRIORIDAD MÁXIMA</b>\n"
+        header += "\n".join(alertas) + "\n\n"
+        # Convertimos a Rojo/Negrita usando tags (HTML parse_mode)
+        # Nota: Telegram no tiene tag <color>, usamos <b> y emoticonos para impacto visual
+        return header
+    return ""
+
 def _build_msg_proximidad(simbolo, veredicto, hurst_h, hurst_estado, vol_map, cross_map, v_struct, **kwargs):
+    impulse_header = _check_impulse_radar(cross_map)
     bs_alert = "🚨 <b>ESTADO DE EMERGENCIA: VOLATILIDAD EXTREMA</b>\n" if cross_map['black_swan'] else ""
     pensamiento_gemini = kwargs.get('gemini_thought', "Estructura de mercado detectada: El precio busca mitigar zonas de liquidez pendientes.")
 
@@ -203,7 +227,8 @@ def _build_msg_proximidad(simbolo, veredicto, hurst_h, hurst_estado, vol_map, cr
     smc_estado = v_struct['estado_smc'] if v_struct else "N/A"
     smc_v = v_struct['sniper_veredicto'] if v_struct else "N/A"
 
-    return (f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
+    return (f"{impulse_header}"
+              f"⚠️ <b>PROXIMIDAD DETECTADA</b>\n"
               f"{bs_alert}"
               f"<b>Activo:</b> {simbolo} | <b>Veredicto:</b> {abs(veredicto):.4f}\n"
               f"📊 <b>Hurst:</b> {hurst_h:.4f} | <b>Estado:</b> {hurst_estado}\n"
@@ -211,11 +236,13 @@ def _build_msg_proximidad(simbolo, veredicto, hurst_h, hurst_estado, vol_map, cr
               f"POC: {vol_map['poc']} | VA: {vol_map['va']}\n"
               f"🌍 <b>SENSORES GLOBALES</b>\n"
               f"DXY: {cross_map['dxy']}% | SPX: {cross_map['spx']}%\n"
+              f"VIX: {cross_map.get('vix', 0.0):+.2f}% | OIL: {cross_map.get('oil', 0.0):+.2f}%\n"
               f"Divergencia: {cross_map['divergencia']}\n\n"
               f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
               f"Order Block: {smc_ob}\n"
               f"Estructura: {smc_estado}\n"
               f"Veredicto Sniper: {smc_v}\n\n"
+              f"⚖️ <b>Fuerza Dominante:</b> {kwargs.get('fuerza_dominante', 'N/A')}\n\n"
               f"🧠 <b>ANÁLISIS DE CONCIENCIA IA</b>\n"
               f"<i>{pensamiento_gemini}</i>\n\n"
               f"<b>Estado:</b> El Centinela { 'está en ALERTA MÁXIMA (+0.60)' if cross_map['black_swan'] else 'está quitando el seguro (+0.45)' }.")
@@ -228,14 +255,15 @@ def notificar_error_market_watch(simbolo: str):
                      f"El símbolo <b>{simbolo}</b> no está respondiendo en la terminal.\n\n"
                      f"<i>El Centinela no puede patrullar este activo hasta que se resuelva la conexión.</i>")
 
-def notificar_oportunidad_detectada(simbolo: str, veredicto: float):
+def notificar_oportunidad_detectada(simbolo: str, veredicto: float, **kwargs):
     """Reporte de Gatillo: Señal en radar pero sin llegar al umbral de ejecución."""
     emoji = "🔭" if veredicto > 0 else "📡"
     msg = f"🔍 Oportunidad detectada en {simbolo} | Confianza: {abs(veredicto):.4f} | Esperando +0.45"
     print(f"[NOTIFIER] {msg}")
     _enviar_telegram(f"{emoji} <b>Oportunidad Detectada -- {simbolo}</b>\n"
-                     f"Confianza: {abs(veredicto):.4f}\n"
-                     f"Estado: <i>Esperando +0.45 para gatillar.</i>")
+                     f"<b>Confianza:</b> {abs(veredicto)*100:.1f}%\n"
+                     f"⚖️ <b>Fuerza Dominante:</b> {kwargs.get('fuerza_dominante', 'N/A')}\n\n"
+                     f"<i>Monitoreando persistencia...</i>")
 
 def notificar_error_critico(modulo: str, mensaje: str):
     """Alerta de error grave (desconexion MT5, fallo de BD, etc.)."""
@@ -313,3 +341,51 @@ def notificar_resumen_horario(ciclo: int, activos: list,
         f"Ordenes ejecutadas en la hora: {ordenes_hora}\n\n"
         f"<b>Activos:</b> {lista}"
     )
+
+
+def notificar_conciencia_ia(activo, sentimiento, razonamiento, status_obreros):
+    """
+    Bitácora de Guerra V7.7: Envía el 'Pulso de Conciencia' de la IA.
+    """
+    emoji = "🔴" if sentimiento < -0.3 else "🟢" if sentimiento > 0.3 else "⚪"
+    msg = (
+        f"🧠 <b>PENSAMIENTO IA [{activo}]</b>\n\n"
+        f"{emoji} <b>Sentimiento:</b> {sentimiento:+.2f}\n"
+        f"💬 <b>Justificación:</b> {razonamiento}\n\n"
+        f"🎯 <b>Estado de Obreros:</b>\n"
+        f"• {status_obreros}\n"
+    )
+    _enviar_telegram(msg)
+
+
+def notificar_explicacion_ruido(motivo_gemini):
+    """
+    Bitácora de Guerra V7.7: Explica por qué el bot sigue fuera debido al ruido.
+    """
+    msg = (
+        f"🛡️ <b>REPORTE DE SIN-ACCIÓN (Hurst Noise)</b>\n\n"
+        f"Maikol, sigo fuera. {motivo_gemini}\n\n"
+        f"<i>El capital se mantiene blindado esperando una tendencia persistente.</i>"
+    )
+    _enviar_telegram(msg)
+
+
+def notificar_mercado_cerrado(simbolo: str):
+    """Protocolo Gatekeeper V13.0: Mercado cerrado por el broker."""
+    msg = f"🌙 {simbolo} en pausa: Mercado Cerrado por el Broker. Reintentando en la próxima sesión."
+    print(f"[GATEKEEPER] {msg}")
+    _enviar_telegram(f"🌙 <b>{simbolo} en pausa</b>\n\nMercado Cerrado por el Broker. Reintentando en la próxima sesión.")
+
+
+def notificar_alerta_volatilidad_escalonada(simbolo, porcentaje, precio):
+    """Fase V14.0: Alerta de volatilidad escalonada."""
+    emoji = "🔥" if abs(porcentaje) >= 10 else "⚠️"
+    direccion = "SUBIENDO" if porcentaje > 0 else "CAYENDO"
+    msg = (
+        f"{emoji} <b>MOVIMIENTO BRUSCO: {simbolo}</b>\n\n"
+        f"El activo está <b>{direccion}</b> un <b>{abs(porcentaje):.1f}%</b> hoy.\n"
+        f"Precio Actual: <code>{precio}</code>\n\n"
+        f"<i>Nivel de alerta cruzado. El bot sigue monitoreando.</i>"
+    )
+    _print_alerta("VOLATILIDAD", f"{simbolo} {porcentaje:+.1f}% @ {precio}")
+    _enviar_telegram(msg)

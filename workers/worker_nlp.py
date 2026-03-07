@@ -26,24 +26,25 @@ load_dotenv()
 
 GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "")
 CACHE_TTL_MIN    = int(os.getenv("NLP_CACHE_TTL_MIN", "30"))
-GEMINI_MODEL     = "gemini-2.5-flash"
+GEMINI_MODEL_LITE = "gemini-flash-latest" # V10.1: Free-Tier Priority
+GEMINI_MODEL_PRO  = "gemini-pro-latest"   # Solo para veredictos > 0.40
 
 
-def _llamar_gemini_api(prompt: str) -> str:
+def _llamar_gemini_api(prompt: str, model: str = GEMINI_MODEL_LITE) -> str:
     """
-    Llama a Gemini usando el SDK google.genai (v1.65+, no deprecado).
+    Llama a Gemini usando el SDK google.genai.
     Retorna el texto de la respuesta o string vacio si falla.
     """
     try:
         from google import genai
         client = genai.Client(api_key=GEMINI_API_KEY)
         respuesta = client.models.generate_content(
-            model=GEMINI_MODEL,
+            model=model,
             contents=prompt
         )
         return respuesta.text.strip()
     except Exception as e:
-        print(f"[NLP] ERROR en API Gemini: {e}")
+        print(f"[NLP] ERROR en API Gemini ({model}): {e}")
         return ""
 
 
@@ -87,6 +88,7 @@ class NLPWorker:
         self.db = db
         self._api_disponible = bool(GEMINI_API_KEY)
         self._ultimo_refresh = datetime.min.replace(tzinfo=timezone.utc)  # Para el guard de 5 min
+        self._notified_hashes = set() # V10.2: Memoria volatil para noticias
         if not self._api_disponible:
             print("[NLP] ADVERTENCIA: GEMINI_API_KEY no configurada. "
                   "Usando fallback de impactos_regimen.")
@@ -95,13 +97,16 @@ class NLPWorker:
     # API Pública (misma firma que v1, ampliada v2)
     # ------------------------------------------------------------------
 
-    def analizar(self, simbolo_interno: str, id_activo: int = None, forzar_refresh: bool = False) -> float:
+    def analizar(self, simbolo_interno: str, id_activo: int = None, forzar_refresh: bool = False, 
+                 technical_verdict: float = 0.0, velas_recientes: list = None, solo_si_conviccion: bool = True) -> float:
         """
         Retorna el voto macro para el activo dado.
-        Usa Gemini con caché inteligente. Fallback a 0.0 si no hay API key.
-        Si forzar_refresh es True (por volatilidad extrema), ignora el caché
-        y re-consulta Gemini (limitado a maximo 1 vez cada 5 min).
+        Usa Gemini con caché inteligente.
+        V10.2: Si solo_si_conviccion es True y |technical_verdict| < 0.40, salta Gemini.
         """
+        if solo_si_conviccion and abs(technical_verdict) < 0.40:
+            # print(f"[NLP] Saltando IA (Conviccion Tecnica baja: {technical_verdict:+.2f})")
+            return 0.0
         if id_activo is None:
             id_activo = self._resolver_id(simbolo_interno)
             if id_activo is None:
@@ -139,91 +144,119 @@ class NLPWorker:
 
         # Caché inválido o refresco forzado: llamar a Gemini para TODOS los activos
         activos_db = self.db.obtener_activos_patrullaje()
-        resultados = self._llamar_gemini(regimenes, activos_db)
+        resultados = self._llamar_gemini(regimenes, activos_db, technical_verdict, velas_recientes)
 
         if resultados:
             self._guardar_cache(hash_ctx, activos_db, resultados, regimenes)
 
-        voto = resultados.get(simbolo_interno, 0.0)
+        res_final = resultados.get(simbolo_interno, {'voto': 0.0, 'razonamiento': "Analisis neutral."})
+        voto = res_final['voto']
         print(f"[NLP] {simbolo_interno} (id={id_activo}) -> Gemini: {voto:+.2f}")
         return voto
 
     def obtener_razonamiento(self, simbolo_interno: str) -> str:
-        """Retorna la explicación textual guardada en el caché para este activo."""
-        try:
-            # Buscamos el razonamiento más reciente para este símbolo
-            self.db.cursor.execute(
-                "SELECT razonamiento FROM cache_nlp_impactos WHERE simbolo = %s ORDER BY creado_en DESC LIMIT 1;",
-                (simbolo_interno,)
-            )
-            fila = self.db.cursor.fetchone()
-            if fila:
-                return fila[0]
-        except Exception as e:
-            print(f"[NLP] Error obteniendo razonamiento: {e}")
+        """Retorna la explicación textual guardada en el caché para este activo (V8.1: Atomic)."""
+        razon = self.db.get_nlp_reasoning(simbolo_interno)
+        if razon:
+            return razon
         return "Análisis macro: El sentimiento institucional se mantiene cauteloso ante la falta de catalizadores claros."
+
+    def get_current_hash(self) -> str:
+        """
+        Calcula y retorna el hash actual del contexto macro (V9.0).
+        Útil para que el Manager sepa si hubo un cambio real en las noticias.
+        """
+        regimenes = self._obtener_regimenes_activos()
+        return self._calcular_hash(regimenes)
 
     # ------------------------------------------------------------------
     # Gemini
     # ------------------------------------------------------------------
 
-    def _llamar_gemini(self, regimenes: list, activos: list) -> dict:
+    def _llamar_gemini(self, regimenes: list, activos: list, technical_verdict: float = 0.0, velas: list = None) -> dict:
         """
         Llama a Gemini con un prompt multi-activo.
         Retorna dict {simbolo: float} con guardrails aplicados.
         En caso de cualquier error, retorna dict con 0.0 para todos.
+        V10.1: FREE-TIER PRIORITY (Switch de motor y compresion de contexto).
         """
         simbolos = [a["simbolo"] for a in activos]
-        fallback  = {s: 0.0 for s in simbolos}
+        fallback  = {s: {'voto': 0.0, 'razonamiento': "Error API Gemini."} for s in simbolos}
 
         if not regimenes:
             print("[NLP] Sin regimenes activos. Retornando neutrales.")
             return fallback
 
-        # Construir contexto legible para el prompt
-        ctx_lineas = []
-        for r in regimenes:
-            ctx_lineas.append(
-                f"- {r['titulo']} ({r['clasificacion']}, estado: {r['estado']})"
-            )
-        contexto_str = "\n".join(ctx_lineas)
-        activos_str  = ", ".join(simbolos)
-        json_vacio   = json.dumps({s: 0.0 for s in simbolos})
+        # 1. Seleccion de Motor (Prioridad Costo Cero)
+        modelo_final = GEMINI_MODEL_PRO if abs(technical_verdict) >= 0.40 else GEMINI_MODEL_LITE
+        print(f"[NLP] Usando motor: {modelo_final} (Veredicto Tecnico: {technical_verdict:+.2f})")
 
+        # 2. Compresion de Contexto (Ultimos 5 titulares)
+        regimenes_recientes = regimenes[-5:]
+        ctx_lineas = []
+        for r in regimenes_recientes:
+            ctx_lineas.append(f"- {r['titulo']} ({r['clasificacion']}, estado: {r['estado']})")
+        contexto_str = "\n".join(ctx_lineas)
+        
+        # 3. Datos de Velas (Ultimas 3)
+        velas_str = "No hay datos de velas recientes."
+        if velas:
+            v_lines = []
+            for v in velas[-3:]:
+                # v es un dict con 'apertura', 'maximo', 'minimo', 'cierre'
+                v_lines.append(f"Vela: O:{v['apertura']} H:{v['maximo']} L:{v['minimo']} C:{v['cierre']}")
+            velas_str = "\n".join(v_lines)
+
+        activos_str  = ", ".join(simbolos)
+        formato_guia = json.dumps({s: {"voto": 0.0, "razonamiento": "..."} for s in simbolos[:1]})
+        
         prompt = (
-            "Actua como un analista macro senior de mercados financieros. "
-            "Analiza el siguiente contexto macroeconomico actual:\n\n"
+            "Actua como un analista macro senior. "
+            "Contexto comprimido (Ultimos 5 titulares):\n"
             f"{contexto_str}\n\n"
-            "Devuelve UNICAMENTE un JSON valido (sin markdown, sin texto adicional) "
-            "con el impacto estimado de -1.0 (muy bajista) a 1.0 (muy alcista) "
-            f"para cada uno de estos activos: {activos_str}\n\n"
-            f"Formato requerido exacto: {json_vacio}\n\n"
-            "Considera correlaciones entre activos (ej: tensiones geopoliticas "
-            "suben Oro y Petroleo, bajan S&P500; recorte de tasas FED sube acciones "
-            "y debilita USD). Se preciso y coherente entre activos."
+            "Datos de las ultimas 3 velas (M1/M15):\n"
+            f"{velas_str}\n\n"
+            "Tu tarea: Evaluar el impacto en estos activos. "
+            "Devuelve UNICAMENTE un JSON valido (sin markdown) con esta estructura:\n"
+            f"- voto: Valor de -1.0 a 1.0.\n"
+            f"- razonamiento: Max 2 lineas en ESPAÑOL.\n"
+            f"Activos: {activos_str}\n"
+            f"Ejemplo: {formato_guia}\n"
+            "Se extremadamente conciso. Prioriza los datos de velas si hay contradiccion."
         )
 
-        texto = _llamar_gemini_api(prompt)
+        texto = _llamar_gemini_api(prompt, model=modelo_final)
         if not texto:
             return fallback
 
-        print(f"[NLP] Gemini respondio ({len(texto)} chars)")
+        print(f"[NLP] Gemini {modelo_final[-10:]} respondio ({len(texto)} chars)")
         return self._parsear_respuesta(texto, simbolos)
 
     def _parsear_respuesta(self, texto: str, simbolos: list) -> dict:
         """
         Guardrail estricto: parsea el JSON de Gemini.
-        Cualquier error retorna 0.0 para el activo afectado (no falla el sistema).
+        Retorna {simbolo: {'voto': float, 'razonamiento': str}}
         """
-        resultado = {s: 0.0 for s in simbolos}
+        resultado = {s: {'voto': 0.0, 'razonamiento': "Sin datos de Gemini"} for s in simbolos}
         try:
             json_str = _extraer_json(texto)
             data     = json.loads(json_str)
             for simbolo in simbolos:
                 if simbolo in data:
-                    resultado[simbolo] = _clamp(data[simbolo])
+                    item = data[simbolo]
+                    if isinstance(item, dict):
+                        v = item.get('voto', 0.0)
+                        r = item.get('razonamiento', "Analisis neutral.")
+                    else:
+                        v = item # Fallback si mando solo el numero
+                        r = "Actualizacion macro."
+                    
+                    resultado[simbolo] = {
+                        'voto': _clamp(v),
+                        'razonamiento': str(r)[:400] # Cap para BD
+                    }
         except (json.JSONDecodeError, KeyError, TypeError) as e:
-            print(f"[NLP] GUARDRAIL: JSON inválido de Gemini ({e}). Retornando neutrales.")
+            print(f"[NLP] GUARDRAIL: JSON inválido de Gemini ({e}).")
         return resultado
 
     # ------------------------------------------------------------------
@@ -231,21 +264,8 @@ class NLPWorker:
     # ------------------------------------------------------------------
 
     def _obtener_regimenes_activos(self) -> list:
-        """Lee regímenes ACTIVO/FORMANDOSE de la BD."""
-        try:
-            self.db.cursor.execute(
-                """
-                SELECT titulo, clasificacion, estado
-                FROM regimenes_mercado
-                WHERE estado IN ('ACTIVO', 'FORMANDOSE')
-                ORDER BY id;
-                """
-            )
-            cols = ["titulo", "clasificacion", "estado"]
-            return [dict(zip(cols, row)) for row in self.db.cursor.fetchall()]
-        except Exception as e:
-            print(f"[NLP] ERROR leyendo regímenes: {e}")
-            return []
+        """Lee regímenes ACTIVO/FORMANDOSE de la BD (V8.1: Atomic)."""
+        return self.db.get_global_regimenes()
 
     def _calcular_hash(self, regimenes: list) -> str:
         """SHA256 del contexto macro. Si cambia un régimen, el hash cambia."""
@@ -254,63 +274,21 @@ class NLPWorker:
 
     def _leer_cache(self, hash_ctx: str, id_activo: int):
         """
-        Retorna el voto del caché si es válido (mismo hash + < TTL minutos).
-        Retorna None si el caché no existe o expiró.
+        Retorna el voto del caché si es válido (V8.1: Atomic).
+        Nota: La validación de tiempo se simplifica o se asume manejada por el motor.
         """
-        try:
-            self.db.cursor.execute(
-                """
-                SELECT voto, creado_en
-                FROM cache_nlp_impactos
-                WHERE hash_regimenes = %s AND id_activo = %s
-                ORDER BY creado_en DESC
-                LIMIT 1;
-                """,
-                (hash_ctx, id_activo)
-            )
-            fila = self.db.cursor.fetchone()
-            if fila:
-                voto, creado_en = fila
-                edad = datetime.now(timezone.utc) - creado_en
-                if edad < timedelta(minutes=CACHE_TTL_MIN):
-                    return float(voto)
-                print(f"[NLP] Caché expirado (edad: {int(edad.total_seconds()//60)}min). Reconsultando Gemini.")
-        except Exception as e:
-            print(f"[NLP] ERROR leyendo cache: {e}")
-            try:
-                self.db.conn.rollback()  # Recuperar transaccion abortada
-            except Exception:
-                pass
-        return None
+        return self.db.leer_cache_nlp(hash_ctx, id_activo)
 
     def _guardar_cache(self, hash_ctx: str, activos: list, resultados: dict, regimenes: list):
-        """Upsert del análisis de Gemini en cache_nlp_impactos."""
-        razonamiento = f"Gemini {GEMINI_MODEL} | Regímenes: {len(regimenes)} activos | " \
-                       f"{datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"
-        try:
-            for activo in activos:
-                sim = activo["simbolo"]
-                voto = resultados.get(sim, 0.0)
-                self.db.cursor.execute(
-                    """
-                    INSERT INTO cache_nlp_impactos
-                        (hash_regimenes, id_activo, simbolo, voto, razonamiento)
-                    VALUES (%s, %s, %s, %s, %s)
-                    ON CONFLICT (hash_regimenes, id_activo) DO UPDATE
-                        SET voto         = EXCLUDED.voto,
-                            razonamiento = EXCLUDED.razonamiento,
-                            creado_en    = CURRENT_TIMESTAMP;
-                    """,
-                    (hash_ctx, activo["id"], sim, voto, razonamiento)
-                )
-            self.db.conn.commit()
-            print(f"[NLP] Caché guardado para hash={hash_ctx} ({len(activos)} activos)")
-        except Exception as e:
-            print(f"[NLP] ERROR guardando cache: {e}")
-            try:
-                self.db.conn.rollback()
-            except Exception:
-                pass
+        """Upsert del análisis de Gemini en cache_nlp_impactos (V8.1: Atomic Batch)."""
+        datos_insert = []
+        for activo in activos:
+            sim = activo["simbolo"]
+            res = resultados.get(sim, {'voto': 0.0, 'razonamiento': "Neutral."})
+            datos_insert.append((sim, res['voto'], res['razonamiento'], hash_ctx))
+        
+        self.db.upsert_nlp_cache(datos_insert)
+        print(f"[NLP] Caché guardado para hash={hash_ctx} ({len(activos)} activos)")
 
     # ------------------------------------------------------------------
     # Fallback (sin API key)
@@ -337,7 +315,49 @@ class NLPWorker:
             return 0.0
 
     # ------------------------------------------------------------------
-    # Helpers
+    # V10.2: NOT-AI NEWS Patrolling
+    # ------------------------------------------------------------------
+    def patrullar_noticias(self, id_activo=None):
+        """
+        V10.2 NOT-AI MODE: Busca noticias frescas en regimenes_mercado,
+        las hashea y las manda a Telegram sin AI si son nuevas.
+        V10.3: Persistencia via base de datos.
+        """
+        try:
+            # 1. Obtener noticias activas o formándose
+            query = "SELECT id, titulo, estado FROM regimenes_mercado WHERE estado IN ('ACTIVO', 'FORMANDOSE')"
+            self.db.cursor.execute(query)
+            items = self.db.cursor.fetchall()
+
+            for item in items:
+                # Generar MD5 del título (sencillo)
+                raw_hash = hashlib.md5(item[1].encode()).hexdigest() # titulo es index 1
+                
+                # Check DB for persistence (V10.3)
+                self.db.cursor.execute("SELECT 1 FROM noticias_notificadas WHERE hash = %s", (raw_hash,))
+                if not self.db.cursor.fetchone():
+                    # Es nueva!
+                    print(f"[NLP-PATROL] 📰 Detectada nueva noticia: {item[1]}")
+                    
+                    # Notificar raw (V10.2)
+                    msg = (f"📰 <b>NUEVA NOTICIA DETECTADA</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━\n"
+                           f"📌 {item[1]}\n"
+                           f"🚦 Estado: {item[2]}\n"
+                           f"🔗 Fuente: Interna (DB)")
+                    
+                    try:
+                        from config.notifier import _enviar_telegram
+                        _enviar_telegram(msg)
+                    except:
+                        pass
+                    
+                    # Guardar en DB para no repetir nunca (V10.3)
+                    self.db.cursor.execute("INSERT INTO noticias_notificadas (hash) VALUES (%s)", (raw_hash,))
+                    self.db.conn.commit()
+                    
+        except Exception as e:
+            print(f"[NLP-PATROL] Error en patrullaje: {e}")
     # ------------------------------------------------------------------
 
     def _resolver_id(self, simbolo_interno: str):

@@ -68,7 +68,7 @@ class MT5Connector:
         """
         # 1. Asegurar que el símbolo esté en el Market Watch
         if not mt5.symbol_select(simbolo, True):
-            print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo}")
+            # print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo}")
             return pd.DataFrame()
 
         # 1.5 Check if symbol is actually visible/active
@@ -129,7 +129,7 @@ class MT5Connector:
         
         # Suscripción forzada si no está en Market Watch
         if not mt5.symbol_select(simbolo, True):
-            print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo} para ticks.")
+            # print(f"[MT5] No se pudo seleccionar/suscribir a {simbolo} para ticks.")
             return None
 
         ahora = datetime.now()

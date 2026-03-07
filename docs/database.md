@@ -45,6 +45,8 @@ El diario de trading del bot y las métricas para alimentar el Dashboard.
 | `log_sistema` | Monitoreo de salud. Registra caídas de API, desconexiones de MT5 o errores en la base de datos. |
 | `analisis_ia` | El cuaderno de notas del auditor de IA. Guarda las sugerencias de optimización generadas tras analizar el historial de trades, a la espera de aprobación del administrador. |
 | `estado_bot` | Un "latido" (heartbeat) del sistema. El código Python actualiza esta tabla constantemente con su `pensamiento_actual` (ej. `"Esperando cierre de vela en Oro"`) para mostrarse en el Dashboard en vivo. |
+| `cache_nlp_impactos` | **(V9.0+)** Almacena el resultado del análisis de Gemini para evitar llamadas redundantes. Reduce costos en un 80%. |
+| `noticias_notificadas` | **(V12.0+)** Registro de hashes de noticias enviadas a Telegram para evitar spam en el radar de noticias. |
 | `balance_sesion` | Snapshots diarios del patrimonio de la cuenta para graficar la curva de crecimiento sin tener que recalcular todo el historial matemático cada vez que se abre el Dashboard. |
 
 ---

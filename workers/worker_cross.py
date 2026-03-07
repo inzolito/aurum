@@ -12,16 +12,23 @@ class CrossWorker:
     def __init__(self, db, mt5):
         self.db = db
         self.mt5 = mt5
+        # Sensores por defecto (V8.0: parametrizables en futuro)
         self.sensor_spx = "SPXUSD"
-        self.sensor_dxy_proxy = "EURUSD_i" # Usamos el símbolo del broker
+        self.sensor_dxy_proxy = "EURUSD_i"
+        self.sensor_oil = "XTIUSD_i" # V10.0: Nuevo Sensor Petróleo
 
     def analizar(self, simbolo_interno: str) -> dict:
         """
         Analiza la armonía global y retorna el voto (-1.0 a 1.0) y telemetría.
         """
-        # 1. Obtener variaciones de los sensores (últimas 24h o sesión actual)
-        var_spx = self._obtener_variacion(self.sensor_spx)
-        var_dxy = -self._obtener_variacion(self.sensor_dxy_proxy) # Invertimos EURUSD para simular DXY
+        # 1. Obtener variaciones de los sensores (V8.0: Exception Safe)
+        try:
+            var_spx = self._obtener_variacion(self.sensor_spx)
+            var_dxy = -self._obtener_variacion(self.sensor_dxy_proxy) 
+            var_oil = self._obtener_variacion(self.sensor_oil)
+        except Exception as e:
+            print(f"[CROSS] ERROR obteniendo sensores: {e}")
+            var_spx, var_dxy, var_oil = 0.0, 0.0, 0.0
 
         # 2. Lógica de Voto por Armonía
         voto = 0.0
@@ -45,8 +52,8 @@ class CrossWorker:
             elif var_spx > 0.50:
                 voto = 1.0
 
-        # Caso NASDAQ (USTEC) vs SPX
-        elif "USTEC" in simbolo_interno:
+        # Caso NASDAQ (USTEC) y Dow Jones (US30) vs SPX
+        elif "USTEC" in simbolo_interno or "US30" in simbolo_interno:
             if var_spx > 0:
                 voto = 1.0 if var_spx > 0.20 else 0.5
             else:
@@ -59,6 +66,7 @@ class CrossWorker:
             "voto": round(voto, 2),
             "var_spx": round(var_spx, 2),
             "var_dxy": round(var_dxy, 2),
+            "var_oil": round(var_oil, 2),
             "divergencia": divergencia,
             "black_swan": black_swan,
             "ajuste": "Aportando Confianza" if voto > 0 else ("Restando Confianza" if voto < 0 else "Neutral")

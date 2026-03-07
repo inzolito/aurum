@@ -1,6 +1,8 @@
 import sys
 import os
 import time
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 import MetaTrader5 as mt5
 
@@ -17,14 +19,16 @@ from workers.worker_cross import CrossWorker
 from workers.worker_structure import StructureWorker
 from core.visualizer import Visualizer
 from config.notifier import (
-    notificar_zona_caliente,
+    notificar_proximidad,
+    notificar_error_market_watch,
+    notificar_conciencia_ia,
+    notificar_explicacion_ruido,
+    notificar_oportunidad_detectada,
     notificar_orden_ejecutada,
     notificar_error_critico,
-    notificar_divergencia,
     notificar_rechazo_broker,
-    notificar_oportunidad_detectada,
-    notificar_proximidad,
-    notificar_error_market_watch
+    notificar_mercado_cerrado,
+    notificar_alerta_volatilidad_escalonada
 )
 
 
@@ -53,12 +57,38 @@ class Manager:
         self.structure = StructureWorker(db, mt5)
         self.visualizer = Visualizer()
 
+        # V7.7 & V9.0: Variables de estado global
+        self._sentimiento_last_push = {} # {simbolo: float}
+        self._sentimiento_last_time = {} # {simbolo: datetime}
+        self._last_news_hash = {}
+        self._hurst_noise_start = {}     # {simbolo: datetime}
+        self._hurst_last_report = {}     # {simbolo: datetime}
+        self._volatility_last_time = {} # {simbolo: datetime}
+        self._hibernacion_activos = {}  # {simbolo: timestamp_inicio}
+        self._last_vol_alert_level = {} # {simbolo: int_level}
+        self._last_nlp_hash = None      # V15.0: Rastro de contexto macro
+
     # ------------------------------------------------------------------
     # Ciclo principal
     # ------------------------------------------------------------------
 
     def evaluar(self, simbolo_interno: str, modo_simulacion: bool = True,
                 id_activo: int = None) -> dict:
+        """
+        Global Guard V8.0: Envuelve la evaluación en un escudo contra excepciones
+        para evitar que un fallo en un activo detenga el motor completo.
+        """
+        try:
+            return self._evaluar_internamente(simbolo_interno, modo_simulacion, id_activo)
+        except Exception as e:
+            error_msg = f"FALLO CRITICO en evaluacion de {simbolo_interno}: {e}"
+            print(f"[GERENTE] 🚨 {error_msg}")
+            self.db.registrar_log("ERROR", "MANAGER", error_msg)
+            return {"decision": "ERROR_INTERNO", "motivo": str(e)}
+
+    def _evaluar_internamente(self, simbolo_interno: str, modo_simulacion: bool = True,
+                             id_activo: int = None) -> dict:
+        """Lógica real de evaluación (antes evaluar)."""
         """
         Evalua un activo y decide si operar.
         id_activo: id de la BD. Si no se pasa, el NLPWorker lo resuelve por simbolo.
@@ -67,6 +97,9 @@ class Manager:
         print(f"\n{'='*60}")
         print(f"  GERENTE — Evaluando {simbolo_interno}")
         print(f"{'='*60}")
+
+        # V14.0 Check de Alerta de Volatilidad %Escalonada
+        self._verificar_volatilidad_escalonada(simbolo_interno)
 
         # 1. Filtro de seguridad previo (RiskModule)
         if not self.risk.filtro_seguridad(simbolo_interno):
@@ -83,74 +116,158 @@ class Manager:
         if not simbolo_broker:
             print(f"[GERENTE] Activo {simbolo_interno} no tiene mapeo en el broker.")
             return {"decision": "ERROR_CONFIG"}
+
+        # --- PROTOCOLO GATEKEEPER V13.0: Hibernación por Error 10018 ---
+        if simbolo_interno in self._hibernacion_activos:
+            inicio_hib = self._hibernacion_activos[simbolo_interno]
+            if time.time() - inicio_hib < 3600: # 1 hora
+                min_restantes = int((3600 - (time.time() - inicio_hib)) / 60)
+                print(f"[GATEKEEPER] {simbolo_interno} en HIBERNACIÓN (10018). Faltan {min_restantes} min.")
+                return {"decision": "HIBERNACION_10018", "motivo": f"Pausa automatica por 1 hora. Restan {min_restantes} min."}
+            else:
+                del self._hibernacion_activos[simbolo_interno]
+                print(f"[GATEKEEPER] {simbolo_interno} ha despertado de la hibernacion.")
+
+        # --- PROTOCOLO GATEKEEPER V13.0: Check de Trade Mode ---
+        info_simbolo = mt5.symbol_info(simbolo_broker)
+        if info_simbolo:
+            # SYMBOL_TRADE_MODE_DISABLED (0) o SYMBOL_TRADE_MODE_CLOSEONLY (1)
+            if info_simbolo.trade_mode in (mt5.SYMBOL_TRADE_MODE_DISABLED, mt5.SYMBOL_TRADE_MODE_CLOSEONLY):
+                print(f"[GATEKEEPER] {simbolo_interno} en modo {info_simbolo.trade_mode} (Cerrado). Abortando.")
+                notificar_mercado_cerrado(simbolo_interno)
+                return {"decision": "MERCADO_CERRADO", "motivo": "Trade mode deshabilitado por el broker."}
             
         # Hardened check for Market Watch (V6.1)
         mt5.symbol_select(simbolo_broker, True)
         tick = mt5.symbol_info_tick(simbolo_broker)
         if tick is None:
-            notificar_error_market_watch(simbolo_broker)
+            # notificar_error_market_watch(simbolo_broker)
+            print(f"[GERENTE] ⚠️ {simbolo_broker} no responde en el Market Watch.")
             return {"decision": "ERROR_CONEXION", "motivo": "Market Watch invisible"}
 
-        # 3. Reflejo de Combate: Trigger de Volatilidad
+        # 3. Reflejo de Combate: Trigger de Volatilidad y Veto ATR (V12.0)
         volatil_ahora = self._medir_volatilidad(simbolo_broker)
-        forzar_nlp = False
         
-        if volatil_ahora >= 3.0:
-            print(f"[GERENTE] ⚡ PICO DE VOLATILIDAD IDENTIFICADO (Ratio: {volatil_ahora:.1f}x)")
-            print(f"[GERENTE] Forzando re-evaluacion macro de emergencia...")
-            forzar_nlp = True
+        # Veto de Volatilidad Explosiva (ATR)
+        # Si el ATR actual > 200% de la media (volatil_ahora >= 2.0 indica > 200% de la media historica en _medir_volatilidad)
+        if volatil_ahora >= 2.0:
+            print(f"[GERENTE] ⚡ VOLATILIDAD EXTREMA DETECTADA ({volatil_ahora:.1f}x)")
+            motivo = f"Veto de Seguridad: Volatilidad explosiva ({volatil_ahora:.1f}x) superior al 200% de la media."
+            self._guardar_auditoria(simbolo_interno, 0.0, 0.0, 0.0, 0.0, "VOLATILIDAD_EXTREMA", motivo)
+            return {"decision": "VOLATILIDAD_EXTREMA", "motivo": motivo}
 
-        # 4. Consultar Obreros
-        print("\n[GERENTE] Consultando Obreros...")
+        forzar_nlp = False
+        # (V12.0: El bloque de alerta de volatilidad quirurgica fue removido para priorizar el veto de seguridad)
+
+        # 4. Consultar Obreros Técnicos primero (V10.1 Priority)
+        print("\n[GERENTE] Consultando Obreros Técnicos...")
         v_trend  = self.trend.analizar(simbolo_interno)
-        v_nlp    = self.nlp.analizar(simbolo_interno, id_activo=id_activo, forzar_refresh=forzar_nlp)
         v_flow   = self.flow.analizar(simbolo_interno)
         v_volume = self.volume.analizar(simbolo_interno)
         v_cross  = self.cross.analizar(simbolo_interno)
         v_struct = self.structure.analizar(simbolo_interno)
-        print(f"[SNIPER] {simbolo_interno} | Estructura: {v_struct['estado_smc']} | Veredicto: {v_struct['sniper_veredicto']}")
         
-        # --- Juez de Persistencia (Hurst) ---
+        # Juez de Persistencia (Hurst)
         res_hurst = self.hurst.analizar(simbolo_interno)
         h_val = res_hurst['h']
         h_estado = res_hurst['estado']
 
-        # 5. Reflejo de Combate: Alerta de Divergencia
-        if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
-            motivo = "Bloqueado por DIVERGENCIA extrema entre Trend e IA."
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                    0.0, "CANCELADO_RIESGO", motivo)
-            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
-
-        # --- VETO DE HURST ---
-        if h_estado != "PERSISTENTE":
-            motivo = f"VETO HURST: Mercado en estado {h_estado} (H: {h_val:.4f}). Abortando por falta de persistencia."
-            print(f"[GERENTE] 🛑 {motivo}")
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, 0.0, "VETO_HURST", motivo)
-            return {"decision": "VETO_HURST", "veredicto": 0.0, "motivo": motivo}
-
-        # --- RE-BALANCEO FINAL (V7.0 Sniper) ---
-        # Pesos: Trend (30%), NLP (20%), Volume (15%), Cross (15%), Flow (10%), Structure (10%)
-        veredicto = round(
+        # Calcular Veredicto Técnico preliminar para decidir el motor NLP
+        # Pesos técnicos: Trend(30%), Volume(15%), Cross(15%), Flow(10%), Structure(10%) -> Total 80% (o normalizar a 1.0)
+        # Para simplificar, usamos el veredicto normalizado sin el 20% de NLP.
+        tecnico_veredicto = round(
             (v_trend * 0.30) + 
-            (v_nlp * 0.20) + 
             (v_volume['voto'] * 0.15) + 
             (v_flow * 0.10) + 
             (v_cross['voto'] * 0.15) +
             (v_struct['voto'] * 0.10),
             4
         )
+        
+        # Obtener velas para contexto comprimido
+        velas_recientes = []
+        df_v = self.mt5.obtener_velas(simbolo_broker, 3)
+        if not df_v.empty:
+            velas_recientes = df_v.to_dict('records')
 
-        # --- GATILLO QUIRÚRGICO (SNC Modifiers) ---
-        # OB Touch: +1.0 / -1.0 | In the air: -0.30 penalty
-        if v_struct['voto'] == 1.0:
-            veredicto += 1.0  # Gatillo Alcista
-        elif v_struct['voto'] == -1.0:
-            veredicto -= 1.0  # Gatillo Bajista
-        elif v_struct['voto'] == -0.30:
-            # Penalización "En el Aire" (reduce fuerza de señal)
-            if veredicto > 0: veredicto -= 0.30
-            elif veredicto < 0: veredicto += 0.30
+        # Recibir voto NLP con cambio dinámico de motor
+        # V10.2: Solo llama a IA si la conviccion tecnica es alta (>= 0.38)
+        if abs(tecnico_veredicto) >= 0.38:
+            if volatil_ahora >= 2.0 and 'voto_emg' in locals():
+                v_nlp = voto_emg
+            else:
+                v_nlp = self.nlp.analizar(
+                    simbolo_interno, 
+                    id_activo=id_activo, 
+                    forzar_refresh=forzar_nlp,
+                    technical_verdict=tecnico_veredicto,
+                    velas_recientes=velas_recientes
+                )
+        else:
+            v_nlp = 0.0 # Neutral si no hay conviccion tecnica
+
+        # --- V10.2: Patrullaje de Noticias (Sin AI Analysis) ---
+        self.nlp.patrullar_noticias()
+
+        print(f"[SNIPER] {simbolo_interno} | Estructura: {v_struct['estado_smc']} | Veredicto: {v_struct['sniper_veredicto']}")
+        
+        # --- Reasoner de Ruido (V7.7) ---
+        self._procesar_razonamiento_ruido(simbolo_interno, h_estado)
+
+        # 5. Reflejo de Combate: Alerta de Divergencia
+        if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
+            motivo = f"Bloqueado por DIVERGENCIA extrema entre Trend e IA."
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                                    0.0, "CANCELADO_RIESGO", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['sniper_veredicto'])
+            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+
+        # --- V12.0: WEIGHTED VOTING & NO-FLOW PROTOCOL ---
+        # Pesos Base: Trend (40%), NLP (30%), Flow (15%), Sniper (15%)
+        p_trend, p_nlp, p_flow, p_sniper = 0.40, 0.30, 0.15, 0.15
+        
+        # Protocolo No-Flow: Si Flow es None o 0.0 (neutral), redistribuimos.
+        # En V12.0, si el obrero Flow retorna 0.0 (neutral por falta de datos o error), 
+        # redistribuimos su 15% como: +10% a Trend y +5% a Sniper.
+        if v_flow == 0.0:
+            print(f"[GERENTE] 🛠 Protocolo No-Flow activado para {simbolo_interno}. Redistribuyendo pesos...")
+            p_trend += 0.10 # 40% -> 50%
+            p_sniper += 0.05 # 15% -> 20%
+            p_flow = 0.0
+            
+        try:
+            v_struct_voto = float(v_struct.get('voto', 0))
+        except (ValueError, TypeError):
+            v_struct_voto = 0.0
+        
+        veredicto = round(
+            (v_trend * p_trend) + 
+            (v_nlp * p_nlp) + 
+            (v_flow * p_flow) + 
+            (v_struct_voto * p_sniper),
+            4
+        )
+
+        # --- PENALIZACIÓN DE HURST (V10.5) ---
+        # En lugar de abortar, si hay "RUIDO" (0.45 - 0.55), penalizamos con -0.15 el veredicto absoluto.
+        if 0.45 <= h_val <= 0.55:
+            print(f"[GERENTE] ⚠️ Mercado en RUIDO (H: {h_val:.4f}). Aplicando penalización de -0.15.")
+            if veredicto > 0:
+                veredicto = max(0.0, veredicto - 0.15)
+            elif veredicto < 0:
+                veredicto = min(0.0, veredicto + 0.15)
+        
+        # --- FUERZA DOMINANTE (V12.0) ---
+        pesos_votos = {
+            "Trend": abs(v_trend * p_trend),
+            "NLP": abs(v_nlp * p_nlp),
+            "Flow": abs(v_flow * p_flow),
+            "Sniper": abs(v_struct_voto * p_sniper)
+        }
+        fuerza_dominante = max(pesos_votos, key=lambda k: pesos_votos[k])
+        if pesos_votos[fuerza_dominante] == 0:
+            fuerza_dominante = "Neutral"
 
         veredicto = round(max(-1.0, min(1.0, veredicto)), 4)
 
@@ -176,6 +293,7 @@ class Manager:
         cross_map = {
             "dxy": v_cross['var_dxy'],
             "spx": v_cross['var_spx'],
+            "oil": v_cross['var_oil'],
             "divergencia": v_cross['divergencia'],
             "ajuste": v_cross['ajuste'],
             "black_swan": v_cross['black_swan']
@@ -183,8 +301,9 @@ class Manager:
         # 5. Decisión
         umbral = params.get("GERENTE.umbral_disparo", 0.45)
         
-        print(f"\n[GERENTE] Pesos V7.0 Sniper: Trend(30%) NLP(20%) Vol(15%) Cross(15%) Flow(10%) Struct(10%)")
-        print(f"[GERENTE] Veredicto: {veredicto:+.4f} | Sniper: {v_struct['sniper_veredicto']} | Status: {'MODO EMERGENCIA' if v_cross['black_swan'] else 'Normal'}")
+        print(f"\n[GERENTE] Pesos V12.0 Dynamic: Trend({p_trend*100:.0f}%) NLP({p_nlp*100:.0f}%) Flow({p_flow*100:.0f}%) Sniper({p_sniper*100:.0f}%)")
+        print(f"[GERENTE] Veredicto: {veredicto:+.4f} | Sniper: {v_struct['sniper_veredicto']} | Fuerza: {fuerza_dominante}")
+        print(f"[GERENTE] Hurst: {h_val:.4f} ({h_estado}) | Status: {'MODO EMERGENCIA' if v_cross['black_swan'] else 'Normal'}")
         
         if abs(veredicto) < umbral:
             # --- NUEVO REPORTE DE GATILLO Y PROXIMIDAD ---
@@ -198,18 +317,22 @@ class Manager:
                 }
                 img_path = self.visualizer.generar_reporte_grafico(simbolo_interno, df_viz, votos_map, v_struct['ob_precio'], v_volume['poc'])
                 
-                notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map, v_struct, 
-                                     image_path=img_path, gemini_thought=gemini_thought)
+                # notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map, v_struct, 
+                #                      image_path=img_path, gemini_thought=gemini_thought, fuerza_dominante=fuerza_dominante)
+                pass # Silenciado V12.1
             elif 0.30 <= confianza < 0.38:
-                notificar_oportunidad_detectada(simbolo_interno, veredicto)
+                # notificar_oportunidad_detectada(simbolo_interno, veredicto, fuerza_dominante=fuerza_dominante)
+                pass # Silenciado V12.1
             
             if confianza >= 0.30:
                 motivo = f"Oportunidad detectada ({confianza:.2f}), pero debajo del umbral ({umbral})."
             else:
-                motivo = f"Veredicto {veredicto:+.4f} insuficiente (Umbral: {umbral})"
+                motivo = f"Veredicto {veredicto:+.4f} insufficiente (Umbral: {umbral})"
             
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                    veredicto, "IGNORADO", motivo)
+                                    veredicto, "IGNORADO", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": "IGNORADO", "veredicto": veredicto, "motivo": motivo}
 
         # 6. Aprobado — calcular dirección y lotaje
@@ -223,7 +346,9 @@ class Manager:
         if sl is None or tp is None:
             motivo = "Error calculando SL/TP via ATR. Orden abortada."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                    veredicto, "CANCELADO_RIESGO", motivo)
+                                    veredicto, "CANCELADO_RIESGO", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
         # 6.b Calculo de Lotaje Dinamico (Confianza)
@@ -235,9 +360,9 @@ class Manager:
         motivo = (
             f"Veredicto Ensemble: {veredicto:+.4f} supera umbral {umbral}. "
             f"Señal de {direccion}. "
-            f"Votos: Trend={v_trend:+.2f} (×{w_trend:.2f}), "
-            f"NLP={v_nlp:+.2f} (×{w_nlp:.2f}), "
-            f"Flow={v_flow:+.2f} (×{w_flow:.2f}). "
+            f"Votos: Trend={v_trend:+.2f} (0.30), "
+            f"NLP={v_nlp:+.2f} (0.20), "
+            f"Flow={v_flow:+.2f} (0.10). "
             f"SL={sl:.2f}  TP={tp:.2f}  Lotes={lotes}."
         )
 
@@ -273,7 +398,13 @@ class Manager:
                 smc_ob=v_struct['ob_precio'],
                 smc_estado=v_struct['estado_smc'],
                 smc_veredicto=v_struct['sniper_veredicto'],
+                smc_voto_raw=v_struct_voto,
+                v_flow=v_flow,
+                v_vol=v_volume['voto'],
+                v_cross=v_cross['voto'],
+                v_hurst=h_val,
                 gemini_thought=gemini_thought,
+                fuerza_dominante=fuerza_dominante,
                 image_path=self.visualizer.generar_reporte_grafico(
                     simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
                     {"Trend": v_trend, "NLP": v_nlp, "Flow": v_flow, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
@@ -281,7 +412,9 @@ class Manager:
                 )
             )
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                    veredicto, "EJECUTADO", motivo)
+                                    veredicto, "EJECUTADO", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
         else:
             # 8.a Validación de seguridad (Cuenta MT5)
@@ -314,10 +447,18 @@ class Manager:
                     lotes=lotes,
                     contexto=motivo
                 )
+
+                # --- PROTOCOLO GATEKEEPER V13.0: Gatillo de Hibernación ---
+                if retcode == 10018:
+                    print(f"[GATEKEEPER] Activando HIBERNACIÓN para {simbolo_interno} (Error 10018).")
+                    self._hibernacion_activos[simbolo_interno] = time.time()
+
                 notificar_rechazo_broker(simbolo_interno, retcode, causa)
                 
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                        veredicto, "ERROR_BROKER", err_msg)
+                                        veredicto, "ERROR_BROKER", err_msg,
+                                        v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                        v_hurst=h_val, v_sniper=v_struct['voto'])
                 return {"decision": "ERROR_BROKER", "motivo": err_msg}
             else:
                 ticket = obj_ticket.get("ticket")
@@ -330,7 +471,9 @@ class Manager:
                     err_msg = f"Discrepancia MT5: Ticket {ticket} reportado como DONE pero no aparece en posiciones abiertas."
                     print(f"[GERENTE] 🚨 {err_msg}")
                     notificar_error_critico("DISCREPANCIA_BROKER", err_msg)
-                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, veredicto, "ERROR_BROKER", err_msg)
+                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, veredicto, "ERROR_BROKER", err_msg,
+                                            v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                            v_hurst=h_val, v_sniper=v_struct['voto'])
                     return {"decision": "ERROR_BROKER", "motivo": err_msg}
                 
                 # Obtener detalles reales
@@ -344,19 +487,37 @@ class Manager:
                 # Fórmula: 65 + ((abs(veredicto) - 0.45) / (1.0 - 0.45)) * (98 - 65)
                 confianza = abs(veredicto)
                 prob_exito = 65 + ((confianza - 0.45) / (0.55)) * (33)
-                prob_exito = max(65, min(98, round(prob_exito, 1)))
+                prob_exito = max(65, min(98, round(prob_exito, 1))) # Generar mensaje final
 
                 notificar_orden_ejecutada(
-                    simbolo_interno, direccion, lotes, ticket, precio_real, 
-                    sl, tp, veredicto, v_trend, v_nlp, balance_real,
-                    hurst_h=h_val, hurst_estado=h_estado,
-                    vol_poc=vol_map['poc'], vol_va=vol_map['va'],
+                    simbolo=simbolo_interno, 
+                    direccion=direccion, 
+                    lotes=lotes, 
+                    ticket=ticket, 
+                    precio=precio_real, 
+                    sl=sl, tp=tp, 
+                    veredicto=veredicto, 
+                    v_trend=v_trend, 
+                    v_nlp=v_nlp, 
+                    balance=balance_real,
+                    hurst_h=h_val,
+                    hurst_estado=h_estado,
+                    vol_poc=vol_map['poc'],
+                    vol_va=vol_map['va'],
+                    vol_ctx=vol_map['contexto'],
+                    vol_ajuste=vol_map['ajuste'],
                     cross_div=cross_map['cross_div'] if 'cross_div' in cross_map else cross_map['divergencia'], 
                     cross_ajuste=cross_map['cross_ajuste'] if 'cross_ajuste' in cross_map else cross_map['ajuste'],
                     smc_ob=v_struct['ob_precio'],
                     smc_estado=v_struct['estado_smc'],
                     smc_veredicto=v_struct['sniper_veredicto'],
+                    smc_voto_raw=v_struct_voto,
+                    v_flow=v_flow,
+                    v_vol=v_volume['voto'],
+                    v_cross=v_cross['voto'],
+                    v_hurst=h_val,
                     gemini_thought=gemini_thought,
+                    fuerza_dominante=fuerza_dominante,
                     image_path=self.visualizer.generar_reporte_grafico(
                         simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
                         {"Trend": v_trend, "NLP": v_nlp, "Flow": v_flow, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
@@ -376,7 +537,9 @@ class Manager:
                     print(f"[GERENTE] Error actualizando precision inicial: {e_reg}")
 
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
-                                        veredicto, "EJECUTADO", motivo)
+                                        veredicto, "EJECUTADO", motivo,
+                                        v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                        v_hurst=h_val, v_sniper=v_struct['sniper_veredicto'])
                 return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
 
     # ------------------------------------------------------------------
@@ -474,11 +637,16 @@ class Manager:
 
     def _guardar_auditoria(self, simbolo: str, v_trend: float, v_nlp: float,
                             v_flow: float, veredicto: float,
-                            decision: str, motivo: str):
+                            decision: str, motivo: str, 
+                            v_vol: float = 0.0, v_cross: float = 0.0, 
+                            v_hurst: float = 0.5, v_sniper: float = 0.0):
         """Guarda la auditoría completa en registro_senales. SIEMPRE se ejecuta."""
         try:
-            self.db.guardar_senal(simbolo, v_trend, v_nlp, v_flow,
-                                  veredicto, decision, motivo)
+            # V12.0: Forzar cast a float para evitar fugas de tipos numpy (np.float64) a SQL
+            self.db.guardar_senal(simbolo, float(v_trend), float(v_nlp), float(v_flow),
+                                  float(veredicto), decision, motivo,
+                                  v_vol=float(v_vol), v_cross=float(v_cross), 
+                                  v_hurst=float(v_hurst), v_sniper=float(v_sniper))
             
             # --- NUEVO: Persistencia de Veredicto en registro_operaciones si fue ejecutado ---
             if decision in ("COMPRA", "VENTA", "EJECUTADO") and not motivo.startswith("Simulando"):
@@ -505,6 +673,63 @@ class Manager:
     # ------------------------------------------------------------------
     # Reflejos de Combate (Sensor de Inconsistencia)
     # ------------------------------------------------------------------
+
+    def mantener_vigilancia(self):
+        """Protocolo V15.0: Vigilancia de Fin de Semana (News + Heartbeat)."""
+        try:
+            ahora = datetime.now().strftime("%H:%M")
+            print(f"[VIGILANCIA] {ahora} -> Patrullando noticias...")
+            
+            # 1. Update Heartbeat
+            self.db.update_estado_bot("AHORRO (VIGILANCIA)", f"Vigilando noticias desde las {ahora}. MT5 en reposo.")
+            
+            # 2. Patrullar Noticias (Nuevas notificaciones a Telegram)
+            self.nlp.patrullar_noticias()
+            
+            # 3. Verificar si el hash global cambió para forzar refresco de caché
+            current_hash = self.nlp.get_current_hash()
+            if self._last_nlp_hash and current_hash != self._last_nlp_hash:
+                print(f"[VIGILANCIA] ⚠️ Cambio de contexto macro detectado. Refrescando caché...")
+                # Forzar un análisis ligero para un activo de referencia para 'calentar' el caché
+                self.nlp.analizar("XAUUSD", forzar_refresh=True, solo_si_conviccion=False)
+            
+            self._last_nlp_hash = current_hash
+            
+        except Exception as e:
+            print(f"[VIGILANCIA] Error en ciclo de vigilancia: {e}")
+
+    def _verificar_volatilidad_escalonada(self, simbolo_interno: str):
+        """Protocolo V14.0: Alertas escalonadas (5, 8, 10, 12, 15, 20%)."""
+        try:
+            sb = self.db.obtener_simbolo_broker(simbolo_interno)
+            rates = mt5.copy_rates_from_pos(sb, mt5.TIMEFRAME_D1, 0, 1)
+            if rates is None or len(rates) == 0:
+                return
+            
+            day_open = rates[0]['open']
+            tick = mt5.symbol_info_tick(sb)
+            if not tick:
+                return
+            
+            precio_actual = tick.bid
+            cambio_pct = ((precio_actual - day_open) / day_open) * 100.0
+            pct_abs = abs(cambio_pct)
+            
+            # Umbrales
+            umbrales = [5, 8, 10, 12, 15, 20, 25, 30]
+            current_level = 0
+            for u in umbrales:
+                if pct_abs >= u:
+                    current_level = u
+            
+            last_level = self._last_vol_alert_level.get(simbolo_interno, 0)
+            if current_level > last_level:
+                self._last_vol_alert_level[simbolo_interno] = current_level
+                notificar_alerta_volatilidad_escalonada(simbolo_interno, cambio_pct, precio_actual)
+                print(f"[GERENTE] Alerta de Volatilidad lanzada para {simbolo_interno} @ {current_level}%")
+                
+        except Exception as e:
+            print(f"[GERENTE] Error en check_volatilidad_escalonada: {e}")
 
     def _medir_volatilidad(self, simbolo_broker: str) -> float:
         """
@@ -546,6 +771,39 @@ class Manager:
         divergencia_bajista = (v_trend <= -0.90) and (v_nlp >= 0.0)
 
         if divergencia_alcista or divergencia_bajista:
-            notificar_divergencia(simbolo, v_trend, v_nlp)
+            # notificar_divergencia(simbolo, v_trend, v_nlp)
+            print(f"[GERENTE] ⚠️ Divergencia detectada en {simbolo}. Silenciada por V10.2.")
             return True
         return False
+
+    # ------------------------------------------------------------------
+    # Bitácora de Guerra (V7.7 Helpers)
+    # ------------------------------------------------------------------
+
+    def _procesar_ai_push(self, simbolo, v_nlp):
+        """
+        V10.2: Desactivado por Silent Mode.
+        """
+        pass
+
+    def _procesar_razonamiento_ruido(self, simbolo, h_estado):
+        """Explica el ruido del Hurst una vez por hora."""
+        ahora = datetime.now(timezone.utc)
+        
+        if h_estado == "RUIDO":
+            if simbolo not in self._hurst_noise_start:
+                self._hurst_noise_start[simbolo] = ahora
+            
+            last_rep = self._hurst_last_report.get(simbolo, datetime.min.replace(tzinfo=timezone.utc))
+            seg_ruido = (ahora - self._hurst_noise_start[simbolo]).total_seconds()
+            seg_desde_rep = (ahora - last_rep).total_seconds()
+            
+            if seg_ruido >= 3600 and seg_desde_rep >= 3600:
+                self._hurst_last_report[simbolo] = ahora
+                # notificar_explicacion_ruido(...)
+                print(f"[GERENTE] ⚠️ Mercado en RUIDO para {simbolo}. Silenciada por V10.2.")
+                pass
+        else:
+            # Si ya no hay ruido, reseteamos el contador
+            if simbolo in self._hurst_noise_start:
+                del self._hurst_noise_start[simbolo]

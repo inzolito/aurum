@@ -38,6 +38,7 @@ El Dashboard estará dividido en **5 vistas** accesibles desde un menú lateral 
 | 3 | **Radar Macroeconómico (NLP)** | Historial de noticias y razonamiento de la IA. |
 | 4 | **Gestión de Riesgo y Activos** | Control de interruptores y mapas de calor. |
 | 5 | **Laboratorio de IA y Versiones** | Análisis automático, sugerencias y Rollbacks. |
+| 6 | **Telegram Bot Interface** | **(V10.0+)** Interfaz interactiva vía Telegram para monitoreo rápido y control táctico. |
 
 ---
 

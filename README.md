@@ -8,19 +8,19 @@ Utiliza una arquitectura de "Modelo Ensemble" (Votación Heurística). El sistem
 
 ---
 
-## 2. Arquitectura de Hardware y Despliegue (Modelo Híbrido)
+## 2. Arquitectura de Hardware y Despliegue (Modelo de Datos 100% Nube)
 
-El sistema requiere latencia cero para la ejecución y almacenamiento persistente económico. Por lo tanto, se divide en dos entornos que se comunican continuamente:
+El sistema ha evolucionado hacia un modelo donde la máquina local es puramente un nodo de ejecución, mientras que la inteligencia y los datos residen en la nube.
 
-**Entorno de Ejecución (Local/Windows):**
-- Hardware: Máquina local (Surface Pro 5 o equivalente Windows).
-- Software Core: Terminal cliente de MetaTrader 5 (MT5).
-- Procesos: Los scripts en Python (Obreros y Gerente) corren aquí. Extraen datos de la RAM de MT5, calculan señales y envían órdenes de vuelta a MT5 usando la librería oficial MetaTrader5.
+**Nodo de Ejecución (Local/Windows):**
+- **Hardware:** Máquina local (Surface Pro 5 o similar).
+- **Software Core:** MetaTrader 5 (MT5).
+- **Procesos:** Los scripts Python (Manager + Obreros) se conectan a la nube para obtener parámetros y contexto antes de ejecutar órdenes en MT5.
 
-**Entorno de Datos y Control (Nube/Linux):**
-- Hardware: Instancia e2-micro en Google Cloud Platform (GCP).
-- Software Core: Base de datos relacional PostgreSQL 15+.
-- Procesos: Actúa como el cerebro remoto. Almacena el registro histórico, la configuración en caliente de los parámetros, el control de versiones y expone las vistas SQL para el Dashboard Analítico del usuario.
+**Cerebro de Datos y Control (Google Cloud Platform - GCP):**
+- **Hardware:** Instancia e2-micro con PostgreSQL 15.
+- **Base de Datos:** Centraliza parámetros, estados, señales y noticias.
+- **Ventaja:** Permite el control del bot desde cualquier interfaz (Telegram/Frontend) sin depender de archivos locales.
 
 ---
 
