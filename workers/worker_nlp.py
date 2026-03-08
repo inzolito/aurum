@@ -187,9 +187,9 @@ class NLPWorker:
             print("[NLP] Sin regimenes activos. Retornando neutrales.")
             return fallback
 
-        # 1. Seleccion de Motor (Prioridad Costo Cero)
-        modelo_final = GEMINI_MODEL_PRO if abs(technical_verdict) >= 0.40 else GEMINI_MODEL_LITE
-        print(f"[NLP] Usando motor: {modelo_final} (Veredicto Tecnico: {technical_verdict:+.2f})")
+        # 1. Seleccion de Motor (MODIFICADO: Forzado a LITE por restricción de cuota)
+        modelo_final = GEMINI_MODEL_LITE
+        print(f"[NLP] Usando motor: {modelo_final} (Modo Gratuito Forzado)")
 
         # 2. Compresion de Contexto (Ultimos 5 titulares)
         regimenes_recientes = regimenes[-5:]
