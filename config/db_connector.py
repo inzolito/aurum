@@ -439,7 +439,88 @@ class DBConnector:
                 print(f"[DB] Error reading nlp cache: {e}")
                 return None
 
-    # --- V11.0: TELEGRAM INTERACTIVE READS ---
+    @survival_shield
+    def guardar_sentimiento_noticia(self, simbolo: str, impacto: float, razonamiento: str):
+        """Guarda el análisis de una noticia en la tabla sentimiento_noticias."""
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    """
+                    INSERT INTO sentimiento_noticias (activo_id, titular, impacto_nlp, fuente, razonamiento_ia)
+                    SELECT id, %s, %s, %s, %s
+                    FROM activos WHERE simbolo = %s;
+                    """,
+                    ("Analisis Gemini", impacto, "Gemini AI", razonamiento, simbolo)
+                )
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB] Error guardando sentimiento noticia: {e}")
+                self.conn.rollback()
+
+    @survival_shield
+    def guardar_noticia_cruda(self, source: str, title: str, summary: str, hash_id: str, published_at=None):
+        """Guarda una noticia en raw_news_feed (V13.0)."""
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    """
+                    INSERT INTO raw_news_feed (source, title, content_summary, hash_id, published_at)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON CONFLICT (hash_id) DO UPDATE 
+                    SET published_at = EXCLUDED.published_at;
+                    """,
+                    (source, title, summary, hash_id, published_at)
+                )
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB] Error guardando noticia cruda: {e}")
+                self.conn.rollback()
+
+    @survival_shield
+    def get_top_news(self, limit: int = 5) -> list:
+        """Retorna las últimas noticias crudas con su fecha original (V13.0)."""
+        with self._lock:
+            query = "SELECT title, published_at, hash_id FROM raw_news_feed ORDER BY published_at DESC LIMIT %s"
+            self.cursor.execute(query, (limit,))
+            return [dict(zip(["title", "fecha", "hash"], row)) for row in self.cursor.fetchall()]
+
+    @survival_shield
+    def verificar_hash_noticia(self, hash_id: str) -> bool:
+        """Retorna True si el hash ya existe."""
+        with self._lock:
+            self.cursor.execute("SELECT 1 FROM raw_news_feed WHERE hash_id = %s LIMIT 1", (hash_id,))
+            return self.cursor.fetchone() is not None
+
+    @survival_shield
+    def get_catalizadores_activos(self) -> list:
+        """Retorna lista de catalizadores de largo plazo (V11.2)."""
+        with self._lock:
+            self.cursor.execute(
+                "SELECT event_name, ai_sentiment_score FROM market_catalysts WHERE is_active = TRUE"
+            )
+            return [dict(zip(["name", "score"], row)) for row in self.cursor.fetchall()]
+
+    @survival_shield
+    def upsert_catalizador(self, name: str, score: float):
+        """Crea o actualiza un catalizador (V11.2)."""
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    """
+                    INSERT INTO market_catalysts (event_name, ai_sentiment_score, is_active, last_update)
+                    VALUES (%s, %s, TRUE, CURRENT_TIMESTAMP)
+                    ON CONFLICT (event_name) DO UPDATE
+                    SET ai_sentiment_score = EXCLUDED.ai_sentiment_score,
+                        last_update = CURRENT_TIMESTAMP;
+                    """,
+                    (name, score)
+                )
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB] Error upsert catalizador: {e}")
+                self.conn.rollback()
+
+    # --- V11.1: TELEGRAM INTERACTIVE READS ---
     @survival_shield
     def get_tablero_global(self) -> list:
         """Retorna el último veredicto de cada activo para el Tablero Global."""

@@ -175,88 +175,83 @@ class NLPWorker:
 
     def _llamar_gemini(self, regimenes: list, activos: list, technical_verdict: float = 0.0, velas: list = None) -> dict:
         """
-        Llama a Gemini con un prompt multi-activo.
-        Retorna dict {simbolo: float} con guardrails aplicados.
-        En caso de cualquier error, retorna dict con 0.0 para todos.
-        V10.1: FREE-TIER PRIORITY (Switch de motor y compresion de contexto).
+        Llama a Gemini con un prompt multi-activo (Dual: Clasificación + Correlación).
         """
         simbolos = [a["simbolo"] for a in activos]
         fallback  = {s: {'voto': 0.0, 'razonamiento': "Error API Gemini."} for s in simbolos}
 
         if not regimenes:
-            print("[NLP] Sin regimenes activos. Retornando neutrales.")
             return fallback
 
-        # 1. Seleccion de Motor (MODIFICADO: Forzado a LITE por restricción de cuota)
-        modelo_final = GEMINI_MODEL_LITE
-        print(f"[NLP] Usando motor: {modelo_final} (Modo Gratuito Forzado)")
+        # 0. Obtener Memoria de Largo Plazo (V11.2)
+        catalizadores = self.db.get_catalizadores_activos()
+        cats_str = "\n".join([f"- {c['name']} (Sentimiento AI: {c['score']})" for c in catalizadores]) if catalizadores else "Sin catalizadores activos."
 
-        # 2. Compresion de Contexto (Ultimos 5 titulares)
+        modelo_final = GEMINI_MODEL_LITE
+        
+        # 2. Compresion de Contexto
         regimenes_recientes = regimenes[-5:]
         ctx_lineas = []
         for r in regimenes_recientes:
-            ctx_lineas.append(f"- {r['titulo']} ({r['clasificacion']}, estado: {r['estado']})")
+            ctx_lineas.append(f"- {r['titulo']} ({r['clasificacion']})")
         contexto_str = "\n".join(ctx_lineas)
         
-        # 3. Datos de Velas (Ultimas 3)
+        # 3. Datos de Velas
         velas_str = "No hay datos de velas recientes."
         if velas:
             v_lines = []
             for v in velas[-3:]:
-                # v es un dict con 'apertura', 'maximo', 'minimo', 'cierre'
                 v_lines.append(f"Vela: O:{v['apertura']} H:{v['maximo']} L:{v['minimo']} C:{v['cierre']}")
             velas_str = "\n".join(v_lines)
 
         activos_str  = ", ".join(simbolos)
-        formato_guia = json.dumps({s: {"voto": 0.0, "razonamiento": "..."} for s in simbolos[:1]})
         
         prompt = (
-            "Actua como un analista macro senior. "
-            "Contexto comprimido (Ultimos 5 titulares):\n"
+            "Eres un Analista Macro Senior con memoria de largo plazo (V13.0).\n\n"
+            "🧠 MEMORIA DE LARGO PLAZO (Catalizadores Activos):\n"
+            f"{cats_str}\n\n"
+            "🗞️ NUEVAS NOTICIAS / CONTEXTO:\n"
             f"{contexto_str}\n\n"
-            "Datos de las ultimas 3 velas (M1/M15):\n"
+            "📊 DATOS TÉCNICOS (Últimas 3 velas):\n"
             f"{velas_str}\n\n"
-            "Tu tarea: Evaluar el impacto en estos activos. "
-            "Devuelve UNICAMENTE un JSON valido (sin markdown) con esta estructura:\n"
-            f"- voto: Valor de -1.0 a 1.0.\n"
-            f"- razonamiento: Max 2 lineas en ESPAÑOL.\n"
-            f"Activos: {activos_str}\n"
-            f"Ejemplo: {formato_guia}\n"
-            "Se extremadamente conciso. Prioriza los datos de velas si hay contradiccion."
+            "TAREA:\n"
+            "1. CLASIFICACIÓN: Identifica si alguna noticia nueva es un CATALIZADOR de largo plazo.\n"
+            "2. REGIME SHIFT: Si detectas un catalizador con impacto > 0.85, compáralo con la MEMORIA. "
+            "¿El 'Contexto Maestro' ha sido REFORZADO o INVALIDADO? Explícalo brevemente.\n\n"
+            "Devuelve UNICAMENTE un JSON (sin markdown):\n"
+            "{\n"
+            "  \"analisis_activos\": {\"SIMBOLO\": {\"voto\": float, \"razonamiento\": \"...\"}, ...},\n"
+            "  \"catalizadores_detectados\": [\n"
+            "    {\"nombre\": \"...\", \"score\": float, \"estado\": \"REFORZADO|INVALIDADO|NUEVO\", \"descripcion\": \"...\"}\n"
+            "  ]\n"
+            "}\n"
+            f"Activos a evaluar: {activos_str}\n"
         )
 
         texto = _llamar_gemini_api(prompt, model=modelo_final)
-        if not texto:
-            return fallback
+        if not texto: return fallback
 
-        print(f"[NLP] Gemini {modelo_final[-10:]} respondio ({len(texto)} chars)")
-        return self._parsear_respuesta(texto, simbolos)
-
-    def _parsear_respuesta(self, texto: str, simbolos: list) -> dict:
-        """
-        Guardrail estricto: parsea el JSON de Gemini.
-        Retorna {simbolo: {'voto': float, 'razonamiento': str}}
-        """
-        resultado = {s: {'voto': 0.0, 'razonamiento': "Sin datos de Gemini"} for s in simbolos}
         try:
             json_str = _extraer_json(texto)
-            data     = json.loads(json_str)
-            for simbolo in simbolos:
-                if simbolo in data:
-                    item = data[simbolo]
-                    if isinstance(item, dict):
-                        v = item.get('voto', 0.0)
-                        r = item.get('razonamiento', "Analisis neutral.")
-                    else:
-                        v = item # Fallback si mando solo el numero
-                        r = "Actualizacion macro."
-                    
-                    resultado[simbolo] = {
-                        'voto': _clamp(v),
-                        'razonamiento': str(r)[:400] # Cap para BD
-                    }
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            print(f"[NLP] GUARDRAIL: JSON inválido de Gemini ({e}).")
+            data = json.loads(json_str)
+            
+            # Persistir catalizadores (V11.2)
+            for c in data.get("catalizadores_detectados", []):
+                self.db.upsert_catalizador(c["nombre"], _clamp(c["score"]))
+                
+            return self._parsear_respuesta_v2(data.get("analisis_activos", {}), simbolos)
+        except Exception as e:
+            print(f"[NLP] Error procesando respuesta dual: {e}")
+            return fallback
+
+    def _parsear_respuesta_v2(self, data: dict, simbolos: list) -> dict:
+        resultado = {s: {'voto': 0.0, 'razonamiento': "Sin datos"} for s in simbolos}
+        for simbolo in simbolos:
+            if simbolo in data:
+                item = data[simbolo]
+                v = item.get('voto', 0.0) if isinstance(item, dict) else item
+                r = item.get('razonamiento', "Neutral.") if isinstance(item, dict) else "Análisis."
+                resultado[simbolo] = {'voto': _clamp(v), 'razonamiento': str(r)[:400]}
         return resultado
 
     # ------------------------------------------------------------------
@@ -286,6 +281,9 @@ class NLPWorker:
             sim = activo["simbolo"]
             res = resultados.get(sim, {'voto': 0.0, 'razonamiento': "Neutral."})
             datos_insert.append((sim, res['voto'], res['razonamiento'], hash_ctx))
+            
+            # V11.1: Guardar también en sentimiento_noticias (Prioridad Usuario)
+            self.db.guardar_sentimiento_noticia(sim, res['voto'], res['razonamiento'])
         
         self.db.upsert_nlp_cache(datos_insert)
         print(f"[NLP] Caché guardado para hash={hash_ctx} ({len(activos)} activos)")
@@ -317,47 +315,94 @@ class NLPWorker:
     # ------------------------------------------------------------------
     # V10.2: NOT-AI NEWS Patrolling
     # ------------------------------------------------------------------
-    def patrullar_noticias(self, id_activo=None):
+    def patrullar_noticias(self):
         """
-        V10.2 NOT-AI MODE: Busca noticias frescas en regimenes_mercado,
-        las hashea y las manda a Telegram sin AI si son nuevas.
-        V10.3: Persistencia via base de datos.
+        V13.0 Structural Update: Extrae published_at y activa Regime Shift Alert.
         """
         try:
-            # 1. Obtener noticias activas o formándose
-            query = "SELECT id, titulo, estado FROM regimenes_mercado WHERE estado IN ('ACTIVO', 'FORMANDOSE')"
+            # Seleccionamos noticias de regimenes_mercado (que pueden venir de RSS/HTML)
+            query = "SELECT id, titulo, estado, fecha_inicio FROM regimenes_mercado WHERE estado IN ('ACTIVO', 'FORMANDOSE')"
             self.db.cursor.execute(query)
             items = self.db.cursor.fetchall()
 
             for item in items:
-                # Generar MD5 del título (sencillo)
-                raw_hash = hashlib.md5(item[1].encode()).hexdigest() # titulo es index 1
+                n_id, titulo, estado, fecha_db = item
                 
-                # Check DB for persistence (V10.3)
-                self.db.cursor.execute("SELECT 1 FROM noticias_notificadas WHERE hash = %s", (raw_hash,))
-                if not self.db.cursor.fetchone():
-                    # Es nueva!
-                    print(f"[NLP-PATROL] 📰 Detectada nueva noticia: {item[1]}")
-                    
-                    # Notificar raw (V10.2)
-                    msg = (f"📰 <b>NUEVA NOTICIA DETECTADA</b>\n"
-                           f"━━━━━━━━━━━━━━━━━━\n"
-                           f"📌 {item[1]}\n"
-                           f"🚦 Estado: {item[2]}\n"
-                           f"🔗 Fuente: Interna (DB)")
-                    
-                    try:
-                        from config.notifier import _enviar_telegram
-                        _enviar_telegram(msg)
-                    except:
-                        pass
-                    
-                    # Guardar en DB para no repetir nunca (V10.3)
-                    self.db.cursor.execute("INSERT INTO noticias_notificadas (hash) VALUES (%s)", (raw_hash,))
-                    self.db.conn.commit()
-                    
+                # V13.0: Extracción de fecha (Simulada si no viene del scraper, pero obligatoria)
+                # En un entorno real, el scraper llenaría 'fecha_inicio' con pubDate.
+                published_at = fecha_db if fecha_db else None
+                cronologia_status = "OK"
+                
+                if not published_at:
+                    published_at = datetime.now(timezone.utc)
+                    cronologia_status = "CRONOLOGÍA INCIERTA"
+
+                hash_id = hashlib.sha256(titulo.encode()).hexdigest()
+                
+                if self.db.verificar_hash_noticia(hash_id):
+                    continue
+
+                # Guardar Cruda con published_at
+                self.db.guardar_noticia_cruda("Interna (DB)", titulo, f"Estado: {estado} | {cronologia_status}", hash_id, published_at)
+                
+                print(f"[NLP-TRAZABILIDAD] 📰 Noticia guardada: {titulo} | Pub: {published_at}")
+
+                # Lógica 'Regime Shift' (Alerta de Emergencia V13.0)
+                # Simulamos un impacto alto para el trigger de alerta si la noticia es muy reciente (< 15 min)
+                ahora = datetime.now(timezone.utc)
+                delta_min = (ahora - published_at).total_seconds() / 60
+                
+                # Usamos Gemini para evaluar el impacto real si es una noticia nueva
+                # Para simplificar el patrullaje, si delta < 15min, lanzamos evaluación flash
+                if delta_min < 15:
+                    print(f"[REGIME-SHIFT] 🚨 Noticia de última hora detectada (<15m): {titulo}")
+                    self._activar_alerta_emergencia(titulo, published_at)
+                
+                # Notificar a Telegram
+                footer = f"🕒 Pub: {published_at.strftime('%H:%M:%S UTC')}" if cronologia_status == "OK" else "⚠️ CRONOLOGÍA INCIERTA"
+                msg = (f"📰 <b>NUEVA NOTICIA DETECTADA</b>\n"
+                       f"━━━━━━━━━━━━━━━━━━\n"
+                       f"📌 {titulo}\n"
+                       f"🚦 Estado: {estado}\n"
+                       f"{footer}\n"
+                       f"🔗 ID: {hash_id[:8]}")
+                
+                try:
+                    from config.notifier import _enviar_telegram
+                    _enviar_telegram(msg)
+                except:
+                    pass
         except Exception as e:
-            print(f"[NLP-PATROL] Error en patrullaje: {e}")
+            print(f"[NLP-PATROL] Error en patrullaje V13.0: {e}")
+
+    def _activar_alerta_emergencia(self, titulo: str, fecha: datetime):
+        """Dispara una alerta de emergencia si el impacto es crítico (V13.0)."""
+        prompt = (
+            f"ALERTA DE EMERGENCIA (Regime Shift V13.0)\n\n"
+            f"NOTICIA: {titulo}\n"
+            f"HORA: {fecha}\n\n"
+            "TAREA:\n"
+            "1. Evalúa el impact_score de esta noticia (0.0 a 1.0).\n"
+            "2. Compara con los catalizadores macro actuales.\n"
+            "3. ¿Se refuerza o invalida el contexto maestro?\n\n"
+            "Responde en este formato JSON:\n"
+            "{\"impact_score\": float, \"veredicto\": \"REFORZADO|INVALIDADO\", \"explicacion\": \"...\"}"
+        )
+        texto = _llamar_gemini_api(prompt, model=GEMINI_MODEL_PRO) # Usamos Pro para alertas
+        if texto:
+            try:
+                data = json.loads(_extraer_json(texto))
+                if data.get("impact_score", 0) > 0.85:
+                    msg = (f"🚨 <b>ALERTA DE EMERGENCIA: REGIME SHIFT</b>\n"
+                           f"━━━━━━━━━━━━━━━━━━\n"
+                           f"🔥 <b>Impacto:</b> {data['impact_score']:.2f}\n"
+                           f"⚖️ <b>Veredicto:</b> {data['veredicto']}\n\n"
+                           f"📝 {data['explicacion']}\n\n"
+                           f"🕒 Pub: {fecha.strftime('%H:%M')} | Noticia: {titulo}")
+                    from config.notifier import _enviar_telegram
+                    _enviar_telegram(msg)
+            except:
+                pass
     # ------------------------------------------------------------------
 
     def _resolver_id(self, simbolo_interno: str):

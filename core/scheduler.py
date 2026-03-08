@@ -29,14 +29,63 @@ class AurumScheduler:
         # schedule.every().day.at("08:00").do(self.evento_sesion, "Londres")
         # schedule.every().day.at("14:30").do(self.evento_sesion, "Nueva York")
         
+        # V11.1: Reporte Horario de Noticias (Pedido por Usuario)
+        schedule.every().hour.at(":00").do(self.reporte_noticias_horario)
+        
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
-        print("[SCHEDULER] Programador iniciado (Reportes + Sesiones + Pulso IA)")
+        print("[SCHEDULER] Programador iniciado (Reportes + Sesiones + Pulso IA + Noticias)")
 
     def _run_loop(self):
         while not self.stop_event.is_set():
             schedule.run_pending()
             time.sleep(30)
+
+    def reporte_noticias_horario(self):
+        """Reporte Triple Horario (V13.0): Crudo + Contexto + Análisis."""
+        print("[SCHEDULER] Generando Reporte Triple Horario...")
+        try:
+            db = self.manager.db
+            
+            # 1. NOTICIAS CRUDAS (de raw_news_feed)
+            raw_news = db.get_top_news(limit=5)
+            # 2. CONTEXTOS MAESTROS (de market_catalysts)
+            catalysts = db.get_catalizadores_activos()
+            # 3. ANÁLISIS DE ACTIVOS (de cache_nlp_impactos)
+            activos = db.get_tablero_global() # Reusamos para ver sentimientos actuales
+            
+            resumen = "🏛️ <b>AURUM: REPORTE TRIPLE (V13.0)</b>\n"
+            resumen += "━━━━━━━━━━━━━━━━━━\n\n"
+            
+            # Sección 1: NOTICIAS CRUDAS
+            resumen += "📰 <b>NOTICIAS CRUDAS:</b>\n"
+            if raw_news:
+                for n in raw_news:
+                    fecha_str = n['fecha'].strftime("%H:%M") if n['fecha'] else "Incierta"
+                    resumen += f"• {n['title']} | Pub: {fecha_str} | ID: {n['hash'][:6]}\n"
+            else:
+                resumen += "<i>Sin noticias recientes.</i>\n"
+            
+            resumen += "\n🧠 <b>CONTEXTOS MAESTROS:</b>\n"
+            if catalysts:
+                for c in catalysts:
+                    sesgo = "🟢" if c['score'] > 0 else "🔴" if c['score'] < 0 else "⚪"
+                    resumen += f"• {c['name']} | Sesgo: {sesgo} {c['score']:+.2f} | Activo\n"
+            else:
+                resumen += "<i>Sin catalizadores maestros activos.</i>\n"
+                
+            resumen += "\n📊 <b>ANÁLISIS DE ACTIVOS:</b>\n"
+            if activos:
+                for a in activos[:5]: # Top 5 activos
+                    impacto = "Alcista" if a['veredicto'] > 0.3 else "Bajista" if a['veredicto'] < -0.3 else "Neutral"
+                    resumen += f"• <b>{a['simbolo']}:</b> {impacto} ({a['veredicto']:+.2f})\n"
+            
+            resumen += "\n<i>Monitorización continua V13.0 estructural.</i>"
+            
+            _enviar_telegram(resumen)
+            print("[SCHEDULER] Reporte Triple enviado.")
+        except Exception as e:
+            print(f"[SCHEDULER] Error en Reporte Triple: {e}")
 
     def reporte_apertura(self):
         """08:30 - Estrategia de Apertura."""

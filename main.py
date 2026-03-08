@@ -6,6 +6,7 @@ Ciclo: evalúa cada activo activo cada 60 segundos (1 vela M1).
 import time
 import sys
 import os
+import psutil
 from datetime import datetime
 
 from config.db_connector import DBConnector
@@ -14,6 +15,8 @@ from core.manager import Manager
 from core.scheduler import AurumScheduler
 from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario
 
+PID_FILE = "aurum_bot.pid"
+
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
 
@@ -21,193 +24,217 @@ CICLO_SEGUNDOS = 60
 # El motor obtiene los activos dinámicamente desde la tabla 'activos' en GCP.
 
 
-def inicializar() -> tuple[DBConnector, MT5Connector] | tuple[None, None]:
-    """Intenta conectar a la BD y a MT5. Retorna (db, mt5) o (None, None) si falla."""
-    db = DBConnector()
-    mt5 = MT5Connector()
+class AurumEngine:
+    def __init__(self):
+        self.db = None
+        self.mt5_conn = None
+        self.gerente = None
+        self.programador = None
+        self.running = False
+        self.ciclo = 0
 
-    if not db.conectar():
-        print("[MAIN] CRITICO: No se pudo conectar a la base de datos. Abortando.")
-        return None, None
+    def inicializar(self) -> bool:
+        """Intenta conectar a la BD y a MT5. Retorna True si exitosa."""
+        self.db = DBConnector()
+        self.mt5_conn = MT5Connector()
 
-    if not mt5.conectar():
-        print("[MAIN] CRITICO: No se pudo conectar a MT5. Abortando.")
-        db.desconectar()
-        return None, None
+        if not self.db.conectar():
+            print("[MAIN] CRITICO: No se pudo conectar a la base de datos. Abortando.")
+            return False
 
-    return db, mt5
+        if not self.mt5_conn.conectar():
+            print("[MAIN] CRITICO: No se pudo conectar a MT5. Abortando.")
+            self.db.desconectar()
+            return False
 
+        return True
+
+    def _check_instance(self) -> bool:
+        """Verifica si ya existe una instancia corriendo mediante archivo .pid."""
+        if os.path.exists(PID_FILE):
+            try:
+                with open(PID_FILE, "r") as f:
+                    old_pid = int(f.read().strip())
+                if psutil.pid_exists(old_pid):
+                    print(f"[MAIN] 🚨 ERROR: Ya hay una instancia corriendo (PID: {old_pid}).")
+                    return False
+            except Exception:
+                pass
+        
+        # Crear nuevo archivo PID
+        with open(PID_FILE, "w") as f:
+            f.write(str(os.getpid()))
+        return True
+
+    def run(self):
+        if not self._check_instance():
+            return
+
+        print("=" * 60)
+        print("  AURUM OMNI V1.0.0 — INICIANDO")
+        print("=" * 60)
+
+        if not self.db or not self.mt5_conn:
+            if not self.inicializar():
+                return
+
+        # --- 0. VALIDACION V9.0 DE CACHE ---
+        try:
+            self.db.cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='cache_nlp_impactos' AND column_name='hash_contexto';")
+            if self.db.cursor.fetchone():
+                print("[MAIN] Conexión a BD exitosa - Columna hash_contexto detectada.")
+            else:
+                print("[MAIN] ⚠️ ADVERTENCIA: Columna hash_contexto NO detectada en la BD.")
+        except Exception as e:
+            print(f"[MAIN] Error verificando columna hash_contexto: {e}")
+
+        # --- 1. KILL-SWITCH & PID LOGGING ---
+        pid = os.getpid()
+        
+        # --- 2. VALIDACION HARDCODEADA DE CUENTA MT5 ---
+        cuenta_esperada = os.environ.get("MT5_LOGIN", "")
+        import MetaTrader5 as mt_api
+        info_cuenta = mt_api.account_info()
+        
+        if not info_cuenta:
+            print("[MAIN] CRITICO: No se pudo obtener la informacion de la cuenta MT5.")
+            return
+            
+        cuenta_real = str(info_cuenta.login)
+        print(f"\n[MAIN] SISTEMA INICIADO - PID: {pid} - CUENTA MT5: {cuenta_real}")
+        
+        if cuenta_real != cuenta_esperada:
+            print(f"[MAIN] 🚨 FATAL: Cuenta MT5 incorrecta! Esperada: {cuenta_esperada}, Real: {cuenta_real}")
+            print("[MAIN] Auto-destruccion de seguridad activada (Kill-Switch).")
+            notificar_error_critico("SEGURIDAD", f"Intento de operacion en cuenta equivocada ({cuenta_real}). Bot abortado.")
+            return
+
+        self.gerente = Manager(self.db, self.mt5_conn)
+        self.programador = AurumScheduler(self.gerente)
+        self.programador.start()
+
+        # V10.0: UI de Telegram Interactiva en Background
+        import threading
+        from config.telegram_bot import run_telegram_bot
+        bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
+        bot_thread.start()
+
+        self.db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
+        print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
+        print(f"[MAIN] Ciclo: cada {CICLO_SEGUNDOS}s | Activos: cargados dinamicamente desde BD\n")
+
+        # Contadores para el pulso horario (cada 60 ciclos ~ 1 hora)
+        CICLOS_POR_HORA = 60
+        ciclos_hora     = 0
+        ordenes_hora    = 0
+
+        self.running = True
+        try:
+            while self.running:
+                self.ciclo += 1
+                ahora_dt = datetime.now()
+                hora = ahora_dt.strftime('%H:%M:%S')
+                
+                # --- PROTOCOLO GATEKEEPER V13.0: Bypass de Fin de Semana ---
+                dia = ahora_dt.weekday()
+                hora_int = ahora_dt.hour
+                
+                es_finde = False
+                if dia == 4 and hora_int >= 18:
+                    es_finde = True
+                elif dia == 5:
+                    es_finde = True
+                elif dia == 6 and hora_int < 18:
+                    es_finde = True
+                    
+                if es_finde:
+                    print(f"\n[GATEKEEPER] {ahora_dt.strftime('%A %H:%M')} -> MODO VIGILANCIA (Fin de semana).")
+                    self.gerente.mantener_vigilancia()
+                    time.sleep(600)
+                    continue
+
+                print(f"\n{'-'*60}")
+                print(f"  CICLO #{self.ciclo}  |  {hora}")
+                print(f"{'-'*60}")
+
+                activos_db = self.db.obtener_activos_patrullaje()
+                simbolos   = [a['simbolo'] for a in activos_db]
+
+                self.db.update_estado_bot(
+                    "OPERANDO",
+                    f"Ciclo #{self.ciclo} en curso. Monitoreando: {', '.join(simbolos)}."
+                )
+
+                self.gerente.gestionar_posiciones_abiertas()
+                self.gerente.auditar_precision_cierres()
+
+                import MetaTrader5 as mt5_api
+                info_acc = mt5_api.account_info()
+                if info_acc and info_acc.equity < 2850.0:
+                    msg_kill = "🚨 MAX DRAWDOWN ALCANZADO ($2,850). SISTEMA HIBERNANDO HASTA MAÑANA."
+                    print(f"\n[MAIN] {msg_kill}")
+                    self.db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
+                    notificar_error_critico("KILL-SWITCH", msg_kill)
+                    self.mt5_conn.cerrar_todas_las_posiciones()
+                    self.running = False
+                    break
+
+                for activo in activos_db:
+                    print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
+                    try:
+                        resultado = self.gerente.evaluar(
+                            activo['simbolo'],
+                            modo_simulacion=False,
+                            id_activo=activo['id']
+                        )
+                        if resultado.get("decision") not in ("IGNORADO", "CANCELADO_RIESGO"):
+                            ordenes_hora += 1
+                    except Exception as e:
+                        print(f"[MAIN] ERROR evaluando {activo['simbolo']}: {e}")
+                        self.db.registrar_log("ERROR", "MAIN",
+                                         f"Excepcion en ciclo de {activo['simbolo']}: {e}")
+
+                ciclos_hora    += 1
+                if self.ciclo % CICLOS_POR_HORA == 0:
+                    ciclos_hora  = 0
+                    ordenes_hora = 0
+
+                import MetaTrader5 as mt5_lib
+                if not mt5_lib.terminal_info():
+                    print("[MAIN] MT5 desconectado. Intentando reconectar...")
+                    self.db.update_estado_bot("ERROR", "MT5 desconectado. Reconectando...")
+                    if self.mt5_conn.conectar():
+                        print("[MAIN] MT5 reconectado exitosamente.")
+                        self.db.update_estado_bot("OPERANDO", "MT5 reconectado. Reanudando ciclos.")
+                    else:
+                        print("[MAIN] FALLO reconexion MT5. Reintentando en el proximo ciclo.")
+
+                print(f"\n[MAIN] Proximo ciclo en {CICLO_SEGUNDOS}s...")
+                for _ in range(CICLO_SEGUNDOS):
+                    if not self.running: break
+                    time.sleep(1)
+
+        except KeyboardInterrupt:
+            self.stop()
+
+    def stop(self):
+        print("\n\n--- Apagando Aurum de forma segura ---")
+        self.running = False
+        if self.db:
+            self.db.update_estado_bot("APAGADO", "Cierre manual o por sistema.")
+        if self.programador:
+            self.programador.stop_event.set()
+        if self.mt5_conn:
+            self.mt5_conn.desconectar()
+        if self.db:
+            self.db.desconectar()
+        if os.path.exists(PID_FILE):
+            os.remove(PID_FILE)
+        print("[MAIN] Sistema apagado. Hasta la proxima.")
 
 def main():
-    print("=" * 60)
-    print("  AURUM OMNI V1.0.0 — INICIANDO")
-    print("=" * 60)
-
-    db, mt5_conn = inicializar()
-    if not db:
-        sys.exit(1)
-
-    # --- 0. VALIDACION V9.0 DE CACHE ---
-    try:
-        db.cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='cache_nlp_impactos' AND column_name='hash_contexto';")
-        if db.cursor.fetchone():
-            print("[MAIN] Conexión a BD exitosa - Columna hash_contexto detectada.")
-        else:
-            print("[MAIN] ⚠️ ADVERTENCIA: Columna hash_contexto NO detectada en la BD.")
-    except Exception as e:
-        print(f"[MAIN] Error verificando columna hash_contexto: {e}")
-
-    # --- 1. KILL-SWITCH & PID LOGGING ---
-    pid = os.getpid()
-    
-    # --- 2. VALIDACION HARDCODEADA DE CUENTA MT5 ---
-    cuenta_esperada = os.environ.get("MT5_LOGIN", "")
-    import MetaTrader5 as mt_api
-    info_cuenta = mt_api.account_info()
-    
-    if not info_cuenta:
-        print("[MAIN] CRITICO: No se pudo obtener la informacion de la cuenta MT5.")
-        sys.exit(1)
-        
-    cuenta_real = str(info_cuenta.login)
-    print(f"\n[MAIN] SISTEMA INICIADO - PID: {pid} - CUENTA MT5: {cuenta_real}")
-    
-    if cuenta_real != cuenta_esperada:
-        print(f"[MAIN] 🚨 FATAL: Cuenta MT5 incorrecta! Esperada: {cuenta_esperada}, Real: {cuenta_real}")
-        print("[MAIN] Auto-destruccion de seguridad activada (Kill-Switch).")
-        notificar_error_critico("SEGURIDAD", f"Intento de operacion en cuenta equivocada ({cuenta_real}). Bot abortado.")
-        sys.exit(1)
-
-    gerente = Manager(db, mt5_conn)
-    programador = AurumScheduler(gerente)
-    programador.start()
-
-    # V10.0: UI de Telegram Interactiva en Background
-    import threading
-    from config.telegram_bot import run_telegram_bot
-    bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-    bot_thread.start()
-
-    db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
-    print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
-    print(f"[MAIN] Ciclo: cada {CICLO_SEGUNDOS}s | Activos: cargados dinamicamente desde BD\n")
-
-    # --- Mensaje de inicio a Telegram: Silenciado por V10.3 ---
-    # activos_inicio  = db.obtener_activos_patrullaje()
-    # simbolos_inicio = [a['simbolo'] for a in activos_inicio]
-    # notificar_inicio(simbolos_inicio)
-
-    # Contadores para el pulso horario (cada 60 ciclos ~ 1 hora)
-    CICLOS_POR_HORA = 60
-    ciclos_hora     = 0
-    ordenes_hora    = 0
-
-    ciclo = 0
-    try:
-        while True:
-            ciclo += 1
-            ahora_dt = datetime.now()
-            hora = ahora_dt.strftime('%H:%M:%S')
-            
-            # --- PROTOCOLO GATEKEEPER V13.0: Bypass de Fin de Semana ---
-            # Viernes 18:00 (Chile) a Domingo 18:00 (Chile)
-            # Python weekday: 4=Viernes, 5=Sabado, 6=Domingo
-            dia = ahora_dt.weekday()
-            hora_int = ahora_dt.hour
-            
-            es_finde = False
-            if dia == 4 and hora_int >= 18: # Viernes noche
-                es_finde = True
-            elif dia == 5: # Sabado total
-                es_finde = True
-            elif dia == 6 and hora_int < 18: # Domingo mañana/tarde
-                es_finde = True
-                
-            if es_finde:
-                print(f"\n[GATEKEEPER] {ahora_dt.strftime('%A %H:%M')} -> MODO VIGILANCIA (Fin de semana).")
-                gerente.mantener_vigilancia()
-                time.sleep(600) # Dormir 10 minutos antes de volver a patrullar news
-                continue
-
-            print(f"\n{'-'*60}")
-            print(f"  CICLO #{ciclo}  |  {hora}")
-            print(f"{'-'*60}")
-
-            # Obtener activos dinámicamente desde la BD (no hardcodeados)
-            activos_db = db.obtener_activos_patrullaje()
-            simbolos   = [a['simbolo'] for a in activos_db]
-
-            # Heartbeat en cada ciclo
-            db.update_estado_bot(
-                "OPERANDO",
-                f"Ciclo #{ciclo} en curso. Monitoreando: {', '.join(simbolos)}."
-            )
-
-            # --- NUEVO: Gestión de Riesgo y Auditoría de Cierre ---
-            gerente.gestionar_posiciones_abiertas() # Breakeven
-            gerente.auditar_precision_cierres()     # Log de Precisión
-
-            # --- NUEVA LOGICA DE CORTACORRIENTE (KILL-SWITCH) ---
-            import MetaTrader5 as mt5_api
-            info_acc = mt5_api.account_info()
-            if info_acc and info_acc.equity < 2850.0:
-                msg_kill = "🚨 MAX DRAWDOWN ALCANZADO ($2,850). SISTEMA HIBERNANDO HASTA MAÑANA."
-                print(f"\n[MAIN] {msg_kill}")
-                db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
-                notificar_error_critico("KILL-SWITCH", msg_kill)
-                mt5_conn.cerrar_todas_las_posiciones()
-                break # Detener el bot
-
-            # Evaluar cada activo con su id real de BD
-            for activo in activos_db:
-                print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
-                try:
-                    resultado = gerente.evaluar(
-                        activo['simbolo'],
-                        modo_simulacion=False,
-                        id_activo=activo['id']   # PRODUCCION DEMO
-                    )
-                    # Contar órdenes realmente disparadas
-                    if resultado.get("decision") not in ("IGNORADO", "CANCELADO_RIESGO"):
-                        ordenes_hora += 1
-                except Exception as e:
-                    print(f"[MAIN] ERROR evaluando {activo['simbolo']}: {e}")
-                    db.registrar_log("ERROR", "MAIN",
-                                     f"Excepcion en ciclo de {activo['simbolo']}: {e}")
-
-            ciclos_hora    += 1
-            uptime_minutos  = (ciclo * CICLO_SEGUNDOS) // 60
-
-            # --- Pulso horario: desactivado por V10.2 (Silent Mode) ---
-            # if ciclo % CICLOS_POR_HORA == 0:
-            #     notificar_resumen_horario(...)
-            if ciclo % CICLOS_POR_HORA == 0:
-                ciclos_hora  = 0
-                ordenes_hora = 0
-
-            # Reconexión automática a MT5 si se desconecta
-            import MetaTrader5 as mt5_lib
-            if not mt5_lib.terminal_info():
-                print("[MAIN] MT5 desconectado. Intentando reconectar...")
-                db.update_estado_bot("ERROR", "MT5 desconectado. Reconectando...")
-                if mt5_conn.conectar():
-                    print("[MAIN] MT5 reconectado exitosamente.")
-                    db.update_estado_bot("OPERANDO", "MT5 reconectado. Reanudando ciclos.")
-                else:
-                    print("[MAIN] FALLO reconexion MT5. Reintentando en el proximo ciclo.")
-
-            print(f"\n[MAIN] Proximo ciclo en {CICLO_SEGUNDOS}s...")
-            time.sleep(CICLO_SEGUNDOS)
-
-    except KeyboardInterrupt:
-        print("\n\n--- Apagando Aurum de forma segura (Ctrl+C) ---")
-        db.update_estado_bot("APAGADO", "Cierre manual por el usuario.")
-        programador.stop_event.set()
-        mt5_conn.desconectar()
-        db.desconectar()
-        print("[MAIN] Sistema apagado. Hasta la proxima.")
-        sys.exit(0)
-
+    engine = AurumEngine()
+    engine.run()
 
 if __name__ == "__main__":
     main()

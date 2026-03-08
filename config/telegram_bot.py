@@ -26,7 +26,8 @@ ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 def get_main_keyboard():
     keyboard = [
         [KeyboardButton("📊 TABLERO GLOBAL"), KeyboardButton("🩺 TEST DE SALUD")],
-        [KeyboardButton("🔍 LUPA DE ACTIVO"), KeyboardButton("📰 RADAR DE NOTICIAS")]
+        [KeyboardButton("🔍 LUPA DE ACTIVO"), KeyboardButton("📰 RADAR DE NOTICIAS")],
+        [KeyboardButton("🗞️ ULTIMAS NOTICIAS (/news)")]
     ]
     return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
 
@@ -38,10 +39,14 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         print(f"[TELEGRAM] Bloqueado: ChatID {update.effective_chat.id} no coincide con {ALLOWED_CHAT_ID}")
         return
     await update.message.reply_text(
-        "⚡ <b>Aurum Omni V10.0 - Comando Táctico</b>\nSeleccione una acción:",
+        "⚡ <b>Aurum Omni V11.2 - Traceability & Memory</b>\nSeleccione una acción:",
         parse_mode="HTML",
         reply_markup=get_main_keyboard()
     )
+
+async def news_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /news: Muestra las últimas 5 noticias crudas."""
+    await get_news_report(update, context)
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Maneja los botones interactivos."""
@@ -57,12 +62,32 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data['esperando_simbolo'] = True
     elif "RADAR DE NOTICIAS" in text:
         await radar_noticias(update, context)
+    elif "ULTIMAS NOTICIAS" in text:
+        await get_news_report(update, context)
     elif context.user_data.get('esperando_simbolo'):
         context.user_data['esperando_simbolo'] = False
         await lupa_activo(update, context, text.upper())
 
 # --- ACCIONES ---
-async def tablero_global(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def get_news_report(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    db = DBConnector()
+    if not db.conectar():
+        await update.message.reply_text("❌ Error de comunicación con la base de datos.")
+        return
+    
+    news = db.get_top_news(5)
+    db.desconectar()
+
+    if not news:
+        await update.message.reply_text("🗞️ No hay noticias crudas registradas en la última hora.")
+        return
+
+    msg = "🗞️ <b>ÚLTIMAS NOTICIAS CRUDAS (Trazabilidad)</b>\n"
+    msg += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    for n in news:
+        msg += f"• <code>{n['fecha'].strftime('%H:%M')}</code>: {n['title']}\n\n"
+    
+    await update.message.reply_text(msg, parse_mode="HTML")
     await update.message.reply_text("📊 Consultando Tablero Global (Direct DB)...")
     db = DBConnector()
     if not db.conectar():
@@ -175,6 +200,7 @@ def run_telegram_bot():
     app = Application.builder().token(TOKEN).build()
     
     app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("news", news_command))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     
     # Run polling no-bloqueante si se integra con otro event loop, 
