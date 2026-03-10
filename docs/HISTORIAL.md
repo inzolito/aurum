@@ -5,6 +5,15 @@ Para el detalle técnico de cada item ver `AUDIT_REPORT_2026-03-10.md`.
 
 ---
 
+## 2026-03-10 (V14 — Motor NLP Upgrade)
+
+### Mejoras implementadas (P-1 a P-3 V14)
+- **P-1** `workers/worker_nlp.py` — Modelo actualizado a `gemini-3.1-flash-lite`. Mayor velocidad y menor latencia.
+- **P-2** `workers/worker_nlp.py` — `NLP_CACHE_TTL_MIN` reducido de 30 a **5 minutos**. Además: si el hash de contexto macro cambia, se fuerza re-análisis inmediato de Gemini sin esperar TTL ni cooldown (nuevo campo `_ultimo_hash` en `__init__`).
+- **P-3** `core/manager.py` — `_UMBRAL_PROXIMIDAD` bajado de 0.38 a **0.15**. La IA ahora participa en el proceso de decisión con señales técnicas débiles (≥ 15% de convicción).
+
+---
+
 ## 2026-03-10
 
 ### Operaciones en MT5

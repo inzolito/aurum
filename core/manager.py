@@ -49,7 +49,7 @@ class Manager:
     # Umbrales de convicción compartidos entre métodos del Gerente.
     # Modificar aquí o en parametros_sistema en BD.
     _UMBRAL_OPORTUNIDAD = 0.30  # Convicción mínima para reportar oportunidad detectada
-    _UMBRAL_PROXIMIDAD  = 0.38  # Convicción para llamar a Gemini y generar telemetría
+    _UMBRAL_PROXIMIDAD  = 0.15  # P-3 V14: Bajado de 0.38 a 0.15 para mayor participación NLP
     _UMBRAL_ZONA_GRIS   = 0.45  # Límite superior de zona gris (= umbral_disparo por defecto)
 
     def __init__(self, db: DBConnector, mt5: MT5Connector):

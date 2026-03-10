@@ -26,9 +26,9 @@ if hasattr(sys.stdout, 'reconfigure'):
 load_dotenv()
 
 GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "")
-CACHE_TTL_MIN    = int(os.getenv("NLP_CACHE_TTL_MIN", "30"))
-GEMINI_MODEL_LITE = "gemini-flash-latest" # V10.1: Free-Tier Priority
-GEMINI_MODEL_PRO  = "gemini-pro-latest"   # Solo para veredictos > 0.40
+CACHE_TTL_MIN    = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))   # P-2 V14: reducido de 30 a 5 min
+GEMINI_MODEL_LITE = "gemini-3.1-flash-lite"  # P-1 V14: modelo actualizado
+GEMINI_MODEL_PRO  = "gemini-pro-latest"      # Solo para alertas de emergencia
 
 
 def _llamar_gemini_api(prompt: str, model: str = GEMINI_MODEL_LITE) -> str:
@@ -91,6 +91,7 @@ class NLPWorker:
         if not self._api_disponible:
             print("[NLP] ADVERTENCIA: GEMINI_API_KEY no configurada. Worker usará modo fallback (sin IA).")
         self._ultimo_refresh = datetime.min.replace(tzinfo=timezone.utc)  # Para el guard de 5 min
+        self._ultimo_hash = None  # P-2 V14: rastreo de hash para forzar refresh inmediato
     def extract_nlp_score(self, text: str) -> float | None:
         """Extrae el puntaje usando Regex [SCORE: X.XX]."""
         pattern = r"\[SCORE:\s*([+-]?\d*\.?\d+)\]"
@@ -125,11 +126,21 @@ class NLPWorker:
         if not self._api_disponible:
             return self._fallback_impactos_regimen(simbolo_interno, id_activo)
 
-        # Evaluar límite de refresco forzado (Cooldown 5 min)
+        # Obtener contexto macro y su hash primero para detectar cambios
         ahora = datetime.now(timezone.utc)
+        regimenes  = self._obtener_regimenes_activos()
+        hash_ctx   = self._calcular_hash(regimenes)
         ignorar_cache_ahora = False
-        
-        if forzar_refresh:
+
+        # P-2 V14: Si el hash cambia, forzar refresh inmediato sin importar TTL ni cooldown
+        if self._ultimo_hash is not None and hash_ctx != self._ultimo_hash:
+            print(f"[NLP] Hash de contexto cambiado ({self._ultimo_hash[:8]} -> {hash_ctx[:8]}). Forzando re-analisis inmediato.")
+            ignorar_cache_ahora = True
+            self._ultimo_refresh = ahora
+        self._ultimo_hash = hash_ctx
+
+        # Evaluar límite de refresco forzado por volatilidad (Cooldown 5 min)
+        if not ignorar_cache_ahora and forzar_refresh:
             if (ahora - self._ultimo_refresh).total_seconds() > 300:
                 print(f"[NLP-REFLEJO] ⚡ Volatilidad detectada en {simbolo_interno}. Forzando re-analisis Gemini.")
                 ignorar_cache_ahora = True
@@ -137,10 +148,6 @@ class NLPWorker:
             else:
                 tiempo_restante = 300 - (ahora - self._ultimo_refresh).total_seconds()
                 print(f"[NLP] Refresco forzado ignorado (cooldown: {int(tiempo_restante)}s restantes)")
-
-        # Obtener contexto macro y su hash
-        regimenes  = self._obtener_regimenes_activos()
-        hash_ctx   = self._calcular_hash(regimenes)
 
         # Intentar leer del caché primero (si no hay refresco forzado)
         voto_cache = None
