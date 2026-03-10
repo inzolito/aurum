@@ -6,6 +6,8 @@ Ciclo: evalúa cada activo activo cada 60 segundos (1 vela M1).
 import time
 import sys
 import os
+import subprocess
+import psutil
 from datetime import datetime
 
 from config.db_connector import DBConnector
@@ -17,6 +19,65 @@ import MetaTrader5 as mt5_api
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
+
+# Archivo PID para prevenir instancias duplicadas y permitir detección fiable
+_PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aurum_core.pid")
+
+
+def _escribir_pid():
+    """Registra el PID actual en disco al iniciar."""
+    try:
+        with open(_PID_FILE, 'w') as f:
+            f.write(str(os.getpid()))
+    except OSError as e:
+        print(f"[MAIN] Advertencia: no se pudo escribir PID file: {e}")
+
+
+def _borrar_pid():
+    """Elimina el PID file al apagar limpiamente."""
+    try:
+        if os.path.exists(_PID_FILE):
+            os.remove(_PID_FILE)
+    except OSError:
+        pass
+
+
+def _verificar_instancia_duplicada() -> bool:
+    """
+    Retorna True si ya hay una instancia de Aurum Core corriendo.
+    Usa el PID file para detección fiable, independiente del CWD del proceso.
+    """
+    if not os.path.exists(_PID_FILE):
+        return False
+    try:
+        with open(_PID_FILE, 'r') as f:
+            pid_existente = int(f.read().strip())
+        if psutil.pid_exists(pid_existente) and pid_existente != os.getpid():
+            return True
+        # PID file obsoleto (proceso ya no existe)
+        os.remove(_PID_FILE)
+    except (ValueError, OSError):
+        pass
+    return False
+
+
+def _lanzar_news_hunter():
+    """Lanza news_hunter.py como proceso daemon si no está ya corriendo."""
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            if "python" in proc.info.get('name', '').lower():
+                if "news_hunter.py" in " ".join(proc.info.get('cmdline', [])).lower():
+                    print("[MAIN] News Hunter ya está corriendo.")
+                    return
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    try:
+        hunter_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "news_hunter.py")
+        flags = 0x08000000 if os.name == 'nt' else 0
+        subprocess.Popen([sys.executable, hunter_path], creationflags=flags)
+        print("[MAIN] News Hunter lanzado como proceso daemon.")
+    except Exception as e:
+        print(f"[MAIN] Advertencia: no se pudo lanzar News Hunter: {e}")
 
 # NOTA: La lista de activos ya NO está hardcodeada aquí.
 # El motor obtiene los activos dinámicamente desde la tabla 'activos' en GCP.
@@ -68,7 +129,12 @@ class AurumEngine:
         except Exception as e:
             print(f"[MAIN] Error verificando esquema de BD: {e}")
 
-        # --- 1. KILL-SWITCH & PID LOGGING ---
+        # --- 1. PID FILE — Prevenir instancias duplicadas ---
+        if _verificar_instancia_duplicada():
+            print("[MAIN] 🚨 Ya hay una instancia de Aurum Core corriendo. Abortando para evitar duplicados.")
+            return
+
+        _escribir_pid()
         pid = os.getpid()
         
         # --- 2. VALIDACION HARDCODEADA DE CUENTA MT5 ---
@@ -97,6 +163,9 @@ class AurumEngine:
         from config.telegram_bot import run_telegram_bot
         bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
         bot_thread.start()
+
+        # Lanzar News Hunter como proceso daemon si no está corriendo
+        _lanzar_news_hunter()
 
         self.db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
         print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")
@@ -202,6 +271,7 @@ class AurumEngine:
     def stop(self):
         print("\n\n--- Apagando Aurum de forma segura ---")
         self.running = False
+        _borrar_pid()
         if self.db:
             self.db.update_estado_bot("APAGADO", "Cierre manual o por sistema.")
         if self.programador:

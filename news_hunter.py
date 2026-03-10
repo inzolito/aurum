@@ -146,8 +146,8 @@ class NewsHunter:
                 feed = feedparser.parse(url)
                 for entry in feed.entries:
                     self._procesar_entrada(entry)
-            except:
-                pass
+            except Exception as e_feed:
+                print(f"[HUNTER] Error procesando feed {url}: {e_feed}")
 
     def _procesar_entrada(self, entry):
         titulo = getattr(entry, 'title', 'Sin titulo')
@@ -213,7 +213,11 @@ class NewsHunter:
             )
             data = json.loads(resp.text)
             return data.get("relevante", False), data.get("impacto", 0)
-        except:
+        except (json.JSONDecodeError, KeyError) as e_parse:
+            print(f"[HUNTER] Error parseando respuesta Gemini: {e_parse}")
+            return False, 0
+        except Exception as e_gemini:
+            print(f"[HUNTER] Error llamando a Gemini: {e_gemini}")
             return False, 0
 
     def _inyectar_regimen(self, titulo: str, impacto: int, dt_pub: datetime):
@@ -222,12 +226,16 @@ class NewsHunter:
             query = "INSERT INTO regimenes_mercado (titulo, clasificacion, estado, fecha_inicio) VALUES (%s, %s, 'ACTIVO', %s)"
             self.db.cursor.execute(query, (titulo, tipo, dt_pub))
             self.db.conn.commit()
-            
+
             # Formatear hora local para el mensaje
-            hora_msg = dt_pub.astimezone().strftime("%H:%M") 
+            hora_msg = dt_pub.astimezone().strftime("%H:%M")
             _enviar_telegram(f"🚨 <b>HUNTER IMPACTO {impacto}/10</b>\n\n📌 {titulo}\n⌚ Pub: {hora_msg}")
-        except:
-            self.db.conn.rollback()
+        except Exception as e_reg:
+            print(f"[HUNTER] Error inyectando régimen en DB: {e_reg}")
+            try:
+                self.db.conn.rollback()
+            except Exception:
+                pass
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
