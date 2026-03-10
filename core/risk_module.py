@@ -92,19 +92,36 @@ class RiskModule:
           2. Que no haya ya una posición abierta en ese símbolo (anti-duplicado).
           3. Ventana horaria en horarios_operativos (si hay registros configurados).
         Retorna True solo si TODO está despejado.
+        V13.1: En Modo Supervivencia (sin DB), solo valida contra MT5.
         """
-        # Verificación 1: Estado del activo en BD
-        self.db.cursor.execute(
-            "SELECT estado_operativo, simbolo_broker FROM activos WHERE simbolo = %s;",
-            (simbolo_interno,)
-        )
-        fila = self.db.cursor.fetchone()
-        if not fila:
-            print(f"[RISK] BLOQUEO: Activo '{simbolo_interno}' no existe en la BD.")
-            return False
-        estado, simbolo_broker = fila
-        if estado != "ACTIVO":
-            print(f"[RISK] BLOQUEO: {simbolo_interno} en estado '{estado}'. No se opera.")
+        simbolo_broker = None
+
+        # Verificación 1: Estado del activo en BD (solo si hay cursor disponible)
+        if self.db.cursor:
+            try:
+                self.db.cursor.execute(
+                    "SELECT estado_operativo, simbolo_broker FROM activos WHERE simbolo = %s;",
+                    (simbolo_interno,)
+                )
+                fila = self.db.cursor.fetchone()
+                if not fila:
+                    print(f"[RISK] BLOQUEO: Activo '{simbolo_interno}' no existe en la BD.")
+                    return False
+                estado, simbolo_broker = fila
+                if estado != "ACTIVO":
+                    print(f"[RISK] BLOQUEO: {simbolo_interno} en estado '{estado}'. No se opera.")
+                    return False
+            except Exception as e:
+                print(f"[RISK] Error en verificacion DB: {e}. Continuando en Survival Mode.")
+        else:
+            # Modo Supervivencia: usar mapa hardcoded
+            simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
+            print(f"[RISK] Survival Mode: Saltando verificacion de BD para {simbolo_interno}.")
+
+        if not simbolo_broker:
+            simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
+        if not simbolo_broker:
+            print(f"[RISK] BLOQUEO: No se puede mapear {simbolo_interno} a un símbolo broker.")
             return False
 
         # Verificación 2: No duplicar posición abierta en el mismo símbolo
@@ -113,26 +130,38 @@ class RiskModule:
             print(f"[RISK] BLOQUEO: Ya hay {len(posiciones)} posicion(es) abierta(s) en {simbolo_broker}.")
             return False
 
-        # Verificación 3: Ventana horaria (si hay configuración en la BD)
-        self.db.cursor.execute(
-            """
-            SELECT hora_apertura, hora_cierre
-            FROM horarios_operativos h
-            JOIN activos a ON a.id = h.activo_id
-            WHERE a.simbolo = %s;
-            """,
-            (simbolo_interno,)
-        )
-        horarios = self.db.cursor.fetchall()
-        if horarios:
-            from datetime import datetime, timezone
-            hora_actual = datetime.now(timezone.utc).time()
-            dentro_ventana = any(
-                apertura <= hora_actual <= cierre
-                for apertura, cierre in horarios
-            )
-            if not dentro_ventana:
-                print(f"[RISK] BLOQUEO: {simbolo_interno} fuera de horario operativo.")
+        # Verificación 3: Ventana horaria (solo si hay cursor disponible)
+        if self.db.cursor:
+            try:
+                self.db.cursor.execute(
+                    """
+                    SELECT hora_apertura, hora_cierre
+                    FROM horarios_operativos h
+                    JOIN activos a ON a.id = h.activo_id
+                    WHERE a.simbolo = %s;
+                    """,
+                    (simbolo_interno,)
+                )
+                horarios = self.db.cursor.fetchall()
+                if horarios:
+                    from datetime import datetime, timezone
+                    hora_actual = datetime.now(timezone.utc).time()
+                    dentro_ventana = any(
+                        apertura <= hora_actual <= cierre
+                        for apertura, cierre in horarios
+                    )
+                    if not dentro_ventana:
+                        print(f"[RISK] BLOQUEO: {simbolo_interno} fuera de horario operativo.")
+                        return False
+            except Exception:
+                pass  # En caso de fallo, no bloquear por horarios
+
+        # Verificación 4: Protección de Capital (V13.1 - Hardcoded Security)
+        # TODO: Mover este umbral a la BD una vez resuelto el problema de conexión.
+        acc_info = mt5_lib.account_info()
+        if acc_info:
+            if acc_info.profit < -1000:
+                print(f"[RISK] BLOQUEO DE SEGURIDAD: Pérdida flotante actual ({acc_info.profit:.2f} USD) supera el umbral de $1000.")
                 return False
 
         print(f"[RISK] OK: {simbolo_interno} ({simbolo_broker}) despejado para operar.")

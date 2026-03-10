@@ -15,6 +15,7 @@ import os
 import sys
 import json
 import hashlib
+import re
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 
@@ -88,10 +89,16 @@ class NLPWorker:
         self.db = db
         self._api_disponible = bool(GEMINI_API_KEY)
         self._ultimo_refresh = datetime.min.replace(tzinfo=timezone.utc)  # Para el guard de 5 min
-        self._notified_hashes = set() # V10.2: Memoria volatil para noticias
-        if not self._api_disponible:
-            print("[NLP] ADVERTENCIA: GEMINI_API_KEY no configurada. "
-                  "Usando fallback de impactos_regimen.")
+    def extract_nlp_score(self, text: str) -> float | None:
+        """Extrae el puntaje usando Regex [SCORE: X.XX]."""
+        pattern = r"\[SCORE:\s*([+-]?\d*\.?\d+)\]"
+        match = re.search(pattern, text)
+        if match:
+            try:
+                return float(match.group(1))
+            except:
+                return None
+        return None
 
     # ------------------------------------------------------------------
     # API Pública (misma firma que v1, ampliada v2)
@@ -104,9 +111,9 @@ class NLPWorker:
         Usa Gemini con caché inteligente.
         V10.2: Si solo_si_conviccion es True y |technical_verdict| < 0.40, salta Gemini.
         """
-        if solo_si_conviccion and abs(technical_verdict) < 0.40:
-            # print(f"[NLP] Saltando IA (Conviccion Tecnica baja: {technical_verdict:+.2f})")
-            return 0.0
+        # V15.1: El usuario exige ver numeros siempre. Removemos el guard de conviccion tecnica.
+        # if solo_si_conviccion and abs(technical_verdict) < 0.40:
+        #     return 0.0
         if id_activo is None:
             id_activo = self._resolver_id(simbolo_interno)
             if id_activo is None:
@@ -180,8 +187,9 @@ class NLPWorker:
         simbolos = [a["simbolo"] for a in activos]
         fallback  = {s: {'voto': 0.0, 'razonamiento': "Error API Gemini."} for s in simbolos}
 
-        if not regimenes:
-            return fallback
+        # 0.0: Obtener Noticias Crudas Recientes (V15.1 Real-Time injection)
+        noticias_recientes = self.db.get_top_news(limit=10)
+        news_str = "\n".join([f"- {n['title']} (Pub: {n['fecha']})" for n in noticias_recientes]) if noticias_recientes else "Sin noticias crudas."
 
         # 0. Obtener Memoria de Largo Plazo (V11.2)
         catalizadores = self.db.get_catalizadores_activos()
@@ -210,8 +218,10 @@ class NLPWorker:
             "Eres un Analista Macro Senior con memoria de largo plazo (V13.0).\n\n"
             "🧠 MEMORIA DE LARGO PLAZO (Catalizadores Activos):\n"
             f"{cats_str}\n\n"
-            "🗞️ NUEVAS NOTICIAS / CONTEXTO:\n"
+            "🗞️ CONTEXTO ESTRUCTURAL:\n"
             f"{contexto_str}\n\n"
+            "🔥 NOTICIAS DE ÚLTIMA HORA (Raw Feed):\n"
+            f"{news_str}\n\n"
             "📊 DATOS TÉCNICOS (Últimas 3 velas):\n"
             f"{velas_str}\n\n"
             "TAREA:\n"
@@ -224,34 +234,73 @@ class NLPWorker:
             "  \"catalizadores_detectados\": [\n"
             "    {\"nombre\": \"...\", \"score\": float, \"estado\": \"REFORZADO|INVALIDADO|NUEVO\", \"descripcion\": \"...\"}\n"
             "  ]\n"
-            "}\n"
+            "}\n\n"
+            "IMPORTANTE: Cada 'razonamiento' DEBE terminar estrictamente con la etiqueta [SCORE: X.XX].\n"
+            "Ejemplo: '...panorama alcista. [SCORE: 0.75]'\n"
             f"Activos a evaluar: {activos_str}\n"
         )
 
-        texto = _llamar_gemini_api(prompt, model=modelo_final)
-        if not texto: return fallback
+        # Re-intento (V15.0)
+        for intento in range(2):
+            texto = _llamar_gemini_api(prompt, model=modelo_final)
+            if not texto: continue
 
-        try:
-            json_str = _extraer_json(texto)
-            data = json.loads(json_str)
-            
-            # Persistir catalizadores (V11.2)
-            for c in data.get("catalizadores_detectados", []):
-                self.db.upsert_catalizador(c["nombre"], _clamp(c["score"]))
+            try:
+                json_str = _extraer_json(texto)
+                data = json.loads(json_str)
                 
-            return self._parsear_respuesta_v2(data.get("analisis_activos", {}), simbolos)
-        except Exception as e:
-            print(f"[NLP] Error procesando respuesta dual: {e}")
-            return fallback
+                # Persistir catalizadores (V11.2)
+                for c in data.get("catalizadores_detectados", []):
+                    self.db.upsert_catalizador(c["nombre"], _clamp(c["score"]))
+                    
+                res_parseado = self._parsear_respuesta_v2(data.get("analisis_activos", {}), simbolos)
+                
+                # Validar si hay fallos de lectura (0.00 con texto largo)
+                hay_inconsistencia = False
+                for s in simbolos:
+                    item = res_parseado.get(s, {})
+                    if len(item.get('razonamiento', '').split()) > 50 and abs(item.get('voto', 0.0)) < 0.001:
+                        print(f"[NLP-VALIDACION] 🚨 Inconsistencia detectada en {s}. Re-intentando...")
+                        hay_inconsistencia = True
+                        break
+                
+                if not hay_inconsistencia or intento == 1:
+                    return res_parseado
+                
+            except Exception as e:
+                print(f"[NLP] Error procesando respuesta dual (intento {intento+1}): {e}")
+        
+        return fallback
 
     def _parsear_respuesta_v2(self, data: dict, simbolos: list) -> dict:
         resultado = {s: {'voto': 0.0, 'razonamiento': "Sin datos"} for s in simbolos}
         for simbolo in simbolos:
             if simbolo in data:
                 item = data[simbolo]
-                v = item.get('voto', 0.0) if isinstance(item, dict) else item
-                r = item.get('razonamiento', "Neutral.") if isinstance(item, dict) else "Análisis."
-                resultado[simbolo] = {'voto': _clamp(v), 'razonamiento': str(r)[:400]}
+                
+                # Manejar formato: {"SIMBOLO": "razonamiento [SCORE: X.XX]"}
+                if isinstance(item, str):
+                    r = item
+                    v_json = 0.0
+                # Manejar formato: {"SIMBOLO": {"voto": float, "razonamiento": "..."}}
+                elif isinstance(item, dict):
+                    r = item.get('razonamiento', "Neutral.")
+                    v_json = item.get('voto', 0.0)
+                else:
+                    r = "Neutral."
+                    v_json = 0.0
+                
+                # Extraer del tag [SCORE: X.XX] (V15.0 Regex) - PRIORIDAD
+                v_regex = self.extract_nlp_score(r)
+                v_final = v_regex if v_regex is not None else v_json
+                
+                # Validación de Impacto (V15.1)
+                if len(r.split()) > 30 and abs(v_final) < 0.001:
+                    print(f"[NLP-ALERTA] Inconsistencia en {simbolo}: {len(r.split())} palabras pero score 0.00.")
+                    r = f"❌ [DATA ERROR] {r}"
+                    v_final = 0.0 # Bloqueo por falta de precisión
+
+                resultado[simbolo] = {'voto': _clamp(v_final), 'razonamiento': str(r)[:400]}
         return resultado
 
     # ------------------------------------------------------------------

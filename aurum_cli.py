@@ -33,15 +33,20 @@ class AurumCLI:
         self.db.conectar()
 
     def _auto_cleanup(self):
-        """Silently kills other instances on startup."""
+        """Silently kills other instances on startup, except critical background workers."""
         import psutil
         current_pid = os.getpid()
         project_dir = os.path.dirname(os.path.abspath(__file__))
-        for proc in psutil.process_iter(['pid', 'name', 'cwd']):
+        for proc in psutil.process_iter(['pid', 'name', 'cwd', 'cmdline']):
             try:
-                # Kill other python processes running in the same directory
+                # We only want to kill other "main" CLI or Engine instances
+                # to avoid conflicting with the Telegram bot or MT5.
                 if "python" in proc.info['name'].lower() and proc.info['pid'] != current_pid:
                     if proc.info.get('cwd') == project_dir:
+                        cmdline = " ".join(proc.info.get('cmdline', [])).lower()
+                        # CRITICAL: Do NOT kill the watchdog (heartbeat) or the hunter
+                        if "heartbeat.py" in cmdline or "news_hunter.py" in cmdline:
+                            continue
                         proc.terminate()
             except:
                 continue

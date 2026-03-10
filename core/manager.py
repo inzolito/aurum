@@ -584,15 +584,22 @@ class Manager:
         Escanea el historial de MT5 para detectar cierres de órdenes del bot.
         Calcula la Divergencia de Precisión y actualiza la BD.
         """
+        # Guarda: Si la DB no está disponible (Modo Supervivencia), salir
+        if not self.db.cursor:
+            return
+
         import MetaTrader5 as mt5_api
         from datetime import datetime, timedelta
 
         # 1. Obtener trades cerrados sin resultado en la BD
-        self.db.cursor.execute("""
-            SELECT ticket_mt5, veredicto_apertura, probabilidad_est, precio_entrada, take_profit, stop_loss
-            FROM registro_operaciones 
-            WHERE resultado_final IS NULL AND ticket_mt5 != 999999
-        """)
+        try:
+            self.db.cursor.execute("""
+                SELECT ticket_mt5, veredicto_apertura, probabilidad_est, precio_entrada, take_profit, stop_loss
+                FROM registro_operaciones 
+                WHERE resultado_final IS NULL AND ticket_mt5 != 999999
+            """)
+        except Exception:
+            return
         pendientes = self.db.cursor.fetchall()
         if not pendientes:
             return

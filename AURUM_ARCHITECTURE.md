@@ -1,5 +1,7 @@
 # AURUM OMNI - ARQUITECTURA DEL SISTEMA (ONTOLOGÍA)
 
+**Repositorio oficial:** https://github.com/inzolito/aurum.git
+
 Esta documentación define la jerarquía y estructura operativa de Aurum, estableciendo una distinción clara entre los módulos de análisis (Obreros) y los instrumentos de mercado (Activos).
 
 ## 1. DEFINICIÓN DE OBREROS (The Workers - 8 Unidades)

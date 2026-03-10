@@ -1,5 +1,10 @@
 # Aurum
 
+**Repositorio oficial:** https://github.com/inzolito/aurum.git
+**Versión actual:** V13.5 (Aurum OMNI)
+
+---
+
 ## 1. Descripción y Propósito del Sistema
 
 El Proyecto Aurum es un sistema de trading algorítmico institucional automatizado (AAS). Su objetivo es operar en los mercados financieros (con foco inicial en XAUUSD y XAGUSD, escalable a Energías, Índices y Acciones) eliminando el sesgo emocional humano.

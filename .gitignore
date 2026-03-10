@@ -9,3 +9,23 @@ __pycache__/
 
 # Logs locales
 *.log
+
+# Archivos temporales de debugging y diagnóstico
+tmp_*.py
+fix_db*.py
+audit_*.py
+audit_forensic*.py
+audit_signals*.py
+audit_final*.py
+check_*.py
+inspect_*.py
+reproduce_*.py
+recalibrate_*.py
+recoup_*.py
+research_*.py
+force_*.py
+troubleshoot_*.py
+tmp_data.json
+
+# Imágenes de telemetría generadas automáticamente
+temp/telemetry/

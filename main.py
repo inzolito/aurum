@@ -6,7 +6,6 @@ Ciclo: evalúa cada activo activo cada 60 segundos (1 vela M1).
 import time
 import sys
 import os
-import psutil
 from datetime import datetime
 
 from config.db_connector import DBConnector
@@ -14,8 +13,6 @@ from config.mt5_connector import MT5Connector
 from core.manager import Manager
 from core.scheduler import AurumScheduler
 from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario
-
-PID_FILE = "aurum_bot.pid"
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
@@ -39,37 +36,20 @@ class AurumEngine:
         self.mt5_conn = MT5Connector()
 
         if not self.db.conectar():
-            print("[MAIN] CRITICO: No se pudo conectar a la base de datos. Abortando.")
-            return False
+            print("[MAIN] ⚠️ ADVERTENCIA: No se pudo conectar a la base de datos (Cloud).")
+            print("[MAIN] Activando MODO SUPERVIVENCIA (Survival Mode). El bot usará parámetros locales.")
+            # No retornamos False, permitimos continuar en modo degradado
+        else:
+            print("[MAIN] Conexión a Base de Datos Cloud establecida.")
 
         if not self.mt5_conn.conectar():
-            print("[MAIN] CRITICO: No se pudo conectar a MT5. Abortando.")
-            self.db.desconectar()
+            print("[MAIN] 🚨 CRITICO: No se pudo conectar a MT5. El motor no puede operar sin broker.")
+            if self.db: self.db.desconectar()
             return False
 
-        return True
-
-    def _check_instance(self) -> bool:
-        """Verifica si ya existe una instancia corriendo mediante archivo .pid."""
-        if os.path.exists(PID_FILE):
-            try:
-                with open(PID_FILE, "r") as f:
-                    old_pid = int(f.read().strip())
-                if psutil.pid_exists(old_pid):
-                    print(f"[MAIN] 🚨 ERROR: Ya hay una instancia corriendo (PID: {old_pid}).")
-                    return False
-            except Exception:
-                pass
-        
-        # Crear nuevo archivo PID
-        with open(PID_FILE, "w") as f:
-            f.write(str(os.getpid()))
         return True
 
     def run(self):
-        if not self._check_instance():
-            return
-
         print("=" * 60)
         print("  AURUM OMNI V1.0.0 — INICIANDO")
         print("=" * 60)
@@ -80,13 +60,12 @@ class AurumEngine:
 
         # --- 0. VALIDACION V9.0 DE CACHE ---
         try:
-            self.db.cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='cache_nlp_impactos' AND column_name='hash_contexto';")
-            if self.db.cursor.fetchone():
-                print("[MAIN] Conexión a BD exitosa - Columna hash_contexto detectada.")
-            else:
-                print("[MAIN] ⚠️ ADVERTENCIA: Columna hash_contexto NO detectada en la BD.")
+            if self.db and self.db.conn and not self.db.conn.closed:
+                self.db.cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='cache_nlp_impactos' AND column_name='hash_contexto';")
+                if self.db.cursor.fetchone():
+                    print("[MAIN] Estructura de BD verificada - OK.")
         except Exception as e:
-            print(f"[MAIN] Error verificando columna hash_contexto: {e}")
+            print(f"[MAIN] Error verificando esquema de BD: {e}")
 
         # --- 1. KILL-SWITCH & PID LOGGING ---
         pid = os.getpid()
@@ -149,6 +128,7 @@ class AurumEngine:
                     
                 if es_finde:
                     print(f"\n[GATEKEEPER] {ahora_dt.strftime('%A %H:%M')} -> MODO VIGILANCIA (Fin de semana).")
+                    self.db.update_estado_bot("VIGILANCIA_FIN_DE_SEMANA", "Gatekeeper activo. Patrullando noticias...")
                     self.gerente.mantener_vigilancia()
                     time.sleep(600)
                     continue
@@ -170,8 +150,10 @@ class AurumEngine:
 
                 import MetaTrader5 as mt5_api
                 info_acc = mt5_api.account_info()
-                if info_acc and info_acc.equity < 2850.0:
-                    msg_kill = "🚨 MAX DRAWDOWN ALCANZADO ($2,850). SISTEMA HIBERNANDO HASTA MAÑANA."
+                # --- UMBRAL DE PERDIDAS (V13.1 - Bajado temporalmente a $1,000) ---
+                # TODO: Subir de vuelta a $2,000 o mover a BD cuando se resuelva la conexión.
+                if info_acc and info_acc.equity < 1000.0:
+                    msg_kill = "🚨 MAX DRAWDOWN ALCANZADO ($1,000). SISTEMA HIBERNANDO HASTA MAÑANA."
                     print(f"\n[MAIN] {msg_kill}")
                     self.db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
                     notificar_error_critico("KILL-SWITCH", msg_kill)
@@ -228,8 +210,6 @@ class AurumEngine:
             self.mt5_conn.desconectar()
         if self.db:
             self.db.desconectar()
-        if os.path.exists(PID_FILE):
-            os.remove(PID_FILE)
         print("[MAIN] Sistema apagado. Hasta la proxima.")
 
 def main():

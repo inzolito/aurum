@@ -168,18 +168,36 @@ class DBConnector:
     # Lectura de configuración
     # ------------------------------------------------------------------
 
+    # Parámetros por defecto para Modo Supervivencia (V13.1)
+    _DEFAULT_PARAMS = {
+        "GERENTE.umbral_disparo": 0.45,
+        "GERENTE.riesgo_trade_pct": 1.5,
+        "GERENTE.ratio_tp": 2.0,
+        "TENDENCIA.peso_voto": 0.30,
+        "NLP.peso_voto": 0.20,
+        "ORDER_FLOW.peso_voto": 0.50,
+    }
+
     @survival_shield
     def get_parametros(self) -> dict:
         """
         Lee la tabla parametros_sistema con caché de 5 minutos (V8.0).
+        V13.1: Si la DB no está disponible, retorna parámetros hardcoded.
         """
         ahora = time.time()
         if ahora - self._params_last_refresh < self._cache_ttl and self._params_cache:
             return self._params_cache
 
+        # Guarda: Si la DB no está disponible, usar defaults
+        if not self.cursor:
+            return self._DEFAULT_PARAMS.copy()
+
         with self._lock:
-            self.cursor.execute("SELECT modulo, nombre_parametro, valor FROM parametros_sistema;")
-            rows = self.cursor.fetchall()
+            try:
+                self.cursor.execute("SELECT modulo, nombre_parametro, valor FROM parametros_sistema;")
+                rows = self.cursor.fetchall()
+            except Exception:
+                return self._params_cache or self._DEFAULT_PARAMS.copy()
             result = {}
             for modulo, nombre, valor in rows:
                 if modulo and nombre.startswith(modulo + "."):
@@ -197,43 +215,79 @@ class DBConnector:
     def obtener_activos_patrullaje(self) -> list:
         """
         Retorna lista de dicts con todos los activos en estado ACTIVO.
+        V13.1: Incluye Fallback Local (Hardcoded) para modo supervivencia.
         """
+        cols = ["id", "simbolo", "nombre", "categoria", "simbolo_broker"]
+        blacklist = ["XAUUSD", "XAGUSD"]
+        
         with self._lock:
-            self.cursor.execute(
-                """
-                SELECT id, simbolo, nombre, categoria, simbolo_broker
-                FROM activos
-                WHERE estado_operativo = 'ACTIVO'
-                ORDER BY id;
-                """
-            )
-            cols = ["id", "simbolo", "nombre", "categoria", "simbolo_broker"]
-            res = [dict(zip(cols, row)) for row in self.cursor.fetchall()]
-            self._last_assets_cache = res # V10.6 Cache local
-            return res
+            try:
+                if self.conn and not self.conn.closed and self.cursor:
+                    self.cursor.execute(
+                        """
+                        SELECT id, simbolo, nombre, categoria, simbolo_broker
+                        FROM activos
+                        WHERE estado_operativo = 'ACTIVO'
+                        ORDER BY id;
+                        """
+                    )
+                    raw_res = [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+                    res = [a for a in raw_res if a['simbolo'] not in blacklist]
+                    self._last_assets_cache = res
+                    return res
+            except Exception as e:
+                print(f"[DB-SURVIVAL] Error en consulta: {e}. Usando lista pre-cargada.")
+
+        # --- FALLBACK HARDCODED (Modo Supervivencia V13.1) ---
+        print("[DB-SECURITY] Utilizando lista de activos HARDCODED (Fallo de DB).")
+        fallback_list = [
+            {"id": 3, "simbolo": "US30", "nombre": "Dow Jones", "categoria": "INDICES", "simbolo_broker": "US30_i"},
+            {"id": 4, "simbolo": "US500", "nombre": "S&P 500", "categoria": "INDICES", "simbolo_broker": "US500_i"},
+            {"id": 5, "simbolo": "USTEC", "nombre": "Nasdaq 100", "categoria": "INDICES", "simbolo_broker": "USTEC_i"},
+            {"id": 6, "simbolo": "EURUSD", "nombre": "Euro/Dolar", "categoria": "FOREX", "simbolo_broker": "EURUSD_i"},
+            {"id": 7, "simbolo": "GBPUSD", "nombre": "Libra/Dolar", "categoria": "FOREX", "simbolo_broker": "GBPUSD_i"},
+            {"id": 8, "simbolo": "USDJPY", "nombre": "Dolar/Yen", "categoria": "FOREX", "simbolo_broker": "USDJPY_i"},
+            {"id": 9, "simbolo": "GBPJPY", "nombre": "Libra/Yen", "categoria": "FOREX", "simbolo_broker": "GBPJPY_i"},
+            {"id": 10, "simbolo": "XTIUSD", "nombre": "Petroleo WTI", "categoria": "COMMODITIES", "simbolo_broker": "XTIUSD_i"},
+        ]
+        return fallback_list
 
     # Alias de compatibilidad hacia atras
     def obtener_activos_encendidos(self) -> list:
         return [a["simbolo"] for a in self.obtener_activos_patrullaje()]
 
+    # Mapa de símbolo interno -> símbolo broker (fallback Survival Mode V13.1)
+    _SIMBOLO_BROKER_MAP = {
+        "EURUSD": "EURUSD_i", "GBPUSD": "GBPUSD_i", "USDJPY": "USDJPY_i",
+        "GBPJPY": "GBPJPY_i", "USDCAD": "USDCAD_i", "US30": "US30_i",
+        "US500": "US500_i", "USTEC": "USTEC_i", "XTIUSD": "XTIUSD_i",
+        "XAUUSD": "XAUUSD_i", "XAGUSD": "XAGUSD_i", "XBRUSD": "XBRUSD_i",
+    }
+
     def obtener_impactos_por_activo(self, id_activo: int) -> list:
         """
         Retorna los impactos de regimenes ACTIVO/FORMANDOSE para un activo especifico.
+        V13.1: Retorna lista vacía si la DB no está disponible.
         """
+        if not self.cursor:
+            return []
         with self._lock:
-            self.cursor.execute(
-                """
-                SELECT rm.titulo, rm.clasificacion, rm.estado, ir.valor_impacto
-                FROM impactos_regimen ir
-                JOIN regimenes_mercado rm ON rm.id = ir.id_regimen
-                WHERE ir.id_activo = %s
-                  AND rm.estado IN ('ACTIVO', 'FORMANDOSE')
-                ORDER BY rm.fecha_inicio DESC;
-                """,
-                (id_activo,)
-            )
-            cols = ["titulo", "clasificacion", "estado", "valor_impacto"]
-            return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+            try:
+                self.cursor.execute(
+                    """
+                    SELECT rm.titulo, rm.clasificacion, rm.estado, ir.valor_impacto
+                    FROM impactos_regimen ir
+                    JOIN regimenes_mercado rm ON rm.id = ir.id_regimen
+                    WHERE ir.id_activo = %s
+                      AND rm.estado IN ('ACTIVO', 'FORMANDOSE')
+                    ORDER BY rm.fecha_inicio DESC;
+                    """,
+                    (id_activo,)
+                )
+                cols = ["titulo", "clasificacion", "estado", "valor_impacto"]
+                return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+            except Exception:
+                return []
 
     # Mantenemos get_regimenes_activos como alias para backward-compat
     def get_regimenes_activos(self) -> list:
@@ -243,16 +297,22 @@ class DBConnector:
     def obtener_simbolo_broker(self, simbolo_interno: str) -> str | None:
         """
         Traduce el símbolo estándar interno (ej: 'XAUUSD') al nombre del broker.
+        V13.1: Si la DB no está disponible, usa mapa hardcoded.
         """
+        if not self.cursor:
+            return self._SIMBOLO_BROKER_MAP.get(simbolo_interno, f"{simbolo_interno}_i")
         with self._lock:
-            self.cursor.execute(
-                "SELECT simbolo_broker FROM activos WHERE simbolo = %s;",
-                (simbolo_interno,)
-            )
-            fila = self.cursor.fetchone()
-            if not fila or not fila[0]:
-                return None
-            return fila[0]
+            try:
+                self.cursor.execute(
+                    "SELECT simbolo_broker FROM activos WHERE simbolo = %s;",
+                    (simbolo_interno,)
+                )
+                fila = self.cursor.fetchone()
+                if not fila or not fila[0]:
+                    return self._SIMBOLO_BROKER_MAP.get(simbolo_interno)
+                return fila[0]
+            except Exception:
+                return self._SIMBOLO_BROKER_MAP.get(simbolo_interno, f"{simbolo_interno}_i")
 
     @survival_shield
     def get_global_regimenes(self) -> list:
@@ -477,12 +537,12 @@ class DBConnector:
                 self.conn.rollback()
 
     @survival_shield
-    def get_top_news(self, limit: int = 5) -> list:
+    def get_top_news(self, limit: int = 10) -> list:
         """Retorna las últimas noticias crudas con su fecha original (V13.0)."""
         with self._lock:
-            query = "SELECT title, published_at, hash_id FROM raw_news_feed ORDER BY published_at DESC LIMIT %s"
+            query = "SELECT title, source, timestamp FROM raw_news_feed ORDER BY timestamp DESC LIMIT %s"
             self.cursor.execute(query, (limit,))
-            return [dict(zip(["title", "fecha", "hash"], row)) for row in self.cursor.fetchall()]
+            return [dict(zip(["title", "source", "fecha"], row)) for row in self.cursor.fetchall()]
 
     @survival_shield
     def verificar_hash_noticia(self, hash_id: str) -> bool:
@@ -586,7 +646,7 @@ class DBConnector:
         """Retorna el estado detallado de todos los activos para el dashboard."""
         with self._lock:
             query = """
-                SELECT a.simbolo, rs.voto_tendencia, rs.voto_nlp, rs.voto_order_flow,
+                SELECT a.simbolo, rs.voto_tendencia, c.voto as voto_nlp, rs.voto_order_flow,
                        rs.voto_volume, rs.voto_cross, rs.voto_hurst, rs.voto_sniper,
                        rs.voto_final_ponderado, c.razonamiento, rs.tiempo
                 FROM activos a
@@ -606,6 +666,7 @@ class DBConnector:
             self.cursor.execute(query)
             cols = ["simbolo", "trend", "nlp", "flow", "vol", "cross", "hurst", "sniper", "veredicto", "ia_analysis", "fecha"]
             return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+
 
 
 # ------------------------------------------------------------------
