@@ -13,6 +13,7 @@ from config.mt5_connector import MT5Connector
 from core.manager import Manager
 from core.scheduler import AurumScheduler
 from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario
+import MetaTrader5 as mt5_api
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
@@ -72,8 +73,7 @@ class AurumEngine:
         
         # --- 2. VALIDACION HARDCODEADA DE CUENTA MT5 ---
         cuenta_esperada = os.environ.get("MT5_LOGIN", "")
-        import MetaTrader5 as mt_api
-        info_cuenta = mt_api.account_info()
+        info_cuenta = mt5_api.account_info()
         
         if not info_cuenta:
             print("[MAIN] CRITICO: No se pudo obtener la informacion de la cuenta MT5.")
@@ -111,9 +111,10 @@ class AurumEngine:
         try:
             while self.running:
                 self.ciclo += 1
-                ahora_dt = datetime.now()
+                from zoneinfo import ZoneInfo
+                ahora_dt = datetime.now(tz=ZoneInfo('America/Santiago'))
                 hora = ahora_dt.strftime('%H:%M:%S')
-                
+
                 # --- PROTOCOLO GATEKEEPER V13.0: Bypass de Fin de Semana ---
                 dia = ahora_dt.weekday()
                 hora_int = ahora_dt.hour
@@ -148,12 +149,12 @@ class AurumEngine:
                 self.gerente.gestionar_posiciones_abiertas()
                 self.gerente.auditar_precision_cierres()
 
-                import MetaTrader5 as mt5_api
                 info_acc = mt5_api.account_info()
-                # --- UMBRAL DE PERDIDAS (V13.1 - Bajado temporalmente a $1,000) ---
-                # TODO: Subir de vuelta a $2,000 o mover a BD cuando se resuelva la conexión.
-                if info_acc and info_acc.equity < 1000.0:
-                    msg_kill = "🚨 MAX DRAWDOWN ALCANZADO ($1,000). SISTEMA HIBERNANDO HASTA MAÑANA."
+                # --- UMBRAL DE PERDIDAS — leído desde parametros_sistema en BD ---
+                _params_dd = self.db.get_parametros()
+                _max_dd = _params_dd.get("GERENTE.max_drawdown_usd", 1000.0)
+                if info_acc and info_acc.equity < _max_dd:
+                    msg_kill = f"🚨 MAX DRAWDOWN ALCANZADO (${_max_dd:,.0f}). SISTEMA HIBERNANDO HASTA MAÑANA."
                     print(f"\n[MAIN] {msg_kill}")
                     self.db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
                     notificar_error_critico("KILL-SWITCH", msg_kill)
@@ -181,8 +182,7 @@ class AurumEngine:
                     ciclos_hora  = 0
                     ordenes_hora = 0
 
-                import MetaTrader5 as mt5_lib
-                if not mt5_lib.terminal_info():
+                if not mt5_api.terminal_info():
                     print("[MAIN] MT5 desconectado. Intentando reconectar...")
                     self.db.update_estado_bot("ERROR", "MT5 desconectado. Reconectando...")
                     if self.mt5_conn.conectar():

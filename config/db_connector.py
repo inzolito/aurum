@@ -111,15 +111,16 @@ class DBConnector:
                     self.desconectar()
 
     def _manejar_fallo_ram(self, func_name, args, kwargs):
-        if func_name in ['guardar_senal', 'guardar_operacion', 'guardar_error_ejecucion']:
-            simbolo = args[0] if args else "GLOBAL"
-            self.RAM_BUFFER[simbolo].append({"t": datetime.now(), "f": func_name, "args": args})
-            print(f"[DB-SURVIVAL] Datos de {func_name} ({simbolo}) salvados en RAM.")
-        elif func_name == 'registrar_log':
-            self.LOG_BUFFER.append(args)
-        
+        with self._lock:
+            if func_name in ['guardar_senal', 'guardar_operacion', 'guardar_error_ejecucion']:
+                simbolo = args[0] if args else "GLOBAL"
+                self.RAM_BUFFER[simbolo].append({"t": datetime.now(), "f": func_name, "args": args})
+                print(f"[DB-SURVIVAL] Datos de {func_name} ({simbolo}) salvados en RAM.")
+            elif func_name == 'registrar_log':
+                self.LOG_BUFFER.append(args)
+
         if func_name == 'get_parametros': return self._params_cache or {}
-        if func_name == 'obtener_activos_patrullaje': return self._last_assets_cache or [] 
+        if func_name == 'obtener_activos_patrullaje': return self._last_assets_cache or []
         return None
 
     # ------------------------------------------------------------------
@@ -170,12 +171,14 @@ class DBConnector:
 
     # Parámetros por defecto para Modo Supervivencia (V13.1)
     _DEFAULT_PARAMS = {
-        "GERENTE.umbral_disparo": 0.45,
+        "GERENTE.umbral_disparo":   0.45,
         "GERENTE.riesgo_trade_pct": 1.5,
-        "GERENTE.ratio_tp": 2.0,
-        "TENDENCIA.peso_voto": 0.30,
-        "NLP.peso_voto": 0.20,
-        "ORDER_FLOW.peso_voto": 0.50,
+        "GERENTE.ratio_tp":         2.0,
+        "GERENTE.max_drawdown_usd": 1000.0,   # Umbral de equity para Kill-Switch
+        "TENDENCIA.peso_voto":      0.40,
+        "NLP.peso_voto":            0.30,
+        "ORDER_FLOW.peso_voto":     0.15,
+        "SNIPER.peso_voto":         0.15,
     }
 
     @survival_shield
@@ -218,8 +221,10 @@ class DBConnector:
         V13.1: Incluye Fallback Local (Hardcoded) para modo supervivencia.
         """
         cols = ["id", "simbolo", "nombre", "categoria", "simbolo_broker"]
-        blacklist = ["XAUUSD", "XAGUSD"]
-        
+        # El filtrado de activos se controla exclusivamente via estado_operativo en la BD.
+        # Para pausar un activo: UPDATE activos SET estado_operativo = 'PAUSADO' WHERE simbolo = 'XAUUSD';
+        # Para reactivarlo:      UPDATE activos SET estado_operativo = 'ACTIVO'  WHERE simbolo = 'XAUUSD';
+
         with self._lock:
             try:
                 if self.conn and not self.conn.closed and self.cursor:
@@ -231,8 +236,7 @@ class DBConnector:
                         ORDER BY id;
                         """
                     )
-                    raw_res = [dict(zip(cols, row)) for row in self.cursor.fetchall()]
-                    res = [a for a in raw_res if a['simbolo'] not in blacklist]
+                    res = [dict(zip(cols, row)) for row in self.cursor.fetchall()]
                     self._last_assets_cache = res
                     return res
             except Exception as e:

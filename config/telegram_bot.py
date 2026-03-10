@@ -22,6 +22,12 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ALLOWED_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 
+# Símbolos válidos para la función Lupa. Se valida el input del usuario contra esta lista.
+_SIMBOLOS_VALIDOS = {
+    "XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY",
+    "GBPJPY", "US30", "US500", "USTEC", "XTIUSD", "XBRUSD",
+}
+
 # --- KEYBOARD ---
 def get_main_keyboard():
     keyboard = [
@@ -66,7 +72,14 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await get_news_report(update, context)
     elif context.user_data.get('esperando_simbolo'):
         context.user_data['esperando_simbolo'] = False
-        await lupa_activo(update, context, text.upper())
+        simbolo = text.upper().strip()
+        if simbolo not in _SIMBOLOS_VALIDOS:
+            await update.message.reply_text(
+                f"❌ Símbolo '{simbolo}' no reconocido.\n"
+                f"Opciones válidas: {', '.join(sorted(_SIMBOLOS_VALIDOS))}"
+            )
+            return
+        await lupa_activo(update, context, simbolo)
 
 # --- ACCIONES ---
 async def get_news_report(update: Update, context: ContextTypes.DEFAULT_TYPE):

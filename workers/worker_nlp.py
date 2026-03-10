@@ -88,6 +88,8 @@ class NLPWorker:
     def __init__(self, db):
         self.db = db
         self._api_disponible = bool(GEMINI_API_KEY)
+        if not self._api_disponible:
+            print("[NLP] ADVERTENCIA: GEMINI_API_KEY no configurada. Worker usará modo fallback (sin IA).")
         self._ultimo_refresh = datetime.min.replace(tzinfo=timezone.utc)  # Para el guard de 5 min
     def extract_nlp_score(self, text: str) -> float | None:
         """Extrae el puntaje usando Regex [SCORE: X.XX]."""
@@ -419,8 +421,8 @@ class NLPWorker:
                 try:
                     from config.notifier import _enviar_telegram
                     _enviar_telegram(msg)
-                except:
-                    pass
+                except Exception as e_tg:
+                    print(f"[NLP-PATROL] Error enviando notificacion Telegram: {e_tg}")
         except Exception as e:
             print(f"[NLP-PATROL] Error en patrullaje V13.0: {e}")
 
@@ -450,8 +452,8 @@ class NLPWorker:
                            f"🕒 Pub: {fecha.strftime('%H:%M')} | Noticia: {titulo}")
                     from config.notifier import _enviar_telegram
                     _enviar_telegram(msg)
-            except:
-                pass
+            except (json.JSONDecodeError, KeyError, Exception) as e_emg:
+                print(f"[NLP] Error procesando alerta de emergencia: {e_emg}")
     # ------------------------------------------------------------------
 
     def _resolver_id(self, simbolo_interno: str):

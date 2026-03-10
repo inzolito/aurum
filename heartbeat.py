@@ -46,13 +46,13 @@ def cleanup_ghost_processes():
         print(f"[CLEANUP] Detectados {len(procesos['core'])} procesos Core. Limpiando excedentes...")
         for p in procesos["core"][1:]: # Mantenemos el más antiguo o el primero
             try: p.terminate()
-            except: pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
 
     if len(procesos["hunter"]) > 1:
         print(f"[CLEANUP] {len(procesos['hunter'])} procesos Hunter detectados. Limpiando...")
         for p in procesos["hunter"][1:]:
             try: p.terminate()
-            except: pass
+            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
 
 def check_heartbeat():
     print("=" * 60)

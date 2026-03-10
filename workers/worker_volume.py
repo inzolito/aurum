@@ -56,7 +56,7 @@ class VolumeWorker:
             precios = df_m1['cierre'].values
             volumenes = df_m1['volumen'].values
 
-        if len(precios) == 0 or np.all(precios == 0):
+        if len(precios) == 0 or np.all(precios == 0) or np.isnan(precios).any():
             return self._datos_vacios()
 
         # 2. Calcular Perfil de Volumen

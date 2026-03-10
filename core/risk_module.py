@@ -156,12 +156,12 @@ class RiskModule:
             except Exception:
                 pass  # En caso de fallo, no bloquear por horarios
 
-        # Verificación 4: Protección de Capital (V13.1 - Hardcoded Security)
-        # TODO: Mover este umbral a la BD una vez resuelto el problema de conexión.
+        # Verificación 4: Protección de Capital — umbral leído desde parametros_sistema en BD
+        max_perdida_flotante = self.db.get_parametros().get("GERENTE.max_drawdown_usd", 1000.0)
         acc_info = mt5_lib.account_info()
         if acc_info:
-            if acc_info.profit < -1000:
-                print(f"[RISK] BLOQUEO DE SEGURIDAD: Pérdida flotante actual ({acc_info.profit:.2f} USD) supera el umbral de $1000.")
+            if acc_info.profit < -max_perdida_flotante:
+                print(f"[RISK] BLOQUEO DE SEGURIDAD: Pérdida flotante ({acc_info.profit:.2f} USD) supera el umbral de ${max_perdida_flotante:.0f}.")
                 return False
 
         print(f"[RISK] OK: {simbolo_interno} ({simbolo_broker}) despejado para operar.")

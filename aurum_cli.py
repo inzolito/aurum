@@ -48,7 +48,7 @@ class AurumCLI:
                         if "heartbeat.py" in cmdline or "news_hunter.py" in cmdline:
                             continue
                         proc.terminate()
-            except:
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
 
     def clear_screen(self):
@@ -83,19 +83,24 @@ class AurumCLI:
         console.print(menu_panel)
 
     def cleanup_processes(self):
-        """Kills other python processes to avoid conflicts."""
+        """Termina solo instancias duplicadas del proyecto Aurum (no procesos del sistema)."""
         import psutil
         current_pid = os.getpid()
-        console.print("[yellow]Buscando procesos duplicados...[/yellow]")
+        project_dir = os.path.dirname(os.path.abspath(__file__))
+        console.print("[yellow]Buscando procesos duplicados de Aurum...[/yellow]")
         count = 0
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in psutil.process_iter(['pid', 'name', 'cwd', 'cmdline']):
             try:
-                if "python" in proc.info['name'].lower() and proc.info['pid'] != current_pid:
+                if "python" not in proc.info['name'].lower(): continue
+                if proc.info['pid'] == current_pid: continue
+                if proc.info.get('cwd') != project_dir: continue
+                cmdline = " ".join(proc.info.get('cmdline', [])).lower()
+                if "main.py" in cmdline or "aurum_cli.py" in cmdline:
                     proc.terminate()
                     count += 1
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                 continue
-        console.print(f"[green]Completado. Se cerraron {count} procesos potencialmente conflictivos.[/green]")
+        console.print(f"[green]Completado. Se cerraron {count} procesos Aurum duplicados.[/green]")
         time.sleep(2)
 
     def start_bot(self):
@@ -289,6 +294,7 @@ if __name__ == "__main__":
         try:
             if 'cli' in locals() and cli.engine.running:
                 cli.engine.stop()
-        except: pass
+        except Exception:
+            pass
         console.print("\n[bold red]Interrupted by user.[/bold red]")
         sys.exit(0)

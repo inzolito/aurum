@@ -85,17 +85,19 @@ class HurstWorker:
         # --- PROCESAMIENTO REAL ---
         # Pedir 1,024 velas como solicitó el usuario
         df = self.mt5.obtener_velas(simbolo_broker, 1024)
+        data_quality = "OK"
         if df is None or df.empty or len(df) < 1024:
-            # Si no hay suficientes, intentar lo que haya pero avisar
             if df is not None and len(df) > 100:
+                print(f"[HURST] {simbolo_interno} — datos insuficientes ({len(df)} velas, se requieren 1024). Calidad: BAJA.")
+                data_quality = "LOW"
                 h = self.calcular_hurst(df['cierre'])
             else:
-                return {"h": 0.5, "estado": "RUIDO"}
+                return {"h": 0.5, "estado": "RUIDO", "data_quality": "NO_DATA"}
         else:
             h = self.calcular_hurst(df['cierre'])
 
         h = round(h, 4)
-        
+
         if h > 0.55:
             estado = "PERSISTENTE"
         elif h < 0.45:
@@ -103,7 +105,7 @@ class HurstWorker:
         else:
             estado = "RUIDO"
 
-        res = {"h": h, "estado": estado}
+        res = {"h": h, "estado": estado, "data_quality": data_quality}
         
         # Guardar en caché
         self._cache[simbolo_broker] = {

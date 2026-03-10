@@ -44,6 +44,12 @@ class Manager:
       5. Registra TODA la auditoría en registro_senales.
     """
 
+    # Umbrales de convicción compartidos entre métodos del Gerente.
+    # Modificar aquí o en parametros_sistema en BD.
+    _UMBRAL_OPORTUNIDAD = 0.30  # Convicción mínima para reportar oportunidad detectada
+    _UMBRAL_PROXIMIDAD  = 0.38  # Convicción para llamar a Gemini y generar telemetría
+    _UMBRAL_ZONA_GRIS   = 0.45  # Límite superior de zona gris (= umbral_disparo por defecto)
+
     def __init__(self, db: DBConnector, mt5: MT5Connector):
         self.db    = db
         self.mt5   = mt5
@@ -192,7 +198,7 @@ class Manager:
 
         # Recibir voto NLP con cambio dinámico de motor
         # V10.2: Solo llama a IA si la conviccion tecnica es alta (>= 0.38)
-        if abs(tecnico_veredicto) >= 0.38:
+        if abs(tecnico_veredicto) >= self._UMBRAL_PROXIMIDAD:
             if volatil_ahora >= 2.0 and 'voto_emg' in locals():
                 v_nlp = voto_emg
             else:
@@ -224,8 +230,11 @@ class Manager:
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
         # --- V12.0: WEIGHTED VOTING & NO-FLOW PROTOCOL ---
-        # Pesos Base: Trend (40%), NLP (30%), Flow (15%), Sniper (15%)
-        p_trend, p_nlp, p_flow, p_sniper = 0.40, 0.30, 0.15, 0.15
+        # Pesos leídos desde parametros_sistema en BD (fallback a defaults si no hay dato).
+        p_trend  = float(params.get("TENDENCIA.peso_voto",   0.40))
+        p_nlp    = float(params.get("NLP.peso_voto",          0.30))
+        p_flow   = float(params.get("ORDER_FLOW.peso_voto",   0.15))
+        p_sniper = float(params.get("SNIPER.peso_voto",       0.15))
         
         # Protocolo No-Flow: Si Flow es None o 0.0 (neutral), redistribuimos.
         # En V12.0, si el obrero Flow retorna 0.0 (neutral por falta de datos o error), 
@@ -308,7 +317,7 @@ class Manager:
         if abs(veredicto) < umbral:
             # --- NUEVO REPORTE DE GATILLO Y PROXIMIDAD ---
             confianza = abs(veredicto)
-            if 0.38 <= confianza < 0.45:
+            if self._UMBRAL_PROXIMIDAD <= confianza < self._UMBRAL_ZONA_GRIS:
                 # Generar Telemetría Gráfica (V7.5)
                 df_viz = self.mt5.obtener_velas(simbolo_broker, 100)
                 votos_map = {
@@ -320,11 +329,11 @@ class Manager:
                 # notificar_proximidad(simbolo_interno, veredicto, h_val, h_estado, vol_map, cross_map, v_struct, 
                 #                      image_path=img_path, gemini_thought=gemini_thought, fuerza_dominante=fuerza_dominante)
                 pass # Silenciado V12.1
-            elif 0.30 <= confianza < 0.38:
+            elif self._UMBRAL_OPORTUNIDAD <= confianza < self._UMBRAL_PROXIMIDAD:
                 # notificar_oportunidad_detectada(simbolo_interno, veredicto, fuerza_dominante=fuerza_dominante)
                 pass # Silenciado V12.1
             
-            if confianza >= 0.30:
+            if confianza >= self._UMBRAL_OPORTUNIDAD:
                 motivo = f"Oportunidad detectada ({confianza:.2f}), pero debajo del umbral ({umbral})."
             else:
                 motivo = f"Veredicto {veredicto:+.4f} insufficiente (Umbral: {umbral})"
@@ -380,7 +389,7 @@ class Manager:
                 direccion=direccion, 
                 lotes=lotes, 
                 ticket=999999, # Ticket ficticio para simulacion
-                precio=self.mt5.obtener_precio_actual(self.db.obtener_simbolo_broker(simbolo_interno))['ask'] if direccion == "COMPRA" else self.mt5.obtener_precio_actual(self.db.obtener_simbolo_broker(simbolo_interno))['bid'],
+                precio=self._obtener_precio_seguro(simbolo_interno, direccion),
                 sl=sl, 
                 tp=tp, 
                 veredicto=veredicto, 
@@ -792,6 +801,14 @@ class Manager:
         V10.2: Desactivado por Silent Mode.
         """
         pass
+
+    def _obtener_precio_seguro(self, simbolo_interno: str, direccion: str) -> float:
+        """Obtiene precio bid/ask con protección contra respuesta None de MT5."""
+        sb = self.db.obtener_simbolo_broker(simbolo_interno)
+        tick = self.mt5.obtener_precio_actual(sb) if sb else None
+        if not tick:
+            return 0.0
+        return tick['ask'] if direccion == "COMPRA" else tick['bid']
 
     def _procesar_razonamiento_ruido(self, simbolo, h_estado):
         """Explica el ruido del Hurst una vez por hora."""
