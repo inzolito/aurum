@@ -15,7 +15,11 @@ from config.mt5_connector import MT5Connector
 from core.manager import Manager
 from core.scheduler import AurumScheduler
 from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario
+from config.logging_config import setup_logging, get_logger
 import MetaTrader5 as mt5_api
+
+setup_logging("INFO")
+logger = get_logger("main")
 
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
@@ -45,20 +49,34 @@ def _borrar_pid():
 def _verificar_instancia_duplicada() -> bool:
     """
     Retorna True si ya hay una instancia de Aurum Core corriendo.
-    Usa el PID file para detección fiable, independiente del CWD del proceso.
+    Usa Named Mutex de Windows (atómico) como mecanismo principal para evitar
+    race conditions, con PID file como respaldo en plataformas no-Windows.
     """
-    if not os.path.exists(_PID_FILE):
-        return False
-    try:
-        with open(_PID_FILE, 'r') as f:
-            pid_existente = int(f.read().strip())
-        if psutil.pid_exists(pid_existente) and pid_existente != os.getpid():
+    if os.name == 'nt':
+        # Named Mutex — operación atómica, sin race condition
+        import ctypes
+        _MUTEX_NAME = "Global\\AurumCoreMutex"
+        handle = ctypes.windll.kernel32.CreateMutexW(None, True, _MUTEX_NAME)
+        ERROR_ALREADY_EXISTS = 183
+        if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+            ctypes.windll.kernel32.CloseHandle(handle)
             return True
-        # PID file obsoleto (proceso ya no existe)
-        os.remove(_PID_FILE)
-    except (ValueError, OSError):
-        pass
-    return False
+        # Guardamos el handle en un módulo global para que no sea liberado por GC
+        _verificar_instancia_duplicada._mutex_handle = handle
+        return False
+    else:
+        # Fallback Unix: PID file
+        if not os.path.exists(_PID_FILE):
+            return False
+        try:
+            with open(_PID_FILE, 'r') as f:
+                pid_existente = int(f.read().strip())
+            if psutil.pid_exists(pid_existente) and pid_existente != os.getpid():
+                return True
+            os.remove(_PID_FILE)
+        except (ValueError, OSError):
+            pass
+        return False
 
 
 def _lanzar_news_hunter():

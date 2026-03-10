@@ -10,6 +10,10 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.absolute()))
 from config.db_connector import DBConnector
 from config.notifier import _enviar_telegram
+from config.logging_config import setup_logging, get_logger
+
+setup_logging("INFO")
+logger = get_logger("heartbeat")
 
 VERIFICAR_CADA_SEGUNDOS = 120  # 2 minutos
 MAX_TIEMPO_INACTIVO_SEGUNDOS = 600  # 10 minutos

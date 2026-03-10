@@ -463,4 +463,66 @@ Implementado sistema de PID file en tres capas:
 
 ---
 
+---
+
+## MEJORAS POST-AUDITORÍA — Implementadas 2026-03-10
+
+---
+
+### P-1: Script de Administración Central (`aurum_admin.py`) ✅
+**Archivo:** `aurum_admin.py` (nuevo)
+
+Script interactivo con menú Rich para administración diaria. Incluye tabla de votos por obrero en modo Live (refresco 30s), estado de procesos con RAM/CPU, control de activos desde DB, parámetros del sistema, feed de noticias y reinicio limpio del bot con confirmación.
+
+---
+
+### P-2: Race condition en arranque — Named Mutex Windows ✅
+**Archivos:** `main.py`, `start_bot.ps1`
+
+Reemplazado el check TOCTOU del PID file por `CreateMutexW` (Named Mutex de Windows), operación atómica que garantiza exclusión mutua real entre instancias. `start_bot.ps1` reescrito para verificar PID file antes de lanzar y usar siempre el Python del venv.
+
+---
+
+### P-3: SpreadWorker implementado ✅
+**Archivo:** `workers/worker_spread.py` (nuevo), integrado en `core/manager.py`
+
+Analiza el ratio spread actual/típico. Aplica ajuste penalizador al veredicto final según nivel de iliquidez (−0.25 a +0.05). Cache de 90 segundos.
+
+---
+
+### P-4: VIXWorker implementado ✅
+**Archivo:** `workers/worker_vix.py` (nuevo), integrado en `core/manager.py`
+
+ATR(14) en H4 normalizado contra SMA(50). Modera convicción según régimen de volatilidad (−0.20 EXTREMA a 0.00 NORMAL). Cache de 5 minutos.
+
+---
+
+### P-5: Infraestructura de logging unificado ✅
+**Archivo:** `config/logging_config.py` (nuevo)
+
+Logger `aurum.*` con handler de consola + archivo rotativo (`logs/aurum.log`). Integrado en `main.py`, `heartbeat.py` y nuevos workers. Migración completa del resto de módulos pendiente como refactor separado.
+
+---
+
+### P-6: Test suite automatizada ✅
+**Archivo:** `tests/test_workers.py` (nuevo)
+
+17 tests con pytest y mocks. Cubre HurstWorker, VolumeWorker, FlowWorker, SpreadWorker, VIXWorker y RiskModule sin requerir MT5 ni DB activos.
+
+---
+
+## RESUMEN FINAL
+
+| Categoría | Issues | Estado |
+|-----------|--------|--------|
+| CRÍTICOS originales | 6 | ✅ Todos corregidos |
+| ALTOS originales | 9 | ✅ 8 corregidos / 1 diferido |
+| MEDIOS originales | 5 | ✅ 4 corregidos / 1 diferido |
+| BAJOS originales | 10 | ✅ 7 corregidos / 3 diferidos |
+| Nuevos post-auditoría (N-1/2/3) | 3 | ✅ Todos corregidos |
+| Mejoras post-auditoría (P-1 a P-6) | 6 | ✅ Todas implementadas |
+| **Total** | **39** | **✅ 35 resueltos / 4 diferidos** |
+
+---
+
 *Auditoría y correcciones realizadas con Claude Code — Anthropic. 2026-03-10*

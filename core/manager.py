@@ -17,6 +17,8 @@ from workers.worker_hurst import HurstWorker
 from workers.worker_volume import VolumeWorker
 from workers.worker_cross import CrossWorker
 from workers.worker_structure import StructureWorker
+from workers.worker_spread import SpreadWorker
+from workers.worker_vix import VIXWorker
 from core.visualizer import Visualizer
 from config.notifier import (
     notificar_proximidad,
@@ -61,6 +63,8 @@ class Manager:
         self.volume = VolumeWorker(db, mt5)
         self.cross  = CrossWorker(db, mt5)
         self.structure = StructureWorker(db, mt5)
+        self.spread    = SpreadWorker(db, mt5)
+        self.vix       = VIXWorker(db, mt5)
         self.visualizer = Visualizer()
 
         # V7.7 & V9.0: Variables de estado global
@@ -172,6 +176,8 @@ class Manager:
         v_volume = self.volume.analizar(simbolo_interno)
         v_cross  = self.cross.analizar(simbolo_interno)
         v_struct = self.structure.analizar(simbolo_interno)
+        v_spread = self.spread.analizar(simbolo_interno)
+        v_vix    = self.vix.analizar(simbolo_interno)
         
         # Juez de Persistencia (Hurst)
         res_hurst = self.hurst.analizar(simbolo_interno)
@@ -259,13 +265,30 @@ class Manager:
         )
 
         # --- PENALIZACIÓN DE HURST (V10.5) ---
-        # En lugar de abortar, si hay "RUIDO" (0.45 - 0.55), penalizamos con -0.15 el veredicto absoluto.
         if 0.45 <= h_val <= 0.55:
-            print(f"[GERENTE] ⚠️ Mercado en RUIDO (H: {h_val:.4f}). Aplicando penalización de -0.15.")
+            print(f"[GERENTE] ⚠️ Mercado en RUIDO (H: {h_val:.4f}). Penalización -0.15.")
             if veredicto > 0:
                 veredicto = max(0.0, veredicto - 0.15)
             elif veredicto < 0:
                 veredicto = min(0.0, veredicto + 0.15)
+
+        # --- PENALIZACIÓN DE SPREAD (P-3) ---
+        ajuste_spread = v_spread.get("ajuste", 0.0)
+        if ajuste_spread != 0.0:
+            print(f"[GERENTE] 📉 Spread {v_spread['estado']} ({v_spread['ratio']:.1f}x). Ajuste: {ajuste_spread:+.2f}")
+            if veredicto > 0:
+                veredicto = max(0.0, veredicto + ajuste_spread)
+            elif veredicto < 0:
+                veredicto = min(0.0, veredicto - ajuste_spread)
+
+        # --- PENALIZACIÓN DE VOLATILIDAD VIX/ATR (P-4) ---
+        ajuste_vix = v_vix.get("ajuste", 0.0)
+        if ajuste_vix != 0.0:
+            print(f"[GERENTE] 📊 Volatilidad {v_vix['nivel']} (ATR×{v_vix['ratio']:.1f}). Ajuste: {ajuste_vix:+.2f}")
+            if veredicto > 0:
+                veredicto = max(0.0, veredicto + ajuste_vix)
+            elif veredicto < 0:
+                veredicto = min(0.0, veredicto - ajuste_vix)
         
         # --- FUERZA DOMINANTE (V12.0) ---
         pesos_votos = {

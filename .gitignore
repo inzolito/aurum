@@ -29,3 +29,4 @@ tmp_data.json
 
 # Imágenes de telemetría generadas automáticamente
 temp/telemetry/
+aurum_core.pid

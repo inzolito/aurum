@@ -1,35 +1,75 @@
 <#
 .SYNOPSIS
-    Script de Inicio Seguro (Kill-Switch) para Aurum Omni.
+    Script de Inicio Seguro para Aurum Omni.
 .DESCRIPTION
-    Mata cualquier instancia previa de main.py para evitar procesos dobles.
-    Luego, arranca el bot principal.
+    Verifica que no haya instancias previas mediante PID file antes de lanzar.
+    Usa SIEMPRE el Python del entorno virtual para coherencia con el Named Mutex.
+    Crea el directorio logs/ si no existe.
 #>
 
 $ErrorActionPreference = "SilentlyContinue"
+$ProjectDir  = "C:\www\Aurum"
+$VenvPython  = "$ProjectDir\venv\Scripts\python.exe"
+$MainScript  = "$ProjectDir\main.py"
+$PidFile     = "$ProjectDir\aurum_core.pid"
+$LogDir      = "$ProjectDir\logs"
+$LogFile     = "$LogDir\bot.log"
 
-Write-Host "========================================="
-Write-Host "    AURUM OMNI - INICIO SEGURO"
-Write-Host "========================================="
+Write-Host "=========================================" -ForegroundColor Cyan
+Write-Host "    AURUM OMNI - INICIO SEGURO V2"        -ForegroundColor Cyan
+Write-Host "=========================================" -ForegroundColor Cyan
 
-# 1. Kill-Switch: Buscar procesos de Python ejecutando main.py
-Write-Host "[KILL-SWITCH] Buscando instancias previas del bot..."
-
-$processList = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" | Where-Object { $_.CommandLine -match "main.py" }
-
-if ($processList) {
-    foreach ($proc in $processList) {
-        Write-Host "[KILL-SWITCH] Matando proceso Python PID $($proc.ProcessId)..." -ForegroundColor Yellow
-        Stop-Process -Id $proc.ProcessId -Force
-    }
-    Start-Sleep -Seconds 2
-    Write-Host "[KILL-SWITCH] Instancias previas eliminadas." -ForegroundColor Green
-} else {
-    Write-Host "[KILL-SWITCH] No se encontraron instancias previas corriendo." -ForegroundColor DarkGray
+# Verificar que el venv existe
+if (-not (Test-Path $VenvPython)) {
+    Write-Host "[ERROR] No se encontro el entorno virtual en $VenvPython" -ForegroundColor Red
+    Write-Host "        Ejecuta: python -m venv venv && venv\Scripts\pip install -r requirements.txt"
+    exit 1
 }
 
-# 2. Iniciar el nuevo proceso
-Write-Host "[INIT] Levantando proceso main.py en background..."
-Start-Process cmd -ArgumentList "/c C:\www\Aurum\venv\Scripts\python.exe -u C:\www\Aurum\main.py > C:\www\Aurum\logs\bot.log 2>&1" -WorkingDirectory "C:\www\Aurum" -WindowStyle Hidden -PassThru | Select-Object Id
+# Crear directorio de logs si no existe
+if (-not (Test-Path $LogDir)) {
+    New-Item -ItemType Directory -Path $LogDir | Out-Null
+    Write-Host "[INFO] Directorio logs/ creado." -ForegroundColor DarkGray
+}
 
-Write-Host "[OK] Bot iniciado. Revisar logs/bot.log" -ForegroundColor Green
+# Verificar PID file — si existe y el proceso sigue vivo, no lanzar
+if (Test-Path $PidFile) {
+    $existingPid = Get-Content $PidFile -ErrorAction SilentlyContinue
+    if ($existingPid) {
+        $runningProc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue
+        if ($runningProc) {
+            Write-Host "[AVISO] Aurum Core ya esta corriendo (PID $existingPid). No se lanzara una segunda instancia." -ForegroundColor Yellow
+            Write-Host "        Si el bot esta bloqueado, usa: Stop-Process -Id $existingPid -Force" -ForegroundColor DarkGray
+            exit 0
+        } else {
+            Write-Host "[INFO] PID file obsoleto encontrado. Limpiando..." -ForegroundColor DarkGray
+            Remove-Item $PidFile -Force
+        }
+    }
+}
+
+# Matar procesos duplicados por nombre de script como medida adicional
+$processList = Get-WmiObject Win32_Process -Filter "Name='python.exe' OR Name='pythonw.exe'" |
+               Where-Object { $_.CommandLine -match "main\.py" }
+
+if ($processList) {
+    Write-Host "[KILL-SWITCH] Encontradas $($processList.Count) instancia(s) previas. Terminando..." -ForegroundColor Yellow
+    foreach ($proc in $processList) {
+        Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        Write-Host "             Terminado PID $($proc.ProcessId)" -ForegroundColor DarkGray
+    }
+    Start-Sleep -Seconds 2
+}
+
+# Lanzar con el Python del venv (silencioso, log a archivo)
+Write-Host "[INIT] Lanzando main.py con venv Python..." -ForegroundColor Green
+$proc = Start-Process -FilePath $VenvPython `
+        -ArgumentList "-u `"$MainScript`"" `
+        -WorkingDirectory $ProjectDir `
+        -WindowStyle Hidden `
+        -RedirectStandardOutput $LogFile `
+        -RedirectStandardError "$LogDir\bot_err.log" `
+        -PassThru
+
+Write-Host "[OK] Bot iniciado — PID $($proc.Id)" -ForegroundColor Green
+Write-Host "     Logs en: $LogFile" -ForegroundColor DarkGray
