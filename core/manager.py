@@ -623,12 +623,14 @@ class Manager:
         import MetaTrader5 as mt5_api
         from datetime import datetime, timedelta
 
-        # 1. Obtener trades cerrados sin resultado en la BD
+        # 1. Obtener trades cerrados sin resultado en la BD (D3 V14: incluir simbolo)
         try:
             self.db.cursor.execute("""
-                SELECT ticket_mt5, veredicto_apertura, probabilidad_est, precio_entrada, take_profit, stop_loss
-                FROM registro_operaciones 
-                WHERE resultado_final IS NULL AND ticket_mt5 != 999999
+                SELECT ro.ticket_mt5, ro.veredicto_apertura, ro.probabilidad_est,
+                       ro.precio_entrada, ro.take_profit, ro.stop_loss, a.simbolo
+                FROM registro_operaciones ro
+                JOIN activos a ON a.id = ro.activo_id
+                WHERE ro.resultado_final IS NULL AND ro.ticket_mt5 != 999999
             """)
         except Exception:
             return
@@ -642,33 +644,44 @@ class Manager:
         if history is None:
             return
 
-        for ticket, veredicto, prob, p_ent, tp, sl in pendientes:
+        for ticket, veredicto, prob, p_ent, tp, sl, simbolo in pendientes:
             # Buscar el deal de salida para este ticket de orden
-            # MT5: El deal de salida suele tener el entry == DEAL_ENTRY_OUT
             deals = [d for d in history if d.order == ticket and d.entry == mt5_api.DEAL_ENTRY_OUT]
-            
+
             if deals:
                 deal = deals[0]
                 ganancia = deal.profit
                 resultado = "GANADO" if ganancia > 0 else "PERDIDO"
-                
-                # Calcular Divergencia de Precisión
-                # Si probabilidad_est era 90% y ganó, divergencia = 10 (pequeña)
-                # Si era 90% y perdió, divergencia = 90 (grande)
+
                 exito_real = 100.0 if resultado == "GANADO" else 0.0
                 divergencia = abs(exito_real - float(prob))
-                
-                print(f"[GERENTE] 📊 Auditoria de Cierre #{ticket}: Result={resultado} | Prob={prob}% | Div={divergencia:.1f}")
-                
+
+                print(f"[GERENTE] Auditoria de Cierre #{ticket}: Result={resultado} | Prob={prob}% | Div={divergencia:.1f}")
+
                 try:
                     self.db.cursor.execute("""
-                        UPDATE registro_operaciones 
+                        UPDATE registro_operaciones
                         SET resultado_final = %s, divergencia_precision = %s, pnl_usd = %s
                         WHERE ticket_mt5 = %s
                     """, (resultado, divergencia, ganancia, ticket))
                     self.db.conn.commit()
                 except Exception as e:
                     print(f"[GERENTE] Error actualizando precision de cierre #{ticket}: {e}")
+
+                # D3 V14: Autopsia de Pérdida — analizar con Gemini por qué falló
+                if resultado == "PERDIDO":
+                    try:
+                        self.db.cursor.execute("""
+                            SELECT motivo FROM registro_senales
+                            WHERE activo_id = (SELECT id FROM activos WHERE simbolo = %s)
+                            AND decision_gerente = 'EJECUTADO'
+                            ORDER BY tiempo DESC LIMIT 1
+                        """, (simbolo,))
+                        row = self.db.cursor.fetchone()
+                        motivo_entrada = row[0] if row else "Sin registro de justificacion"
+                        self._autopsia_perdida(ticket, simbolo, motivo_entrada, ganancia)
+                    except Exception as e:
+                        print(f"[GERENTE] Error preparando autopsia #{ticket}: {e}")
 
     # ------------------------------------------------------------------
     # Auditoría obligatoria (Glass Box)
@@ -832,6 +845,146 @@ class Manager:
         if not tick:
             return 0.0
         return tick['ask'] if direccion == "COMPRA" else tick['bid']
+
+    # ------------------------------------------------------------------
+    # D3 V14: Autopsia de Pérdidas
+    # ------------------------------------------------------------------
+
+    def _autopsia_perdida(self, ticket: int, simbolo: str, motivo_entrada: str, pnl: float):
+        """
+        D3 V14: Llama a Gemini para analizar por qué falló un trade perdedor.
+        Contrasta la justificación original de entrada con el resultado final.
+        Guarda el diagnóstico en autopsias_perdidas para revisión y recalibración.
+        """
+        try:
+            from workers.worker_nlp import _llamar_gemini_api, GEMINI_MODEL_LITE
+            prompt = (
+                f"AUTOPSIA DE TRADE PERDEDOR — Sistema Aurum\n\n"
+                f"ACTIVO: {simbolo}\n"
+                f"TICKET: {ticket}\n"
+                f"PERDIDA: ${abs(pnl):.2f} USD\n\n"
+                f"JUSTIFICACION ORIGINAL DE ENTRADA:\n{motivo_entrada}\n\n"
+                f"TAREA:\n"
+                f"1. Identifica el fallo principal: tecnico (trend/flow/structure), macro (nlp), timing o riesgo.\n"
+                f"2. Cual senal de advertencia se ignoro o peso incorrectamente?\n"
+                f"3. Sugiere UNA correccion concreta al sistema.\n\n"
+                f"Responde SOLO en JSON (sin markdown):\n"
+                f"{{\"tipo_fallo\": \"TECNICO|MACRO|TIMING|RIESGO\", "
+                f"\"worker_culpable\": \"TrendWorker|NLPWorker|FlowWorker|StructureWorker|Otro\", "
+                f"\"descripcion\": \"...\", \"correccion_sugerida\": \"...\"}}"
+            )
+            texto = _llamar_gemini_api(prompt, model=GEMINI_MODEL_LITE)
+            if texto:
+                import json as _json
+                inicio = texto.find("{")
+                fin = texto.rfind("}") + 1
+                if inicio >= 0 and fin > inicio:
+                    data = _json.loads(texto[inicio:fin])
+                    self.db.guardar_autopsia(
+                        ticket=ticket,
+                        simbolo=simbolo,
+                        pnl=pnl,
+                        tipo_fallo=data.get("tipo_fallo", "DESCONOCIDO"),
+                        worker_culpable=data.get("worker_culpable", "Desconocido"),
+                        descripcion=data.get("descripcion", ""),
+                        correccion=data.get("correccion_sugerida", "")
+                    )
+                    print(f"[AUTOPSIA] #{ticket} {simbolo} -> Fallo: {data.get('tipo_fallo')} | Worker: {data.get('worker_culpable')}")
+        except Exception as e:
+            print(f"[AUTOPSIA] Error en autopsia de #{ticket}: {e}")
+
+    # ------------------------------------------------------------------
+    # D2 V14: Recalibración Semanal de Pesos
+    # ------------------------------------------------------------------
+
+    def _recalibrar_pesos(self):
+        """
+        D2 V14: Recalibración de pesos de obreros basada en tasa de acierto (7 días).
+        Requisitos: >= 20 trades completados en la muestra.
+        Ajuste máximo: ±0.05 por semana. Límites: [0.10, 0.60] por obrero.
+        Escribe los nuevos pesos en parametros_sistema y notifica por Telegram.
+        """
+        try:
+            if not self.db.cursor:
+                return
+
+            self.db.cursor.execute("""
+                SELECT
+                    rs.voto_tendencia,
+                    rs.voto_nlp,
+                    rs.voto_order_flow,
+                    rs.voto_sniper,
+                    ro.resultado_final
+                FROM registro_senales rs
+                JOIN registro_operaciones ro ON ro.activo_id = rs.activo_id
+                WHERE rs.decision_gerente = 'EJECUTADO'
+                AND ro.resultado_final IS NOT NULL
+                AND rs.tiempo > NOW() - INTERVAL '7 days'
+                LIMIT 500
+            """)
+            rows = self.db.cursor.fetchall()
+
+            if len(rows) < 20:
+                print(f"[RECALIB] Muestra insuficiente ({len(rows)} trades en 7 dias). Sin ajustes.")
+                return
+
+            def _tasa_acierto(votos, resultados):
+                pares = [(v, r) for v, r in zip(votos, resultados) if abs(v) > 0.05]
+                if not pares:
+                    return 0.5
+                aciertos = sum(
+                    1 for v, r in pares
+                    if (v > 0 and r == "GANADO") or (v < 0 and r == "PERDIDO")
+                )
+                return aciertos / len(pares)
+
+            resultados = [r[4] for r in rows]
+            accs = {
+                "TENDENCIA.peso_voto":   _tasa_acierto([r[0] for r in rows], resultados),
+                "NLP.peso_voto":         _tasa_acierto([r[1] for r in rows], resultados),
+                "ORDER_FLOW.peso_voto":  _tasa_acierto([r[2] for r in rows], resultados),
+                "SNIPER.peso_voto":      _tasa_acierto([r[3] for r in rows], resultados),
+            }
+
+            params = self.db.get_parametros()
+            cambios = []
+
+            for param, acc in accs.items():
+                peso_actual = float(params.get(param, 0.25))
+                if acc > 0.65:
+                    delta = +0.05
+                elif acc < 0.45:
+                    delta = -0.05
+                else:
+                    delta = 0.0
+
+                if delta != 0.0:
+                    nuevo_peso = round(max(0.10, min(0.60, peso_actual + delta)), 2)
+                    if nuevo_peso != peso_actual:
+                        self.db.cursor.execute(
+                            "UPDATE parametros_sistema SET valor = %s WHERE nombre_parametro = %s",
+                            (nuevo_peso, param)
+                        )
+                        cambios.append(f"{param}: {peso_actual:.2f} -> {nuevo_peso:.2f} (acc={acc:.0%})")
+
+            if cambios:
+                self.db.conn.commit()
+                self.db._params_last_refresh = 0  # Forzar recarga del cache
+                msg = "<b>Recalibracion de Pesos Completada</b>\nMuestra: {} trades (7 dias)\n".format(len(rows))
+                msg += "\n".join(f"• {c}" for c in cambios)
+                from config.notifier import _enviar_telegram
+                _enviar_telegram(msg)
+                print(f"[RECALIB] Pesos ajustados: {cambios}")
+            else:
+                print(f"[RECALIB] Pesos estables (muestra: {len(rows)} trades). Sin ajustes necesarios.")
+
+        except Exception as e:
+            print(f"[RECALIB] Error en recalibracion: {e}")
+            if self.db.conn:
+                try:
+                    self.db.conn.rollback()
+                except Exception:
+                    pass
 
     def _procesar_razonamiento_ruido(self, simbolo, h_estado):
         """Explica el ruido del Hurst una vez por hora."""

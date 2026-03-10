@@ -25,10 +25,11 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 load_dotenv()
 
-GEMINI_API_KEY   = os.getenv("GEMINI_API_KEY", "")
-CACHE_TTL_MIN    = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))   # P-2 V14: reducido de 30 a 5 min
+GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
+CACHE_TTL_MIN     = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))   # P-2 V14: reducido de 30 a 5 min
 GEMINI_MODEL_LITE = "gemini-3.1-flash-lite"  # P-1 V14: modelo actualizado
 GEMINI_MODEL_PRO  = "gemini-pro-latest"      # Solo para alertas de emergencia
+_MAX_CALLS_PER_DAY = int(os.getenv("NLP_MAX_CALLS_DAY", "200"))  # D5 V14: límite diario de API
 
 
 def _llamar_gemini_api(prompt: str, model: str = GEMINI_MODEL_LITE) -> str:
@@ -92,6 +93,8 @@ class NLPWorker:
             print("[NLP] ADVERTENCIA: GEMINI_API_KEY no configurada. Worker usará modo fallback (sin IA).")
         self._ultimo_refresh = datetime.min.replace(tzinfo=timezone.utc)  # Para el guard de 5 min
         self._ultimo_hash = None  # P-2 V14: rastreo de hash para forzar refresh inmediato
+        self._api_calls_today = 0  # D5 V14: contador diario de llamadas API
+        self._api_calls_date = None  # D5 V14: fecha del contador actual
     def extract_nlp_score(self, text: str) -> float | None:
         """Extrae el puntaje usando Regex [SCORE: X.XX]."""
         pattern = r"\[SCORE:\s*([+-]?\d*\.?\d+)\]"
@@ -195,6 +198,17 @@ class NLPWorker:
         """
         simbolos = [a["simbolo"] for a in activos]
         fallback  = {s: {'voto': 0.0, 'razonamiento': "Error API Gemini."} for s in simbolos}
+
+        # D5 V14: Control de límite diario de llamadas API
+        hoy = datetime.now(timezone.utc).date()
+        if self._api_calls_date != hoy:
+            self._api_calls_today = 0
+            self._api_calls_date = hoy
+        if self._api_calls_today >= _MAX_CALLS_PER_DAY:
+            print(f"[NLP] Limite diario de API alcanzado ({_MAX_CALLS_PER_DAY} llamadas). Usando cache/fallback.")
+            return fallback
+        self._api_calls_today += 1
+        print(f"[NLP] Llamada API #{self._api_calls_today}/{_MAX_CALLS_PER_DAY} hoy.")
 
         # 0.0: Obtener Noticias Crudas Recientes (V15.1 Real-Time injection)
         noticias_recientes = self.db.get_top_news(limit=10)

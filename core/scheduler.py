@@ -31,6 +31,9 @@ class AurumScheduler:
         
         # V11.1: Reporte Horario de Noticias (Pedido por Usuario)
         schedule.every().hour.at(":00").do(self.reporte_noticias_horario)
+
+        # D2 V14: Recalibración semanal de pesos (domingo 17:00 UTC, antes de apertura de mercado)
+        schedule.every().sunday.at("17:00").do(self.recalibrar_pesos_semanal)
         
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
@@ -139,6 +142,14 @@ class AurumScheduler:
             _enviar_telegram(resumen)
         except Exception as e:
             print(f"[SCHEDULER] Error en reporte cierre: {e}")
+
+    def recalibrar_pesos_semanal(self):
+        """D2 V14: Recalibración automática de pesos cada domingo a las 17:00 UTC."""
+        print("[SCHEDULER] Ejecutando recalibracion semanal de pesos de obreros...")
+        try:
+            self.manager._recalibrar_pesos()
+        except Exception as e:
+            print(f"[SCHEDULER] Error en recalibracion semanal: {e}")
 
     def evento_sesion(self, sesion):
         """Notificación de apertura de sesión."""

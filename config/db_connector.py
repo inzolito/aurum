@@ -384,6 +384,26 @@ class DBConnector:
                 self.conn.rollback()
 
     @survival_shield
+    def guardar_autopsia(self, ticket: int, simbolo: str, pnl: float,
+                         tipo_fallo: str, worker_culpable: str,
+                         descripcion: str, correccion: str):
+        """D3 V14: Persiste el análisis de autopsia de una pérdida en autopsias_perdidas."""
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    """
+                    INSERT INTO autopsias_perdidas
+                        (ticket_mt5, simbolo, pnl_usd, tipo_fallo, worker_culpable, descripcion, correccion_sugerida)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s);
+                    """,
+                    (ticket, simbolo, pnl, tipo_fallo, worker_culpable, descripcion, correccion)
+                )
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB] Error guardando autopsia #{ticket}: {e}")
+                self.conn.rollback()
+
+    @survival_shield
     def guardar_error_ejecucion(self, simbolo: str, retcode: int, mensaje: str,
                                 decision: str, lotes: float, contexto: str):
         """

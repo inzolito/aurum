@@ -5,6 +5,19 @@ Para el detalle técnico de cada item ver `AUDIT_REPORT_2026-03-10.md`.
 
 ---
 
+## 2026-03-10 (V14.1 — Security & Intelligence Upgrades)
+
+### Debilidades corregidas (D1 a D5)
+- **D1** `core/risk_module.py` — Filtro de sesión activo: ventanas FOREX (07–16 UTC), Índices (14:30–21 UTC), Commodities (07–20 UTC). Bloqueo anti-volatilidad los primeros 20 min de apertura. `db/migration_v14_security.sql` popula `horarios_operativos`.
+- **D2** `core/manager.py` + `core/scheduler.py` — Recalibración semanal de pesos cada domingo 17:00 UTC. Ajuste ±0.05 basado en tasa de acierto por obrero (muestra mínima 20 trades, límites [0.10, 0.60]).
+- **D3** `core/manager.py` + `config/db_connector.py` — Autopsia de Pérdidas: Gemini analiza cada trade perdedor contrastando la justificación original de entrada con el resultado. Resultado guardado en `autopsias_perdidas`.
+- **D4** `core/risk_module.py` — IA-Risk: `_factor_riesgo_noticias()` reduce el lotaje al 50% si hay noticias de alto impacto (Fed, NFP, CPI, FOMC, etc.) publicadas en los últimos 30 minutos.
+- **D5** `workers/worker_nlp.py` — Contador diario de llamadas Gemini. Límite configurable `NLP_MAX_CALLS_DAY` (default 200). Se reinicia cada día UTC automáticamente.
+- **Nueva tabla BD:** `autopsias_perdidas` (ticket, simbolo, pnl, tipo_fallo, worker_culpable, descripcion, correccion_sugerida).
+- **Documentación:** `docs/AUDIT_REPORT_V14_SECURITY.md` con detalle técnico completo y checklist de verificación post-despliegue.
+
+---
+
 ## 2026-03-10 (V14 — Motor NLP Upgrade)
 
 ### Mejoras implementadas (P-1 a P-3 V14)

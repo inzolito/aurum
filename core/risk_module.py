@@ -43,12 +43,15 @@ class RiskModule:
             
         if confianza >= THRESHOLD_FULL:
             return MAX_LOT
-            
+
         # Interpolación lineal entre THRESHOLD_ENTRY (0.45) y THRESHOLD_FULL (0.80)
-        # lote = MIN_LOT + ((confianza - 0.45) / (0.80 - 0.45)) * (0.12 - 0.05)
         lote = MIN_LOT + ((confianza - THRESHOLD_ENTRY) / (THRESHOLD_FULL - THRESHOLD_ENTRY)) * (MAX_LOT - MIN_LOT)
-        
-        return round(lote, 2)
+
+        # D4 V14: IA-Risk — reducir lotaje si hay noticias de alto impacto recientes
+        factor_noticias = self._factor_riesgo_noticias()
+        lote = lote * factor_noticias
+
+        return max(MIN_LOT, round(lote, 2))
 
     def obtener_sl_tp_atr(self, simbolo_broker: str, direccion: str) -> tuple[float, float] | tuple[None, None]:
         """
@@ -73,6 +76,35 @@ class RiskModule:
         tp = precio + dist_tp if direccion == "COMPRA" else precio - dist_tp
         
         return sl, tp
+
+    def _factor_riesgo_noticias(self) -> float:
+        """
+        D4 V14: IA-Risk — retorna 0.5 si hay noticias de alto impacto en los últimos 30 min.
+        Palabras clave: Fed, NFP, CPI, GDP, FOMC, inflación, Powell, empleo.
+        Retorna 1.0 (sin cambio) si no hay noticias críticas o si la DB no está disponible.
+        """
+        try:
+            if not self.db.cursor:
+                return 1.0
+            self.db.cursor.execute("""
+                SELECT COUNT(*) FROM raw_news_feed
+                WHERE published_at > NOW() - INTERVAL '30 minutes'
+                AND (
+                    title ILIKE '%fed%'        OR title ILIKE '%nfp%'
+                    OR title ILIKE '%fomc%'    OR title ILIKE '%cpi%'
+                    OR title ILIKE '%gdp%'     OR title ILIKE '%inflation%'
+                    OR title ILIKE '%powell%'  OR title ILIKE '%employment%'
+                    OR title ILIKE '%jobs%'    OR title ILIKE '%interest rate%'
+                    OR title ILIKE '%rate decision%'
+                )
+            """)
+            count = self.db.cursor.fetchone()[0]
+            if count > 0:
+                print(f"[RISK] Noticias de alto impacto recientes ({count}). Lotaje reducido al 50%.")
+                return 0.5
+        except Exception as e:
+            print(f"[RISK] Error verificando noticias para IA-Risk: {e}")
+        return 1.0
 
     def calcular_lotes(self, simbolo_interno: str, sl_precio: float) -> float | None:
         # (Este método se mantiene por compatibilidad si otros módulos lo usan, 
@@ -130,7 +162,7 @@ class RiskModule:
             print(f"[RISK] BLOQUEO: Ya hay {len(posiciones)} posicion(es) abierta(s) en {simbolo_broker}.")
             return False
 
-        # Verificación 3: Ventana horaria (solo si hay cursor disponible)
+        # Verificación 3: Ventana horaria + Anti-volatilidad de apertura (D1 V14)
         if self.db.cursor:
             try:
                 self.db.cursor.execute(
@@ -146,12 +178,28 @@ class RiskModule:
                 if horarios:
                     from datetime import datetime, timezone
                     hora_actual = datetime.now(timezone.utc).time()
-                    dentro_ventana = any(
-                        apertura <= hora_actual <= cierre
-                        for apertura, cierre in horarios
-                    )
+                    hora_actual_min = hora_actual.hour * 60 + hora_actual.minute
+
+                    dentro_ventana = False
+                    en_arranque = False
+                    min_arranque = 0
+
+                    for apertura, cierre in horarios:
+                        apertura_min = apertura.hour * 60 + apertura.minute
+                        cierre_min   = cierre.hour   * 60 + cierre.minute
+                        if apertura_min <= hora_actual_min <= cierre_min:
+                            dentro_ventana = True
+                            min_arranque = hora_actual_min - apertura_min
+                            # D1 V14: Anti-volatilidad — primeros 20 min de apertura de sesión
+                            if min_arranque < 20:
+                                en_arranque = True
+                            break
+
                     if not dentro_ventana:
                         print(f"[RISK] BLOQUEO: {simbolo_interno} fuera de horario operativo.")
+                        return False
+                    if en_arranque:
+                        print(f"[RISK] BLOQUEO: {simbolo_interno} en periodo anti-volatilidad de apertura ({min_arranque}/20 min).")
                         return False
             except Exception:
                 pass  # En caso de fallo, no bloquear por horarios
