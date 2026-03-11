@@ -27,7 +27,12 @@ class VolumeWorker:
         import time
         ahora = time.time()
         tick_actual = mt5.symbol_info_tick(simbolo_broker)
-        precio_actual = tick_actual.last if tick_actual else 0
+        # FIX-VOL-02: En FOREX el campo 'last' siempre es 0.0.
+        # Usar (bid+ask)/2 como precio de referencia universal.
+        if tick_actual:
+            precio_actual = (tick_actual.bid + tick_actual.ask) / 2 if tick_actual.last == 0 else tick_actual.last
+        else:
+            precio_actual = 0
         
         if simbolo_broker in self._cache:
             cache = self._cache[simbolo_broker]
@@ -116,7 +121,12 @@ class VolumeWorker:
         val = round(bin_edges[low_idx], digits)
         
         # 3. Lógica de Voto y Contexto
-        precio_actual = precios[-1]
+        # FIX-VOL-02: Usar el precio mid del tick en lugar de la última vela
+        # para mayor precisión. Fallback al último precio del historial.
+        if tick_actual:
+            precio_actual = (tick_actual.bid + tick_actual.ask) / 2 if tick_actual.last == 0 else tick_actual.last
+        else:
+            precio_actual = precios[-1]
         voto = 0.0
         contexto = "Fuera de Valor"
         ajuste = "Neutral"
@@ -135,15 +145,24 @@ class VolumeWorker:
                 voto = 0.5  # Atracción al POC (Precio Justo)
                 ajuste = "Atracción al POC"
         else:
-            # Low Volume Node (LVN) o Descubrimiento de Precio
-            # Si el histograma en este nivel es muy bajo (< 5% del max)
+            # FIX-VOL-01 (2026-03-10): LVN con voto direccional.
+            # Una zona de vacío implica baja resistencia: el precio tiende a
+            # acelerar en la dirección del rompimiento. Antes retornaba 0.0 siempre.
             curr_bin = np.digitize(precio_actual, bin_edges) - 1
             if 0 <= curr_bin < len(hist):
                 vol_actual = hist[curr_bin]
                 if vol_actual < np.max(hist) * 0.05:
                     contexto = "Zona de Vacío (LVN)"
-                    voto = 0.0
-                    ajuste = "Reduciendo confianza (Falta liquidez)"
+                    # Dirección del rompimiento determina el voto
+                    if precio_actual > vah:
+                        voto = 0.5   # Rotura alcista — impulso hacia arriba
+                        ajuste = "Aceleración alcista (LVN arriba del VA)"
+                    elif precio_actual < val:
+                        voto = -0.5  # Rotura bajista — impulso hacia abajo
+                        ajuste = "Aceleración bajista (LVN abajo del VA)"
+                    else:
+                        voto = 0.0
+                        ajuste = "LVN dentro del VA (Neutral)"
             
         res = {
             "voto": round(voto, 2),

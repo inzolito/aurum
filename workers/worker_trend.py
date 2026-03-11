@@ -91,10 +91,19 @@ class TrendWorker:
                 if rsi_now > 70:
                     voto -= 0.2          # Rebote en sobrecompra extrema
 
-        # 6. FILTRO DE VOLATILIDAD — Neutralizar en mercado lateral (rango)
+        # 6. FILTRO DE VOLATILIDAD — Penalizar en mercado lateral (rango)
         distancia_ema = abs(fast_now - slow_now) / cierre_actual
         if distancia_ema < 0.0001:   # EMAs comprimidas = mercado lateral
-            voto = voto * 0.2
+            voto = voto * 0.5        # Antes x0.2 — menos agresivo, preserva dirección
+
+        # 7. SEÑAL DE RESPALDO — Si aún en 0, usar posición del precio vs EMA rápida
+        # Cubre el caso donde precio está entre EMAs (sin stack completo).
+        # Voto débil: necesita NLP >= 0.70 para alcanzar umbral de disparo.
+        if voto == 0.0:
+            if cierre_actual > fast_now:
+                voto = 0.20   # ligero sesgo alcista: precio sobre EMA9
+            elif cierre_actual < fast_now:
+                voto = -0.20  # ligero sesgo bajista: precio bajo EMA9
 
         voto_final = round(max(-1.0, min(1.0, voto)), 2)
         print(f"[TREND] {simbolo_interno} | EMA{ema_rapida_p}={fast_now:.2f} EMA{ema_lenta_p}={slow_now:.2f} "

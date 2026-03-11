@@ -1,0 +1,1 @@
+{'decision': 'IGNORADO', 'veredicto': -0.275, 'motivo': 'Veredicto -0.2750 insufficiente (Umbral: 0.45)'}

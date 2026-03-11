@@ -1,6 +1,8 @@
-# AURUM V14 — Plan de Actualización Estructural
-**Documento de Definición para la Próxima Versión**
-**Fecha:** 2026-03-10
+# AURUM — UPGRADE PLAN
+
+> **Propósito:** Visión Estratégica. Planificación de grandes cambios de versión y objetivos a largo plazo. Define las eras del bot y la dirección general del sistema (Seguridad, IA Forense, etc.).
+
+Este documento detalla el plan estratégico para evolucionar el Ecosistema Aurum de su versión actual V13.5 a la versión V14.0.
 
 ---
 
@@ -9,7 +11,8 @@ Integración de razonamiento crítico para transformar la IA de un "analista de 
 
 ### 1.1 Autopsia de Pérdidas (Post-Trade)
 - **Función**: Análisis automático de cada Stop Loss para identificar fallos técnicos o de contexto.
-- **Beneficio**: Evita repetir errores y ajusta los pesos de los obreros dinámicamente.
+- **Persistencia Crítica**: El sistema **no debe borrar la justificación original de la entrada**. La IA debe contrastar el razonamiento inicial (por qué se entró) contra el resultado final (por qué falló) para identificar sesgos o errores de lógica específicos en el momento de la ejecución.
+- **Beneficio**: Evita repetir errores y ajusta los pesos de los obreros dinámicamente basados en evidencia histórica comparativa.
 
 ### 1.2 IA-Risk (Riesgo Dinámico)
 - **Función**: Ajuste del lotaje y riesgo por trade basado en la volatilidad real y la tensión de noticias.
@@ -62,6 +65,19 @@ Mejoras en la estabilidad diaria del sistema.
 ## P-5: Sentimiento Continuo 24/7 🗞️
 - **Tarea:** Asegurar que `news_hunter.py` y el procesamiento de `worker_nlp.py` se mantengan activos durante todo el fin de semana (Modo Vigilancia).
 - **Objetivo:** Que el bot llegue a la apertura del domingo con una lectura realista y acumulada del sentimiento global, sin "puntos ciegos".
+
+---
+
+## 7. Control de Tiempo y Ventanas de Liquidez 🕒
+Optimizar la ejecución de trades limitando la actividad del bot a horarios de alta probabilidad y reduciendo la exposición al ruido de mercado.
+
+### 7.1 Gestión de Apertura (Anti-Volatilidad)
+- **Función**: Implementar un retraso configurable (ej. 20-30 min) tras la apertura de los mercados principales.
+- **Beneficio**: Evitar "latigazos" de precios y spreads excesivamente altos que ocurren en el primer contacto con el mercado.
+
+### 7.2 Horarios de Operación (Ventanas de Liquidez)
+- **Función**: Definir rangos específicos de trading para sincronizar la actividad con las sesiones de mayor volatilidad y liquidez (Londres/Nueva York).
+- **Beneficio**: Concentrar el capital y la atención del bot en momentos donde los movimientos tienen mayor sustento institucional.
 
 ---
 *Este documento contiene el trabajo activo para la versión V14. Las tareas completadas se mueven a `HISTORIAL.md`.*

@@ -1,4 +1,6 @@
-# AURUM OMNI - ARQUITECTURA DEL SISTEMA (ONTOLOGÍA)
+# AURUM — ARCHITECTURE
+
+> **Propósito:** El Mapa del Motor. Define la arquitectura técnica del sistema, el funcionamiento de los 8 obreros (Trend, NLP, Flow, Sniper, etc.), el cálculo de pesos del Ensemble y el flujo de datos. Vital para entender la lógica de trading del bot.
 
 **Repositorio oficial:** https://github.com/inzolito/aurum.git
 

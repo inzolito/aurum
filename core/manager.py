@@ -30,7 +30,9 @@ from config.notifier import (
     notificar_error_critico,
     notificar_rechazo_broker,
     notificar_mercado_cerrado,
-    notificar_alerta_volatilidad_escalonada
+    notificar_alerta_volatilidad_escalonada,
+    notificar_tp_alcanzado,
+    notificar_sl_alcanzado,
 )
 
 
@@ -202,21 +204,20 @@ class Manager:
         if not df_v.empty:
             velas_recientes = df_v.to_dict('records')
 
-        # Recibir voto NLP con cambio dinámico de motor
-        # V10.2: Solo llama a IA si la conviccion tecnica es alta (>= 0.38)
-        if abs(tecnico_veredicto) >= self._UMBRAL_PROXIMIDAD:
-            if volatil_ahora >= 2.0 and 'voto_emg' in locals():
-                v_nlp = voto_emg
-            else:
-                v_nlp = self.nlp.analizar(
-                    simbolo_interno, 
-                    id_activo=id_activo, 
-                    forzar_refresh=forzar_nlp,
-                    technical_verdict=tecnico_veredicto,
-                    velas_recientes=velas_recientes
-                )
+        # FIX-NLP-01 (2026-03-10): NLP vota siempre, sin gate de convicción técnica.
+        # El gate anterior generaba un loop circular: NLP requería señal de otros obreros
+        # que a su vez dependían del contexto macro. La caché de 5 min + hash SHA256
+        # protegen el consumo de tokens Gemini sin necesidad de este bloqueo.
+        if volatil_ahora >= 2.0 and 'voto_emg' in locals():
+            v_nlp = voto_emg
         else:
-            v_nlp = 0.0 # Neutral si no hay conviccion tecnica
+            v_nlp = self.nlp.analizar(
+                simbolo_interno,
+                id_activo=id_activo,
+                forzar_refresh=forzar_nlp,
+                technical_verdict=tecnico_veredicto,
+                velas_recientes=velas_recientes
+            )
 
         # --- V10.2: Patrullaje de Noticias (Sin AI Analysis) ---
         self.nlp.patrullar_noticias()
@@ -232,7 +233,7 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     0.0, "CANCELADO_RIESGO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['sniper_veredicto'])
+                                    v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
         # --- V12.0: WEIGHTED VOTING & NO-FLOW PROTOCOL ---
@@ -416,19 +417,21 @@ class Manager:
             import MetaTrader5 as mt5_api
             acc_info = mt5_api.account_info()
             balance = acc_info.balance if acc_info else 0.0
-            
+            equity  = acc_info.equity  if acc_info else balance
+
             notificar_orden_ejecutada(
-                simbolo=simbolo_interno, 
-                direccion=direccion, 
-                lotes=lotes, 
-                ticket=999999, # Ticket ficticio para simulacion
+                simbolo=simbolo_interno,
+                direccion=direccion,
+                lotes=lotes,
+                ticket=999999,  # Ticket ficticio para simulacion
                 precio=self._obtener_precio_seguro(simbolo_interno, direccion),
-                sl=sl, 
-                tp=tp, 
-                veredicto=veredicto, 
-                v_trend=v_trend, 
-                v_nlp=v_nlp, 
+                sl=sl,
+                tp=tp,
+                veredicto=veredicto,
+                v_trend=v_trend,
+                v_nlp=v_nlp,
                 balance=balance,
+                equity=equity,
                 hurst_h=h_val,
                 hurst_estado=h_estado,
                 vol_poc=vol_map['poc'],
@@ -519,29 +522,30 @@ class Manager:
                     return {"decision": "ERROR_BROKER", "motivo": err_msg}
                 
                 # Obtener detalles reales
-                pos = posiciones[0]
-                precio_real = pos.price_open
-                info_acc = mt5_api.account_info()
+                pos          = posiciones[0]
+                precio_real  = pos.price_open
+                info_acc     = mt5_api.account_info()
                 balance_real = info_acc.balance if info_acc else 0.0
+                equity_real  = info_acc.equity  if info_acc else balance_real
 
                 # --- NUEVO: Cálculo de Probabilidad ---
                 # Confianza [0.45 - 1.0] -> Probabilidad [65% - 98%]
-                # Fórmula: 65 + ((abs(veredicto) - 0.45) / (1.0 - 0.45)) * (98 - 65)
-                confianza = abs(veredicto)
+                confianza  = abs(veredicto)
                 prob_exito = 65 + ((confianza - 0.45) / (0.55)) * (33)
-                prob_exito = max(65, min(98, round(prob_exito, 1))) # Generar mensaje final
+                prob_exito = max(65, min(98, round(prob_exito, 1)))
 
                 notificar_orden_ejecutada(
-                    simbolo=simbolo_interno, 
-                    direccion=direccion, 
-                    lotes=lotes, 
-                    ticket=ticket, 
-                    precio=precio_real, 
-                    sl=sl, tp=tp, 
-                    veredicto=veredicto, 
-                    v_trend=v_trend, 
-                    v_nlp=v_nlp, 
+                    simbolo=simbolo_interno,
+                    direccion=direccion,
+                    lotes=lotes,
+                    ticket=ticket,
+                    precio=precio_real,
+                    sl=sl, tp=tp,
+                    veredicto=veredicto,
+                    v_trend=v_trend,
+                    v_nlp=v_nlp,
                     balance=balance_real,
+                    equity=equity_real,
                     hurst_h=h_val,
                     hurst_estado=h_estado,
                     vol_poc=vol_map['poc'],
@@ -581,7 +585,7 @@ class Manager:
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                         veredicto, "EJECUTADO", motivo,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                        v_hurst=h_val, v_sniper=v_struct['sniper_veredicto'])
+                                        v_hurst=h_val, v_sniper=v_struct['voto'])
                 return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
 
     # ------------------------------------------------------------------
@@ -678,7 +682,16 @@ class Manager:
                 except Exception as e:
                     print(f"[GERENTE] Error actualizando precision de cierre #{ticket}: {e}")
 
+                # FASE 4 V15: Consultar cuenta para notificaciones de cierre
+                try:
+                    acc_cierre = mt5_api.account_info()
+                    bal_cierre = acc_cierre.balance if acc_cierre else 0.0
+                    eq_cierre  = acc_cierre.equity  if acc_cierre else 0.0
+                except Exception:
+                    bal_cierre = eq_cierre = 0.0
+
                 # D3 V14: Autopsia de Pérdida — analizar con Gemini por qué falló
+                motivo_entrada = "Sin registro de justificacion"
                 if resultado == "PERDIDO":
                     try:
                         self.db.cursor.execute("""
@@ -692,6 +705,46 @@ class Manager:
                         self._autopsia_perdida(ticket, simbolo, motivo_entrada, ganancia)
                     except Exception as e:
                         print(f"[GERENTE] Error preparando autopsia #{ticket}: {e}")
+
+                # FASE 4 V15: Notificaciones Telegram de cierre
+                try:
+                    if resultado == "GANADO":
+                        notificar_tp_alcanzado(
+                            ticket=ticket, simbolo=simbolo, pnl=ganancia,
+                            p_entrada=float(p_ent), tp=float(tp), p_cierre=deal.price,
+                            veredicto=float(veredicto),
+                            prob_est=float(prob) if prob else 0.0,
+                            balance=bal_cierre, equity=eq_cierre,
+                        )
+                    else:
+                        # Intentar leer autopsia recién guardada para incluirla
+                        autopsia_data = {}
+                        try:
+                            self.db.cursor.execute("""
+                                SELECT tipo_fallo, worker_culpable, descripcion, correccion_sugerida
+                                FROM autopsias_perdidas WHERE ticket = %s LIMIT 1
+                            """, (ticket,))
+                            r = self.db.cursor.fetchone()
+                            if r:
+                                autopsia_data = {
+                                    "tipo_fallo":       r[0] or "",
+                                    "worker_culpable":  r[1] or "",
+                                    "descripcion":      r[2] or "",
+                                    "correccion":       r[3] or "",
+                                }
+                        except Exception:
+                            pass
+                        notificar_sl_alcanzado(
+                            ticket=ticket, simbolo=simbolo, pnl=ganancia,
+                            p_entrada=float(p_ent), sl=float(sl), p_cierre=deal.price,
+                            veredicto=float(veredicto),
+                            prob_est=float(prob) if prob else 0.0,
+                            balance=bal_cierre, equity=eq_cierre,
+                            motivo_entrada=motivo_entrada,
+                            **autopsia_data,
+                        )
+                except Exception as e_notif:
+                    print(f"[GERENTE] Error notificacion de cierre #{ticket}: {e_notif}")
 
     # ------------------------------------------------------------------
     # Auditoría obligatoria (Glass Box)

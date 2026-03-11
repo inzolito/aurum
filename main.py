@@ -79,6 +79,29 @@ def _verificar_instancia_duplicada() -> bool:
         return False
 
 
+def _get_venv_python() -> str:
+    """Retorna el intérprete Python del venv. Prioridad: pythonw.exe → python.exe → sys.executable."""
+    _base = os.path.dirname(os.path.abspath(__file__))
+    for nombre in ("pythonw.exe", "python.exe"):
+        candidato = os.path.join(_base, "venv", "Scripts", nombre)
+        if os.path.exists(candidato):
+            return candidato
+    return sys.executable
+
+
+def _lanzar_proceso_daemon(nombre_script: str, nombre_display: str):
+    """Lanza un script como proceso daemon silencioso usando el Python del venv."""
+    _base = os.path.dirname(os.path.abspath(__file__))
+    python_exe = _get_venv_python()
+    script_path = os.path.join(_base, nombre_script)
+    flags = 0x08000000 if os.name == 'nt' else 0
+    try:
+        subprocess.Popen([python_exe, script_path], creationflags=flags)
+        print(f"[MAIN] {nombre_display} lanzado como proceso daemon (python: {python_exe}).")
+    except Exception as e:
+        print(f"[MAIN] Advertencia: no se pudo lanzar {nombre_display}: {e}")
+
+
 def _lanzar_news_hunter():
     """Lanza news_hunter.py como proceso daemon si no está ya corriendo."""
     for proc in psutil.process_iter(['name', 'cmdline']):
@@ -89,13 +112,20 @@ def _lanzar_news_hunter():
                     return
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
-    try:
-        hunter_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "news_hunter.py")
-        flags = 0x08000000 if os.name == 'nt' else 0
-        subprocess.Popen([sys.executable, hunter_path], creationflags=flags)
-        print("[MAIN] News Hunter lanzado como proceso daemon.")
-    except Exception as e:
-        print(f"[MAIN] Advertencia: no se pudo lanzar News Hunter: {e}")
+    _lanzar_proceso_daemon("news_hunter.py", "News Hunter")
+
+
+def _lanzar_telegram_daemon():
+    """Lanza telegram_daemon.py como proceso independiente si no está ya corriendo."""
+    for proc in psutil.process_iter(['name', 'cmdline']):
+        try:
+            if "python" in proc.info.get('name', '').lower():
+                if "telegram_daemon.py" in " ".join(proc.info.get('cmdline', [])).lower():
+                    print("[MAIN] Telegram Daemon ya está corriendo.")
+                    return
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    _lanzar_proceso_daemon("telegram_daemon.py", "Telegram Daemon")
 
 # NOTA: La lista de activos ya NO está hardcodeada aquí.
 # El motor obtiene los activos dinámicamente desde la tabla 'activos' en GCP.
@@ -176,14 +206,10 @@ class AurumEngine:
         self.programador = AurumScheduler(self.gerente)
         self.programador.start()
 
-        # V10.0: UI de Telegram Interactiva en Background
-        import threading
-        from config.telegram_bot import run_telegram_bot
-        bot_thread = threading.Thread(target=run_telegram_bot, daemon=True)
-        bot_thread.start()
-
-        # Lanzar News Hunter como proceso daemon si no está corriendo
-        _lanzar_news_hunter()
+        # V15.0: Los daemons independientes (Telegram + News Hunter) son gestionados
+        # exclusivamente por heartbeat.py (SHIELD). Main no los lanza para evitar
+        # condición de carrera con duplicados. El SHIELD los detecta y lanza en su
+        # primer ciclo si no están corriendo.
 
         self.db.update_estado_bot("OPERANDO", "Aurum Omni V1.0 iniciado. Cargando activos desde BD...")
         print(f"[MAIN] Heartbeat inicial enviado a estado_bot.")

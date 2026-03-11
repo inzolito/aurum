@@ -1,0 +1,455 @@
+2026-03-11 00:45:03 [INFO    ] aurum                | Logging inicializado — nivel=INFO | archivo=C:\www\Aurum\logs\aurum.log
+============================================================
+  AURUM OMNI V1.0.0 — INICIANDO
+============================================================
+[DB] Conexión exitosa a PostgreSQL.
+[MAIN] Conexión a Base de Datos Cloud establecida.
+[MT5] Conectado -> MT5 Weltrade | Build: 5663
+[MAIN] Estructura de BD verificada - OK.
+
+[MAIN] SISTEMA INICIADO - PID: 27056 - CUENTA MT5: 19789812
+[SCHEDULER] Programador iniciado (Reportes + Sesiones + Pulso IA + Noticias)
+[MAIN] Telegram Daemon lanzado como proceso daemon (python: C:\www\Aurum\venv\Scripts\pythonw.exe).
+[MAIN] News Hunter lanzado como proceso daemon (python: C:\www\Aurum\venv\Scripts\pythonw.exe).
+[MAIN] Heartbeat inicial enviado a estado_bot.
+[MAIN] Ciclo: cada 60s | Activos: cargados dinamicamente desde BD
+
+
+------------------------------------------------------------
+  CICLO #1  |  00:45:09
+------------------------------------------------------------
+
+[00:45:09] Analizando EURUSD (Euro vs Dolar)...
+
+============================================================
+  GERENTE — Evaluando EURUSD
+============================================================
+[RISK] OK: EURUSD (EURUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] EURUSD | EMA9=1.16 EMA21=1.16 RSI=65.1 | Voto: +0.16
+[MT5] Order Book no disponible para EURUSD_i
+[FLOW] Level 2 no disponible para EURUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] EURUSD | BullVol=29892 BearVol=33989 | OBI=+288767302855458.562 | Voto: +1.00
+2026-03-11 00:45:12 [INFO    ] aurum.spread         | [SPREAD] EURUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] EURUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:45:12 [INFO    ] aurum.vix            | [VIX] EURUSD | ATR_ratio=1.15x | NORMAL | Ajuste=+0.00
+[VIX]    EURUSD | ATR_ratio=1.15x | NORMAL | Ajuste=+0.00
+[HURST] EURUSD | H: 0.5207 | Estado: RUIDO
+[NLP] EURUSD (id=3) -> cache: -0.55
+[SNIPER] EURUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] ⚠️ Mercado en RUIDO (H: 0.5207). Penalización -0.15.
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: -0.0900 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.5207 (RUIDO) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:45:09] Analizando XTIUSD (Petroleo WTI)...
+
+============================================================
+  GERENTE — Evaluando XTIUSD
+============================================================
+[RISK] OK: XTIUSD (XTIUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] XTIUSD | EMA9=83.41 EMA21=83.53 RSI=41.3 | Voto: -0.80
+[MT5] Order Book no disponible para XTIUSD_i
+[FLOW] Level 2 no disponible para XTIUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] XTIUSD | BullVol=38396 BearVol=42421 | OBI=+228253264458091.094 | Voto: +1.00
+2026-03-11 00:45:25 [INFO    ] aurum.spread         | [SPREAD] XTIUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] XTIUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:45:25 [INFO    ] aurum.vix            | [VIX] XTIUSD | ATR_ratio=2.65x | ALTA | Ajuste=-0.12
+[VIX]    XTIUSD | ATR_ratio=2.65x | ALTA | Ajuste=-0.12
+[HURST] XTIUSD | H: 0.6528 | Estado: PERSISTENTE
+[NLP] XTIUSD (id=4) -> cache: +0.85
+[SNIPER] XTIUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] 📊 Volatilidad ALTA (ATR×2.6). Ajuste: -0.12
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.0000 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.6528 (PERSISTENTE) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:45:09] Analizando GBPUSD (Libra vs Dolar)...
+
+============================================================
+  GERENTE — Evaluando GBPUSD
+============================================================
+[RISK] OK: GBPUSD (GBPUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] GBPUSD | EMA9=1.34 EMA21=1.34 RSI=68.1 | Voto: +0.16
+[MT5] Order Book no disponible para GBPUSD_i
+[FLOW] Level 2 no disponible para GBPUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] GBPUSD | BullVol=40040 BearVol=43869 | OBI=+219842258562365.750 | Voto: +1.00
+2026-03-11 00:45:42 [INFO    ] aurum.spread         | [SPREAD] GBPUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] GBPUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:45:42 [INFO    ] aurum.vix            | [VIX] GBPUSD | ATR_ratio=0.97x | NORMAL | Ajuste=+0.00
+[VIX]    GBPUSD | ATR_ratio=0.97x | NORMAL | Ajuste=+0.00
+[HURST] GBPUSD | H: 0.4842 | Estado: RUIDO
+[NLP] Hash de contexto cambiado (06016756 -> 893a6317). Forzando re-analisis inmediato.
+[NLP] Llamada API #1/1500 hoy.
+[NLP] Caché guardado para hash=893a63175beed53f (9 activos)
+[NLP] GBPUSD (id=5) -> Gemini: +0.00
+[SNIPER] GBPUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] ⚠️ Mercado en RUIDO (H: 0.4842). Penalización -0.15.
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.0000 | Sniper: Sin Estructura Clara | Fuerza: Trend
+[GERENTE] Hurst: 0.4842 (RUIDO) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:45:09] Analizando USDJPY (Dolar vs Yen Japones)...
+
+============================================================
+  GERENTE — Evaluando USDJPY
+============================================================
+[RISK] OK: USDJPY (USDJPY_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] USDJPY | EMA9=158.19 EMA21=158.20 RSI=36.4 | Voto: -0.16
+[MT5] Order Book no disponible para USDJPY_i
+[FLOW] Level 2 no disponible para USDJPY_i. Usando fallback de presión de velas.
+[FLOW/FB] USDJPY | BullVol=39807 BearVol=38001 | OBI=+0.023 | Voto: +0.03
+2026-03-11 00:46:24 [INFO    ] aurum.spread         | [SPREAD] USDJPY | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] USDJPY | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:46:25 [INFO    ] aurum.vix            | [VIX] USDJPY | ATR_ratio=1.04x | NORMAL | Ajuste=+0.00
+[VIX]    USDJPY | ATR_ratio=1.04x | NORMAL | Ajuste=+0.00
+[HURST] USDJPY | H: 0.5433 | Estado: RUIDO
+[NLP] USDJPY (id=6) -> cache: +0.95
+[SNIPER] USDJPY | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] ⚠️ Mercado en RUIDO (H: 0.5433). Penalización -0.15.
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.2000 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.5433 (RUIDO) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:45:09] Analizando US500 (S&P 500)...
+
+============================================================
+  GERENTE — Evaluando US500
+============================================================
+[RISK] OK: US500 (SPXUSD) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] US500 | EMA9=6814.86 EMA21=6813.72 RSI=69.4 | Voto: +0.80
+[MT5] Order Book no disponible para SPXUSD
+[FLOW] Level 2 no disponible para SPXUSD. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] US500 | BullVol=39538 BearVol=44913 | OBI=+218431327914524.938 | Voto: +1.00
+2026-03-11 00:46:44 [INFO    ] aurum.spread         | [SPREAD] US500 | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] US500 | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:46:44 [INFO    ] aurum.vix            | [VIX] US500 | ATR_ratio=1.29x | NORMAL | Ajuste=+0.00
+[VIX]    US500 | ATR_ratio=1.29x | NORMAL | Ajuste=+0.00
+[HURST] US500 | H: 0.5898 | Estado: PERSISTENTE
+[NLP] US500 (id=7) -> cache: +0.75
+[SNIPER] US500 | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.7300 | Sniper: Sin Estructura Clara | Fuerza: Trend
+[GERENTE] Hurst: 0.5898 (PERSISTENTE) | Status: Normal
+[GERENTE] Riesgo Dinamico -> Conviccion: 73.0% | Lotes: 0.11 | SL: 6811.6021 | TP: 6825.1771
+[MT5] Orden ejecutada -> Ticket: 292723569 | COMPRA 0.11 lotes SPXUSD @ 6817.42
+
+[GERENTE] ORDEN RECIBIDA (10009) — Ticket: 292723569
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  [ORDEN CONFIRMADA] US500 COMPRA 0.11 @ 6817.42
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+[NOTIFIER] Error enviando imagen: HTTP Error 400: Bad Request
+[GERENTE] ERROR guardando auditoria: could not convert string to float: 'Sin Estructura Clara'
+
+[00:45:09] Analizando GBPJPY (Libra vs Yen)...
+
+============================================================
+  GERENTE — Evaluando GBPJPY
+============================================================
+[RISK] OK: GBPJPY (GBPJPY_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] GBPJPY | EMA9=212.77 EMA21=212.77 RSI=54.8 | Voto: +0.16
+[MT5] Order Book no disponible para GBPJPY_i
+[FLOW] Level 2 no disponible para GBPJPY_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] GBPJPY | BullVol=58758 BearVol=61608 | OBI=+153255438194419.938 | Voto: +1.00
+2026-03-11 00:47:09 [INFO    ] aurum.spread         | [SPREAD] GBPJPY | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] GBPJPY | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:47:09 [INFO    ] aurum.vix            | [VIX] GBPJPY | ATR_ratio=0.74x | NORMAL | Ajuste=+0.00
+[VIX]    GBPJPY | ATR_ratio=0.74x | NORMAL | Ajuste=+0.00
+[HURST] GBPJPY | H: 0.4129 | Estado: ANTIPERSISTENTE
+[NLP] GBPJPY (id=8) -> cache: +0.88
+[SNIPER] GBPJPY | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.4750 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.4129 (ANTIPERSISTENTE) | Status: Normal
+[GERENTE] Riesgo Dinamico -> Conviccion: 47.5% | Lotes: 0.05 | SL: 212.6488 | TP: 213.0203
+[MT5] Orden ejecutada -> Ticket: 292723806 | COMPRA 0.05 lotes GBPJPY_i @ 212.809
+
+[GERENTE] ORDEN RECIBIDA (10009) — Ticket: 292723806
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  [ORDEN CONFIRMADA] GBPJPY COMPRA 0.05 @ 212.809
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+[NOTIFIER] Error enviando imagen: HTTP Error 400: Bad Request
+[GERENTE] ERROR guardando auditoria: could not convert string to float: 'Sin Estructura Clara'
+
+[00:45:09] Analizando USTEC (Nasdaq 100)...
+
+============================================================
+  GERENTE — Evaluando USTEC
+============================================================
+[RISK] OK: USTEC (NDXUSD) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] USTEC | EMA9=25085.03 EMA21=25080.82 RSI=65.6 | Voto: +0.80
+[MT5] Order Book no disponible para NDXUSD
+[FLOW] Level 2 no disponible para NDXUSD. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] USTEC | BullVol=87431 BearVol=97261 | OBI=+99878414190704.203 | Voto: +1.00
+2026-03-11 00:47:34 [INFO    ] aurum.spread         | [SPREAD] USTEC | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] USTEC | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:47:35 [INFO    ] aurum.vix            | [VIX] USTEC | ATR_ratio=1.17x | NORMAL | Ajuste=+0.00
+[VIX]    USTEC | ATR_ratio=1.17x | NORMAL | Ajuste=+0.00
+[HURST] USTEC | H: 0.5647 | Estado: PERSISTENTE
+[NLP] USTEC (id=9) -> cache: +0.00
+[SNIPER] USTEC | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.3550 | Sniper: Sin Estructura Clara | Fuerza: Trend
+[GERENTE] Hurst: 0.5647 (PERSISTENTE) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:45:09] Analizando US30 (Dow Jones Ind. Ave.)...
+
+============================================================
+  GERENTE — Evaluando US30
+============================================================
+[RISK] BLOQUEO: Ya hay 1 posicion(es) abierta(s) en DJIUSD.
+[GERENTE] Auditoria guardada en registro_senales (CANCELADO_RIESGO)
+
+[00:45:09] Analizando XBRUSD (Petroleo Brent)...
+
+============================================================
+  GERENTE — Evaluando XBRUSD
+============================================================
+[RISK] OK: XBRUSD (XBRUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] XBRUSD | EMA9=87.49 EMA21=87.65 RSI=31.1 | Voto: -0.80
+[MT5] Order Book no disponible para XBRUSD_i
+[FLOW] Level 2 no disponible para XBRUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] XBRUSD | BullVol=38312 BearVol=40593 | OBI=+233784222466377.906 | Voto: +1.00
+2026-03-11 00:47:56 [INFO    ] aurum.spread         | [SPREAD] XBRUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] XBRUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+2026-03-11 00:47:56 [INFO    ] aurum.vix            | [VIX] XBRUSD | ATR_ratio=2.58x | ALTA | Ajuste=-0.12
+[VIX]    XBRUSD | ATR_ratio=2.58x | ALTA | Ajuste=-0.12
+[HURST] XBRUSD | H: 0.5504 | Estado: PERSISTENTE
+[NLP] XBRUSD (id=13) -> cache: +0.98
+[SNIPER] XBRUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] 📊 Volatilidad ALTA (ATR×2.6). Ajuste: -0.12
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.0000 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.5504 (PERSISTENTE) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[MAIN] Proximo ciclo en 60s...
+
+------------------------------------------------------------
+  CICLO #2  |  00:49:12
+------------------------------------------------------------
+
+[00:49:12] Analizando EURUSD (Euro vs Dolar)...
+
+============================================================
+  GERENTE — Evaluando EURUSD
+============================================================
+[RISK] OK: EURUSD (EURUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] EURUSD | EMA9=1.16 EMA21=1.16 RSI=48.6 | Voto: +0.00
+[MT5] Order Book no disponible para EURUSD_i
+[FLOW] Level 2 no disponible para EURUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] EURUSD | BullVol=29846 BearVol=33917 | OBI=+289301696496550.438 | Voto: +1.00
+2026-03-11 00:49:17 [INFO    ] aurum.spread         | [SPREAD] EURUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] EURUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+[HURST] EURUSD | H: 0.5150 | Estado: RUIDO
+[NLP] EURUSD (id=3) -> cache: +0.70
+[SNIPER] EURUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] ⚠️ Mercado en RUIDO (H: 0.5150). Penalización -0.15.
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.1550 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.5150 (RUIDO) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:49:12] Analizando XTIUSD (Petroleo WTI)...
+
+============================================================
+  GERENTE — Evaluando XTIUSD
+============================================================
+[RISK] OK: XTIUSD (XTIUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] XTIUSD | EMA9=83.30 EMA21=83.43 RSI=32.6 | Voto: -0.80
+[MT5] Order Book no disponible para XTIUSD_i
+[FLOW] Level 2 no disponible para XTIUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] XTIUSD | BullVol=38167 BearVol=42442 | OBI=+228842239374133.750 | Voto: +1.00
+2026-03-11 00:49:37 [INFO    ] aurum.spread         | [SPREAD] XTIUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] XTIUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+[HURST] XTIUSD | H: 0.6782 | Estado: PERSISTENTE
+[NLP] XTIUSD (id=4) -> cache: +0.85
+[SNIPER] XTIUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] 📊 Volatilidad ALTA (ATR×2.6). Ajuste: -0.12
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.0000 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.6782 (PERSISTENTE) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:49:12] Analizando GBPUSD (Libra vs Dolar)...
+
+============================================================
+  GERENTE — Evaluando GBPUSD
+============================================================
+[RISK] OK: GBPUSD (GBPUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] GBPUSD | EMA9=1.35 EMA21=1.34 RSI=54.4 | Voto: +0.00
+[MT5] Order Book no disponible para GBPUSD_i
+[FLOW] Level 2 no disponible para GBPUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] GBPUSD | BullVol=39814 BearVol=43810 | OBI=+220591505712589.062 | Voto: +1.00
+2026-03-11 00:49:55 [INFO    ] aurum.spread         | [SPREAD] GBPUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] GBPUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+[HURST] GBPUSD | H: 0.5020 | Estado: RUIDO
+[NLP] GBPUSD (id=5) -> cache: +0.00
+[SNIPER] GBPUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] ⚠️ Mercado en RUIDO (H: 0.5020). Penalización -0.15.
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.0000 | Sniper: Sin Estructura Clara | Fuerza: Sniper
+[GERENTE] Hurst: 0.5020 (RUIDO) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:49:12] Analizando USDJPY (Dolar vs Yen Japones)...
+
+============================================================
+  GERENTE — Evaluando USDJPY
+============================================================
+[RISK] OK: USDJPY (USDJPY_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] USDJPY | EMA9=158.20 EMA21=158.20 RSI=50.3 | Voto: +0.00
+[MT5] Order Book no disponible para USDJPY_i
+[FLOW] Level 2 no disponible para USDJPY_i. Usando fallback de presión de velas.
+[FLOW/FB] USDJPY | BullVol=39773 BearVol=37892 | OBI=+0.024 | Voto: +0.04
+2026-03-11 00:50:14 [INFO    ] aurum.spread         | [SPREAD] USDJPY | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] USDJPY | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+[HURST] USDJPY | H: 0.5466 | Estado: RUIDO
+[NLP] USDJPY (id=6) -> cache: +0.95
+[SNIPER] USDJPY | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] ⚠️ Mercado en RUIDO (H: 0.5466). Penalización -0.15.
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.2800 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.5466 (RUIDO) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:49:12] Analizando US500 (S&P 500)...
+
+============================================================
+  GERENTE — Evaluando US500
+============================================================
+[RISK] BLOQUEO: Ya hay 1 posicion(es) abierta(s) en SPXUSD.
+[GERENTE] Auditoria guardada en registro_senales (CANCELADO_RIESGO)
+
+[00:49:12] Analizando GBPJPY (Libra vs Yen)...
+
+============================================================
+  GERENTE — Evaluando GBPJPY
+============================================================
+[RISK] BLOQUEO: Ya hay 1 posicion(es) abierta(s) en GBPJPY_i.
+[GERENTE] Auditoria guardada en registro_senales (CANCELADO_RIESGO)
+
+[00:49:12] Analizando USTEC (Nasdaq 100)...
+
+============================================================
+  GERENTE — Evaluando USTEC
+============================================================
+[RISK] OK: USTEC (NDXUSD) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] USTEC | EMA9=25085.89 EMA21=25082.33 RSI=60.1 | Voto: +0.00
+[MT5] Order Book no disponible para NDXUSD
+[FLOW] Level 2 no disponible para NDXUSD. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] USTEC | BullVol=87366 BearVol=96987 | OBI=+100062076959472.000 | Voto: +1.00
+2026-03-11 00:50:36 [INFO    ] aurum.spread         | [SPREAD] USTEC | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] USTEC | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+[HURST] USTEC | H: 0.5663 | Estado: PERSISTENTE
+[NLP] USTEC (id=9) -> cache: +0.00
+[SNIPER] USTEC | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: -0.0450 | Sniper: Sin Estructura Clara | Fuerza: Sniper
+[GERENTE] Hurst: 0.5663 (PERSISTENTE) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[00:49:12] Analizando US30 (Dow Jones Ind. Ave.)...
+
+============================================================
+  GERENTE — Evaluando US30
+============================================================
+[RISK] BLOQUEO: Ya hay 1 posicion(es) abierta(s) en DJIUSD.
+[GERENTE] Auditoria guardada en registro_senales (CANCELADO_RIESGO)
+
+[00:49:12] Analizando XBRUSD (Petroleo Brent)...
+
+============================================================
+  GERENTE — Evaluando XBRUSD
+============================================================
+[RISK] OK: XBRUSD (XBRUSD_i) despejado para operar.
+
+[GERENTE] Consultando Obreros Técnicos...
+[TREND] XBRUSD | EMA9=87.38 EMA21=87.55 RSI=26.8 | Voto: -0.50
+[MT5] Order Book no disponible para XBRUSD_i
+[FLOW] Level 2 no disponible para XBRUSD_i. Usando fallback de presión de velas.
+C:\www/Aurum\workers\worker_flow.py:69: RuntimeWarning: overflow encountered in scalar subtract
+  imbalance = (bull_vol - bear_vol) / total
+[FLOW/FB] XBRUSD | BullVol=38093 BearVol=40673 | OBI=+234196786350830.938 | Voto: +1.00
+2026-03-11 00:50:56 [INFO    ] aurum.spread         | [SPREAD] XBRUSD | Ratio=1.00x | Estado=SPREAD_NORMAL | Ajuste=+0.00
+[SPREAD] XBRUSD | Ratio=1.00x | SPREAD_NORMAL | Ajuste=+0.00
+[HURST] XBRUSD | H: 0.5577 | Estado: PERSISTENTE
+[NLP] XBRUSD (id=13) -> cache: +0.98
+[SNIPER] XBRUSD | Estructura: Rango / Acumulacion | Veredicto: Sin Estructura Clara
+[GERENTE] 📊 Volatilidad ALTA (ATR×2.6). Ajuste: -0.12
+
+[GERENTE] Pesos V12.0 Dynamic: Trend(50%) NLP(50%) Flow(0%) Sniper(15%)
+[GERENTE] Veredicto: +0.0750 | Sniper: Sin Estructura Clara | Fuerza: NLP
+[GERENTE] Hurst: 0.5577 (PERSISTENTE) | Status: Normal
+[GERENTE] Auditoria guardada en registro_senales (IGNORADO)
+
+[MAIN] Proximo ciclo en 60s...

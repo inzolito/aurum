@@ -487,13 +487,20 @@ class DBConnector:
                 return None
 
     def upsert_nlp_cache(self, datos: list):
-        """Atomic batch insert into cache_nlp_impactos."""
+        """Atomic batch UPSERT into cache_nlp_impactos.
+        FIX-NLP-02: Usa ON CONFLICT DO UPDATE para evitar acumulación de filas stale.
+        """
         with self._lock:
             try:
                 self.cursor.executemany(
                     """
                     INSERT INTO cache_nlp_impactos (simbolo, voto, razonamiento, hash_contexto, hash_regimenes)
-                    VALUES (%s, %s, %s, %s, 'v9_migrado');
+                    VALUES (%s, %s, %s, %s, 'v9_migrado')
+                    ON CONFLICT (simbolo) DO UPDATE
+                        SET voto        = EXCLUDED.voto,
+                            razonamiento = EXCLUDED.razonamiento,
+                            hash_contexto = EXCLUDED.hash_contexto,
+                            creado_en   = CURRENT_TIMESTAMP;
                     """,
                     datos
                 )
@@ -501,21 +508,41 @@ class DBConnector:
             except Exception as e:
                 print(f"[DB] Error upserting nlp cache: {e}")
                 self.conn.rollback()
+                # Fallback: si no existe constraint UNIQUE en simbolo, insertar simple
+                try:
+                    self.cursor.executemany(
+                        """
+                        INSERT INTO cache_nlp_impactos (simbolo, voto, razonamiento, hash_contexto, hash_regimenes)
+                        VALUES (%s, %s, %s, %s, 'v9_migrado');
+                        """,
+                        datos
+                    )
+                    self.conn.commit()
+                    print("[DB] NLP cache guardado en modo fallback (INSERT simple).")
+                except Exception as e2:
+                    print(f"[DB] Error fallback nlp cache: {e2}")
+                    self.conn.rollback()
 
     @survival_shield
     def leer_cache_nlp(self, hash_ctx: str, id_activo: int) -> float | None:
-        """Atomic check of nlp cache."""
+        """Atomic check of nlp cache.
+        FIX-NLP-02: Filtra por TTL (5 min) para no devolver datos stale.
+        Busca por simbolo (más fiable que por hash cuando hay multiples filas).
+        """
         with self._lock:
             try:
+                ttl_min = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))
                 self.cursor.execute(
                     """
                     SELECT c.voto 
                     FROM cache_nlp_impactos c
                     JOIN activos a ON a.simbolo = c.simbolo
-                    WHERE c.hash_contexto = %s AND a.id = %s
+                    WHERE a.id = %s
+                      AND c.creado_en >= NOW() - INTERVAL '%s minutes'
+                    ORDER BY c.creado_en DESC
                     LIMIT 1;
                     """,
-                    (hash_ctx, id_activo)
+                    (id_activo, ttl_min)
                 )
                 fila = self.cursor.fetchone()
                 return float(fila[0]) if fila else None

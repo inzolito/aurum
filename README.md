@@ -1,4 +1,6 @@
-# Aurum
+# Aurum — README
+
+> **Propósito:** La Puerta de Entrada. Visión general del proyecto, instrucciones de instalación, configuración de variables de entorno (`.env`), guía de arranque y lista de activos operativos. Es el manual de usuario básico.
 
 **Repositorio oficial:** https://github.com/inzolito/aurum.git
 **Versión actual:** V13.5 (Aurum OMNI)

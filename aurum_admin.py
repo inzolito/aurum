@@ -26,8 +26,20 @@ from config.db_connector import DBConnector
 
 console = Console()
 
-_PID_FILE     = Path(__file__).parent / "aurum_core.pid"
-_VENV_PYTHON  = Path(__file__).parent / "venv" / "Scripts" / "python.exe"
+_PID_FILE = Path(__file__).parent / "aurum_core.pid"
+
+# FIX-ADMIN-02: Buscar el ejecutable Python correcto del venv
+# Este venv tiene pythonw.exe pero no python.exe en Windows
+_BASE = Path(__file__).parent
+_candidatos = [
+    _BASE / "venv" / "Scripts" / "python.exe",
+    _BASE / "venv" / "Scripts" / "pythonw.exe",
+    _BASE / "venv" / "bin" / "python",
+    _BASE / "venv" / "bin" / "python3",
+    Path(sys.executable),  # fallback: el python que lanzó este script
+]
+_VENV_PYTHON = next((p for p in _candidatos if p.exists()), Path(sys.executable))
+
 _MAIN_PY      = Path(__file__).parent / "main.py"
 _HUNTER_PY    = Path(__file__).parent / "news_hunter.py"
 _HEARTBEAT_PY = Path(__file__).parent / "heartbeat.py"

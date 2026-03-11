@@ -15,7 +15,7 @@ from rich.layout import Layout
 from rich import box
 
 from config.db_connector import DBConnector
-from config.notifier import _enviar_telegram
+from config.notifier import _enviar_telegram, notificar_noticia_procesada
 
 load_dotenv()
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
@@ -170,7 +170,7 @@ class NewsHunter:
         
         if relevante_mecanico:
             relevancia_ia, impacto = self._evaluar_relevancia_ia(titulo)
-            
+
             if relevancia_ia:
                 self.db.guardar_noticia_cruda(
                     source="Investing",
@@ -181,6 +181,14 @@ class NewsHunter:
                 )
                 if impacto >= 8:
                     self._inyectar_regimen(titulo, impacto, dt_pub)
+                # FASE 2 V15: Notificar noticias de impacto medio-alto por Telegram
+                if impacto >= 5:
+                    notificar_noticia_procesada(
+                        titulo=titulo,
+                        fuente="Investing.com",
+                        published_at=dt_pub,
+                        impacto=impacto,
+                    )
             else:
                 self.db.guardar_noticia_cruda(
                     source="Investing",
@@ -238,9 +246,18 @@ class NewsHunter:
                 pass
 
 if __name__ == "__main__":
+    # Prevenir instancias duplicadas via Named Mutex en Windows
+    if os.name == 'nt':
+        import ctypes
+        _mutex = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\AurumNewsHunterMutex")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+            ctypes.windll.kernel32.CloseHandle(_mutex)
+            print("[HUNTER] Ya hay una instancia corriendo. Abortando.")
+            os._exit(0)
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--view", action="store_true", help="Inicia en modo visor (TUI)")
     args = parser.parse_args()
-    
+
     hunter = NewsHunter(mode="view" if args.view else "daemon")
     hunter.start()

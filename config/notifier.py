@@ -126,33 +126,56 @@ def _build_msg_orden(simbolo, direccion, lotes, ticket, precio, sl, tp, veredict
     conviccion = abs(veredicto) * 100
     prob_exito = 65 + ((conviccion - 45) / (100 - 45)) * (98 - 65)
     prob_exito = max(65, min(98, prob_exito))
-    pensamiento_gemini = kwargs.get('gemini_thought', "Análisis en tiempo real: El mercado muestra signos de agotamiento institucional, vigilando reversión.")
-    
+
+    # Calcular R/R
+    dist_sl = abs(precio - sl)
+    dist_tp = abs(precio - tp)
+    rr = (dist_tp / dist_sl) if dist_sl > 0 else 0.0
+
+    emoji_dir = "🟢" if direccion == "COMPRA" else "🔴"
+    equity    = kwargs.get("equity", balance)
+
+    # Votación ponderada detallada
+    v_flow    = kwargs.get("v_flow", 0.0)
+    v_sniper  = kwargs.get("smc_voto_raw", 0.0)
+    v_vol     = kwargs.get("v_vol", 0.0)
+    v_cross   = kwargs.get("v_cross", 0.0)
+    v_hurst   = kwargs.get("v_hurst", 0.0)
+
+    def voto_emoji(v):
+        return "🟢" if v > 0.05 else ("🔴" if v < -0.05 else "⚪")
+
     return (
-        f"🟢 <b>ORDEN CONFIRMADA</b>\n"
-        f"<b>Activo:</b> {simbolo} | <b>Ticket:</b> #{ticket}\n"
-        f"<b>Convicción:</b> {conviccion:.1f}% -> <b>Lote:</b> {lotes}\n"
-        f"🎯 <b>Probabilidad Est. de Éxito:</b> {prob_exito:.1f}%\n"
-        f"<b>Acción:</b> {direccion} @ {precio}\n"
-        f"<b>Riesgo:</b> SL: {sl:.4f} | TP: {tp:.4f}\n"
-        f"<b>Veredicto Final:</b> {veredicto:+.4f}\n\n"
-        f"🗳️ <b>DETALLE DE VOTACIÓN:</b>\n"
-        f"• Trend: {v_trend:+.2f} (40%)\n"
-        f"• NLP IA: {v_nlp:+.2f} (30%)\n"
-        f"• Flow: {kwargs.get('v_flow', 0.0):+.2f} (15%)\n"
-        f"• Sniper: {kwargs.get('smc_voto_raw', 0.0):+.2f} (15%)\n\n"
-        f"📉 <b>FILTROS TÉCNICOS:</b>\n"
-        f"• Vol: {kwargs.get('v_vol', 0.0):+.2f} | Cross: {kwargs.get('v_cross', 0.0):+.2f}\n"
-        f"• Hurst: {kwargs.get('v_hurst', 0.0):+.2f}\n\n"
-        f"📊 <b>CONTEXTO:</b> {kwargs.get('hurst_estado', 'N/A')}\n"
-        f"🎯 <b>ZONA SNIPER (SMC)</b>\n"
-        f"OB: {kwargs.get('smc_ob', 'N/A')}\n"
-        f"Estructura: {kwargs.get('smc_estado', 'N/A')}\n"
-        f"Sniper V: {kwargs.get('smc_veredicto', 'N/A')}\n\n"
-        f"⚖️ <b>Fuerza Dominante:</b> {kwargs.get('fuerza_dominante', 'N/A')}\n\n"
-        f"🧠 <b>ANÁLISIS DE CONCIENCIA IA</b>\n"
+        f"{emoji_dir} <b>{direccion} EJECUTADA — {simbolo}</b>\n\n"
+        f"📋 <b>Ticket #{ticket}</b> | Lotes: {lotes}\n"
+        f"💰 <b>Precio Entrada:</b> {precio:.5f}\n"
+        f"🛡️ <b>Stop Loss:</b> {sl:.5f}\n"
+        f"🎯 <b>Take Profit:</b> {tp:.5f}\n"
+        f"⚖️ <b>Ratio R/R:</b> 1:{rr:.1f}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📊 <b>VOTACIÓN DE LA CUADRILLA</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"{voto_emoji(v_trend)}  TrendWorker:  {v_trend:+.2f}  (40%)\n"
+        f"{voto_emoji(v_nlp)}  NLPWorker:    {v_nlp:+.2f}  (30%)\n"
+        f"{voto_emoji(v_flow)}  FlowWorker:   {v_flow:+.2f}  (10%)\n"
+        f"{voto_emoji(v_sniper)}  SniperWorker: {v_sniper:+.2f}  (20%)\n"
+        f"<code>---------------------------------------</code>\n"
+        f"   <b>VEREDICTO:</b>  {veredicto:+.4f}\n"
+        f"   <b>CONVICCIÓN:</b> {conviccion:.1f}%\n"
+        f"   <b>PROB. EXITO:</b> {prob_exito:.1f}%\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"📡 <b>FILTROS TÉCNICOS</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• Hurst: {v_hurst:.3f} | Estado: {kwargs.get('hurst_estado', 'N/A')}\n"
+        f"• Vol POC: {kwargs.get('vol_poc', 'N/A')}\n"
+        f"• Cross Vol: {v_vol:+.2f} | Cross: {v_cross:+.2f}\n"
+        f"• OB Sniper: {kwargs.get('smc_ob', 'N/A')}\n"
+        f"• Estructura: {kwargs.get('smc_estado', 'N/A')}\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🧠 <b>ANÁLISIS IA DE ENTRADA</b>\n"
+        f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
         f"<i>{kwargs.get('gemini_thought', 'Análisis macro dinámico...')}</i>\n\n"
-        f"💰 Balance actual: {balance:,.2f} USD"
+        f"💰 <b>Balance:</b> ${balance:,.2f} | 💎 <b>Equity:</b> ${equity:,.2f}"
     )
 
 
@@ -375,6 +398,132 @@ def notificar_mercado_cerrado(simbolo: str):
     msg = f"🌙 {simbolo} en pausa: Mercado Cerrado por el Broker. Reintentando en la próxima sesión."
     print(f"[GATEKEEPER] {msg}")
     _enviar_telegram(f"🌙 <b>{simbolo} en pausa</b>\n\nMercado Cerrado por el Broker. Reintentando en la próxima sesión.")
+
+
+# ------------------------------------------------------------------
+# FASE 2 V15: Notificación de Noticia Procesada por el Hunter
+# ------------------------------------------------------------------
+
+def notificar_noticia_procesada(titulo: str, fuente: str, published_at,
+                                  impacto: int, razonamiento: str = ""):
+    """
+    Se dispara desde news_hunter.py cada vez que una noticia relevante
+    (impacto >= 5) es procesada e inyectada en la BD.
+    """
+    try:
+        from datetime import datetime, timezone
+        if hasattr(published_at, 'strftime'):
+            fecha_str = published_at.strftime("%d-%b-%Y, %H:%M UTC")
+        else:
+            fecha_str = str(published_at)
+
+        clasificacion = "URGENTE" if impacto >= 9 else "CATALIZADOR" if impacto >= 7 else "RELEVANTE"
+        impacto_bar   = "█" * impacto + "░" * (10 - impacto)
+
+        msg = (
+            f"📰 <b>NUEVA NOTICIA DETECTADA</b>\n\n"
+            f"🕒 <b>Publicada:</b> {fecha_str}\n"
+            f"📡 <b>Fuente:</b> {fuente}\n\n"
+            f"📌 <i>{titulo}</i>\n\n"
+            f"📊 <b>Impacto IA:</b> {impacto}/10  <code>[{impacto_bar}]</code>\n"
+            f"🏷️ <b>Clasificación:</b> {clasificacion}\n"
+        )
+
+        if razonamiento:
+            msg += (
+                f"\n🧠 <b>ANÁLISIS IA:</b>\n"
+                f"<i>{razonamiento}</i>\n"
+            )
+
+        _enviar_telegram(msg)
+    except Exception as e:
+        print(f"[NOTIFIER] Error en notificar_noticia_procesada: {e}")
+
+
+# ------------------------------------------------------------------
+# FASE 4 V15: Notificación de Cierre por TP (Take Profit alcanzado)
+# ------------------------------------------------------------------
+
+def notificar_tp_alcanzado(ticket: int, simbolo: str, pnl: float,
+                             p_entrada: float, tp: float, p_cierre: float,
+                             veredicto: float, prob_est: float,
+                             balance: float, equity: float):
+    """
+    Se dispara desde auditar_precision_cierres() cuando resultado == GANADO.
+    """
+    try:
+        roe = (pnl / balance * 100) if balance > 0 else 0.0
+        conviccion = abs(veredicto) * 100
+
+        msg = (
+            f"✅ <b>TAKE PROFIT ALCANZADO — {simbolo}</b>\n\n"
+            f"📋 <b>Ticket #{ticket}</b> | Resultado: GANADO\n"
+            f"💰 <b>PnL:</b> +${pnl:.2f}  (ROE: +{roe:.2f}%)\n"
+            f"📈 <b>Entrada:</b> {p_entrada:.5f} → <b>TP:</b> {p_cierre:.5f}\n\n"
+            f"🎯 <b>Veredicto original:</b> {veredicto:+.4f}\n"
+            f"📊 <b>Probabilidad estimada:</b> {prob_est:.1f}% | Confianza: {conviccion:.1f}%\n"
+            f"✅ El modelo fue <b>CORRECTO</b>.\n\n"
+            f"💰 <b>Balance:</b> ${balance:,.2f} | 💎 <b>Equity:</b> ${equity:,.2f}"
+        )
+        _print_alerta("TP ALCANZADO", f"{simbolo} #{ticket} +${pnl:.2f}")
+        _enviar_telegram(msg)
+    except Exception as e:
+        print(f"[NOTIFIER] Error en notificar_tp_alcanzado: {e}")
+
+
+# ------------------------------------------------------------------
+# FASE 4 V15: Notificación de Cierre por SL + Autopsia Forense
+# ------------------------------------------------------------------
+
+def notificar_sl_alcanzado(ticket: int, simbolo: str, pnl: float,
+                             p_entrada: float, sl: float, p_cierre: float,
+                             veredicto: float, prob_est: float,
+                             balance: float, equity: float,
+                             motivo_entrada: str = "",
+                             tipo_fallo: str = "", worker_culpable: str = "",
+                             descripcion: str = "", correccion: str = ""):
+    """
+    Se dispara desde auditar_precision_cierres() cuando resultado == PERDIDO.
+    Si la autopsia ya fue generada, incluye el análisis forense completo.
+    """
+    try:
+        roe       = (pnl / balance * 100) if balance > 0 else 0.0
+        conviccion = abs(veredicto) * 100
+
+        msg = (
+            f"🔴 <b>STOP LOSS ALCANZADO — {simbolo}</b>\n\n"
+            f"📋 <b>Ticket #{ticket}</b> | Resultado: PERDIDO\n"
+            f"💸 <b>PnL:</b> ${pnl:.2f}  (ROE: {roe:.2f}%)\n"
+            f"📉 <b>Entrada:</b> {p_entrada:.5f} → <b>SL:</b> {p_cierre:.5f}\n\n"
+            f"🎯 <b>Veredicto original:</b> {veredicto:+.4f}\n"
+            f"📊 <b>Probabilidad estimada:</b> {prob_est:.1f}% | Confianza: {conviccion:.1f}%\n"
+            f"❌ El modelo <b>FALLÓ</b>.\n"
+        )
+
+        if tipo_fallo or descripcion:
+            msg += (
+                f"\n━━━━━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔬 <b>AUTOPSIA FORENSE (Gemini)</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━\n"
+            )
+            if motivo_entrada:
+                msg += f"<b>Justificación original:</b>\n<i>{motivo_entrada[:200]}</i>\n\n"
+            if descripcion:
+                msg += f"<b>Análisis del fallo:</b>\n<i>{descripcion}</i>\n\n"
+            if tipo_fallo:
+                msg += f"<b>Tipo de fallo:</b> {tipo_fallo}\n"
+            if worker_culpable:
+                msg += f"<b>Worker más afectado:</b> {worker_culpable}\n"
+            if correccion:
+                msg += f"<b>Corrección sugerida:</b>\n<i>{correccion}</i>\n"
+            msg += "━━━━━━━━━━━━━━━━━━━━━━━━\n"
+
+        msg += f"\n💰 <b>Balance:</b> ${balance:,.2f} | 💎 <b>Equity:</b> ${equity:,.2f}"
+
+        _print_alerta("SL ALCANZADO", f"{simbolo} #{ticket} ${pnl:.2f}")
+        _enviar_telegram(msg)
+    except Exception as e:
+        print(f"[NOTIFIER] Error en notificar_sl_alcanzado: {e}")
 
 
 def notificar_alerta_volatilidad_escalonada(simbolo, porcentaje, precio):

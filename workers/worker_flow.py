@@ -59,8 +59,9 @@ class OrderFlowWorker:
             return 0.0
 
         bull_mask = df['cierre'] > df['apertura']
-        bull_vol = df.loc[bull_mask, 'volumen'].sum()
-        bear_vol = df.loc[~bull_mask, 'volumen'].sum()
+        # Convertir a int para evitar overflow en numpy uint64 (MT5 retorna tick_volume como uint64)
+        bull_vol = int(df.loc[bull_mask, 'volumen'].sum())
+        bear_vol = int(df.loc[~bull_mask, 'volumen'].sum())
 
         total = bull_vol + bear_vol
         if total == 0:

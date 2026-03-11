@@ -26,9 +26,9 @@ if hasattr(sys.stdout, 'reconfigure'):
 load_dotenv()
 
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
-CACHE_TTL_MIN     = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))   # P-2 V14: reducido de 30 a 5 min
-GEMINI_MODEL_LITE = "gemini-3.1-flash-lite"  # P-1 V14: modelo actualizado
-GEMINI_MODEL_PRO  = "gemini-pro-latest"      # Solo para alertas de emergencia
+CACHE_TTL_MIN     = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))       # P-2 V14: reducido de 30 a 5 min
+GEMINI_MODEL_LITE = "gemini-flash-lite-latest"  # Modelo ligero verificado como disponible
+GEMINI_MODEL_PRO  = "gemini-flash-latest"       # Modelo para alertas de emergencia
 _MAX_CALLS_PER_DAY = int(os.getenv("NLP_MAX_CALLS_DAY", "1500"))  # D5 V14: límite diario de API
 
 

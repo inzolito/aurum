@@ -25,6 +25,19 @@ _PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aurum_core
 # Evita el loop "DB offline → matar → reiniciar → DB offline → matar..."
 _COOLDOWN_CICLOS_TRAS_REINICIO = 4  # 4 × 120s = 8 minutos
 
+
+def _get_venv_python() -> str:
+    """
+    Retorna la ruta al intérprete Python del venv.
+    Prioridad: pythonw.exe (sin consola) → python.exe → sys.executable.
+    """
+    _base = os.path.dirname(os.path.abspath(__file__))
+    for nombre in ("pythonw.exe", "python.exe"):
+        candidato = os.path.join(_base, "venv", "Scripts", nombre)
+        if os.path.exists(candidato):
+            return candidato
+    return sys.executable
+
 def get_core_pid_from_file() -> int | None:
     """
     Lee el PID del motor Core desde aurum_core.pid.
@@ -45,43 +58,75 @@ def get_core_pid_from_file() -> int | None:
 
 
 def get_aurum_processes():
-    """Busca procesos de python que estén ejecutando main.py, manager.py o news_hunter.py."""
-    encontrados = {"core": [], "hunter": []}
+    """
+    Busca procesos Python ejecutando main.py, news_hunter.py o telegram_daemon.py.
 
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+    En Windows, venv/Scripts/pythonw.exe actúa como launcher y lanza el intérprete
+    del sistema Python como proceso hijo corriendo el mismo script. Ese par
+    launcher+worker cuenta como UNA sola instancia.
+
+    Solo devuelve el proceso raíz de cada cadena (el que no tiene padre Aurum
+    corriendo el mismo script). Así evitamos contar pares launcher+worker como
+    duplicados.
+    """
+    encontrados = {"core": [], "hunter": [], "daemon": []}
+
+    # Primer paso: recolectar todos los procesos Python de Aurum con su PPID
+    all_aurum = {}  # pid -> (key, proc)
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'ppid']):
         try:
             cmdline = proc.info.get('cmdline')
-            if cmdline and "python" in proc.info.get('name', '').lower():
-                cmd_str = " ".join(cmdline).lower()
-                if "main.py" in cmd_str or "manager.py" in cmd_str:
-                    encontrados["core"].append(proc)
-                elif "news_hunter.py" in cmd_str:
-                    encontrados["hunter"].append(proc)
+            if not cmdline or "python" not in proc.info.get('name', '').lower():
+                continue
+            cmd_str = " ".join(cmdline).lower()
+            key = None
+            if "main.py" in cmd_str or "manager.py" in cmd_str:
+                key = "core"
+            elif "news_hunter.py" in cmd_str:
+                key = "hunter"
+            elif "telegram_daemon.py" in cmd_str:
+                key = "daemon"
+            if key:
+                all_aurum[proc.info['pid']] = (key, proc)
         except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            continue
+
+    # Segundo paso: solo contar procesos raíz (sin padre Aurum para el mismo script)
+    for pid, (key, proc) in all_aurum.items():
+        try:
+            ppid = proc.info.get('ppid', 0)
+            parent_entry = all_aurum.get(ppid)
+            # Si el padre no es un proceso Aurum del mismo tipo → es raíz (launcher o standalone)
+            if parent_entry is None or parent_entry[0] != key:
+                encontrados[key].append(proc)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
 
     return encontrados
 
-def cleanup_ghost_processes():
-    """Busca y termina procesos huérfanos o duplicados del proyecto."""
-    project_dir = os.path.dirname(os.path.abspath(__file__))
-    current_pid = os.getpid()
-    
-    # Primero identificamos qué debería estar corriendo
-    procesos = get_aurum_processes()
-    
-    # Regla: Solo puede haber UN main/manager y UN news_hunter
-    if len(procesos["core"]) > 1:
-        print(f"[CLEANUP] Detectados {len(procesos['core'])} procesos Core. Limpiando excedentes...")
-        for p in procesos["core"][1:]: # Mantenemos el más antiguo o el primero
-            try: p.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
 
-    if len(procesos["hunter"]) > 1:
-        print(f"[CLEANUP] {len(procesos['hunter'])} procesos Hunter detectados. Limpiando...")
-        for p in procesos["hunter"][1:]:
-            try: p.terminate()
-            except (psutil.NoSuchProcess, psutil.AccessDenied): pass
+def cleanup_ghost_processes():
+    """Busca y termina cadenas duplicadas (verdaderos duplicados, no pares launcher+worker)."""
+    procesos = get_aurum_processes()
+
+    for nombre, lista in procesos.items():
+        if len(lista) <= 1:
+            continue
+        print(f"[CLEANUP] {len(lista)} cadenas '{nombre}' detectadas. Eliminando excedentes...")
+        # Conservar la primera cadena, terminar el árbol de las demás
+        for p in lista[1:]:
+            try:
+                # Matar árbol completo del duplicado (launcher + worker hijo)
+                children = p.children(recursive=True)
+                for child in children:
+                    try:
+                        child.kill()
+                    except (psutil.NoSuchProcess, psutil.AccessDenied):
+                        pass
+                p.kill()
+                print(f"[CLEANUP] Cadena duplicada terminada (raíz PID {p.pid})")
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                pass
 
 def check_heartbeat():
     print("=" * 60)
@@ -92,8 +137,9 @@ def check_heartbeat():
     db = DBConnector()
     db.conectar()
     
-    alerta_core_enviada = False
+    alerta_core_enviada   = False
     alerta_hunter_enviada = False
+    alerta_daemon_enviada = False
     cooldown_reinicio = 0  # Ciclos de espera tras reiniciar el Core
 
     while True:
@@ -105,8 +151,9 @@ def check_heartbeat():
             procesos = get_aurum_processes()
             # Usar PID file como fuente de verdad primaria para el Core
             core_pid = get_core_pid_from_file()
-            core_vivo = core_pid is not None
+            core_vivo   = core_pid is not None
             hunter_vivo = len(procesos["hunter"]) > 0
+            daemon_vivo = len(procesos["daemon"]) > 0
 
             # 2. Verificar Logs Core (Estado Vital) — solo si no estamos en cooldown
             log_vivo = False
@@ -136,7 +183,7 @@ def check_heartbeat():
                     if core_vivo:
                         log_vivo = True  # Si la DB falla, no matar el proceso
 
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] SHIELD: Core={'OK' if core_vivo and log_vivo else 'FAIL'} | Hunter={'OK' if hunter_vivo else 'FAIL'} | DB Latido={tiempo_inactivo:.0f}s")
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] SHIELD: Core={'OK' if core_vivo and log_vivo else 'FAIL'} | Hunter={'OK' if hunter_vivo else 'FAIL'} | Daemon={'OK' if daemon_vivo else 'FAIL'} | DB Latido={tiempo_inactivo:.0f}s")
 
             if cooldown_reinicio == 0:
                 # 3. Reparación Core
@@ -151,11 +198,8 @@ def check_heartbeat():
                 if not core_vivo:
                     print("[!] Motor Core caido. Intentando reinicio silencioso...")
                     try:
-                        # Siempre usar el Python del venv para evitar duplicados con Python del sistema
                         _base = os.path.dirname(os.path.abspath(__file__))
-                        python_exe = os.path.join(_base, "venv", "Scripts", "python.exe")
-                        if not os.path.exists(python_exe):
-                            python_exe = sys.executable  # fallback si no hay venv
+                        python_exe = _get_venv_python()
                         main_path = os.path.join(_base, "main.py")
                         flags = 0x08000000 if os.name == 'nt' else 0
                         subprocess.Popen([python_exe, main_path], creationflags=flags)
@@ -174,9 +218,7 @@ def check_heartbeat():
                 print("[!] News Hunter caido. Reiniciando silenciosamente...")
                 try:
                     _base = os.path.dirname(os.path.abspath(__file__))
-                    python_exe = os.path.join(_base, "venv", "Scripts", "python.exe")
-                    if not os.path.exists(python_exe):
-                        python_exe = sys.executable
+                    python_exe = _get_venv_python()
                     script_path = os.path.join(_base, "news_hunter.py")
                     flags = 0x08000000 if os.name == 'nt' else 0
                     subprocess.Popen([python_exe, script_path], creationflags=flags)
@@ -187,6 +229,23 @@ def check_heartbeat():
                     print(f"Error reiniciando Hunter: {e}")
             else:
                 alerta_hunter_enviada = False
+
+            # 5. Reparación Telegram Daemon
+            if not daemon_vivo:
+                print("[!] Telegram Daemon caido. Reiniciando silenciosamente...")
+                try:
+                    _base = os.path.dirname(os.path.abspath(__file__))
+                    python_exe = _get_venv_python()
+                    script_path = os.path.join(_base, "telegram_daemon.py")
+                    flags = 0x08000000 if os.name == 'nt' else 0
+                    subprocess.Popen([python_exe, script_path], creationflags=flags)
+                    if not alerta_daemon_enviada:
+                        _enviar_telegram("📱 <b>Daemon Telegram recuperado silenciosamente.</b>")
+                        alerta_daemon_enviada = True
+                except Exception as e:
+                    print(f"Error reiniciando Telegram Daemon: {e}")
+            else:
+                alerta_daemon_enviada = False
 
         except Exception as e:
             print(f"[SHIELD ERROR] {e}")

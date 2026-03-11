@@ -1,3 +1,12 @@
+# ===========================================================================
+# DEPRECADO — V15.0 (2026-03-10)
+# Este archivo ha sido reemplazado por `telegram_daemon.py` en la raíz del
+# proyecto. El bot de Telegram ya NO corre como thread del Core sino como
+# un proceso completamente independiente monitoreado por heartbeat.py.
+#
+# Este archivo se mantiene solo para referencia histórica.
+# NO importar ni ejecutar este módulo.
+# ===========================================================================
 import os
 import sys
 import psutil

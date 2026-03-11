@@ -1,4 +1,6 @@
-# AURUM — REPORTE DE AUDITORÍA TÉCNICA
+# AURUM — AUDIT REPORT
+
+> **Propósito:** Informes Forenses. Análisis profundo de estabilidad, rendimiento y errores críticos. Detalla hallazgos técnicos sobre fallos de memoria, procesos duplicados o bugs complejos y sus respectivas soluciones.
 **Fecha de auditoría:** 2026-03-10
 **Fecha de correcciones:** 2026-03-10
 **Versión auditada:** V13.5
