@@ -85,7 +85,7 @@ def cleanup_ghost_processes():
 
 def check_heartbeat():
     print("=" * 60)
-    print("🛡️ AURUM SHIELD - MONITOR AUTÓNOMO V2.5")
+    print("AURUM SHIELD - MONITOR AUTONOMO V2.5")
     print(f"Watchdog activo 24/7 | Cwd: {os.getcwd()}")
     print("=" * 60)
 
@@ -151,8 +151,12 @@ def check_heartbeat():
                 if not core_vivo:
                     print("[!] Motor Core caido. Intentando reinicio silencioso...")
                     try:
-                        python_exe = sys.executable
-                        main_path = os.path.join(os.path.dirname(__file__), "main.py")
+                        # Siempre usar el Python del venv para evitar duplicados con Python del sistema
+                        _base = os.path.dirname(os.path.abspath(__file__))
+                        python_exe = os.path.join(_base, "venv", "Scripts", "python.exe")
+                        if not os.path.exists(python_exe):
+                            python_exe = sys.executable  # fallback si no hay venv
+                        main_path = os.path.join(_base, "main.py")
                         flags = 0x08000000 if os.name == 'nt' else 0
                         subprocess.Popen([python_exe, main_path], creationflags=flags)
                         cooldown_reinicio = _COOLDOWN_CICLOS_TRAS_REINICIO
@@ -169,8 +173,11 @@ def check_heartbeat():
             if not hunter_vivo:
                 print("[!] News Hunter caido. Reiniciando silenciosamente...")
                 try:
-                    python_exe = sys.executable
-                    script_path = os.path.join(os.path.dirname(__file__), "news_hunter.py")
+                    _base = os.path.dirname(os.path.abspath(__file__))
+                    python_exe = os.path.join(_base, "venv", "Scripts", "python.exe")
+                    if not os.path.exists(python_exe):
+                        python_exe = sys.executable
+                    script_path = os.path.join(_base, "news_hunter.py")
                     flags = 0x08000000 if os.name == 'nt' else 0
                     subprocess.Popen([python_exe, script_path], creationflags=flags)
                     if not alerta_hunter_enviada:
