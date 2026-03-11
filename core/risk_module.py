@@ -190,8 +190,8 @@ class RiskModule:
                         if apertura_min <= hora_actual_min <= cierre_min:
                             dentro_ventana = True
                             min_arranque = hora_actual_min - apertura_min
-                            # D1 V14: Anti-volatilidad — primeros 20 min de apertura de sesión
-                            if min_arranque < 20:
+                            # D1 V14: Anti-volatilidad — primeros 15 min de apertura de sesión
+                            if min_arranque < 15:
                                 en_arranque = True
                             break
 
@@ -199,7 +199,7 @@ class RiskModule:
                         print(f"[RISK] BLOQUEO: {simbolo_interno} fuera de horario operativo.")
                         return False
                     if en_arranque:
-                        print(f"[RISK] BLOQUEO: {simbolo_interno} en periodo anti-volatilidad de apertura ({min_arranque}/20 min).")
+                        print(f"[RISK] BLOQUEO: {simbolo_interno} en periodo anti-volatilidad de apertura ({min_arranque}/15 min).")
                         return False
             except Exception:
                 pass  # En caso de fallo, no bloquear por horarios

@@ -48,25 +48,25 @@ El objetivo fue convertir vulnerabilidades operacionales conocidas en mecanismos
 
 ---
 
-### D2 — Recalibración Semanal de Pesos de Obreros
+### D2 — Recalibración de Pesos de Obreros (Manual)
 
-**Problema:** Los pesos `TENDENCIA.peso_voto`, `NLP.peso_voto`, etc. se leían dinámicamente desde `parametros_sistema` pero nadie los actualizaba. Un obrero con racha de señales incorrectas seguía pesando igual.
+**Problema identificado:** Los pesos estaban fijos. Un obrero con racha de señales incorrectas seguía pesando igual.
 
-**Solución implementada:**
-- Nuevo método `_recalibrar_pesos()` en `core/manager.py`.
-- Lógica: cruza `registro_senales` (decision_gerente='EJECUTADO') con `registro_operaciones` (resultado_final) de los últimos 7 días. Calcula tasa de acierto por obrero (dirección del voto vs resultado del trade).
-- Regla de ajuste:
-  - Tasa de acierto > 65% → peso += 0.05
-  - Tasa de acierto < 45% → peso -= 0.05
-  - Entre 45%–65% → sin cambio
-- Límites de seguridad: ningún peso puede salir del rango [0.10, 0.60].
-- Muestra mínima: 20 trades. Si no hay suficientes datos, no actúa.
-- Fuerza recarga del caché de parámetros (`_params_last_refresh = 0`).
-- Notifica cambios por Telegram.
+**Decisión de diseño:** La recalibración automática semanal fue implementada y luego **desactivada** por decisión del operador. Razones:
+- Con pocos trades/semana, una muestra de 7 días no es estadísticamente significativa.
+- El ajuste automático puede crear bucles perversos (si NLP baja → más trades sin veto NLP → más pérdidas → NLP baja más).
+- Los pesos reflejan intención de diseño deliberada, no deben cambiar por ruido estadístico de corto plazo.
 
-**Disparador:** `core/scheduler.py` — `schedule.every().sunday.at("17:00")` (antes de apertura de domingo).
+**Qué se implementó:**
+- Método `_recalibrar_pesos()` en `core/manager.py` — disponible para uso **manual** cuando haya suficiente evidencia histórica (recomendado: 100+ autopsias acumuladas en D3).
+- El scheduler tiene la línea comentada. Para activar manualmente: descomentar en `core/scheduler.py` o llamar desde `aurum_admin.py`.
 
-**Tablas afectadas:** `parametros_sistema` (UPDATE por parámetro).
+**Flujo correcto de ajuste de pesos:**
+1. Acumular autopsias (D3) durante semanas.
+2. Revisar tabla `autopsias_perdidas` — identificar patrón de fallo sistemático en un obrero.
+3. Ajustar el peso manualmente en `parametros_sistema` con evidencia suficiente.
+
+**Tablas afectadas:** `parametros_sistema` (solo con ajuste manual).
 
 ---
 

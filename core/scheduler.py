@@ -32,8 +32,9 @@ class AurumScheduler:
         # V11.1: Reporte Horario de Noticias (Pedido por Usuario)
         schedule.every().hour.at(":00").do(self.reporte_noticias_horario)
 
-        # D2 V14: Recalibración semanal de pesos (domingo 17:00 UTC, antes de apertura de mercado)
-        schedule.every().sunday.at("17:00").do(self.recalibrar_pesos_semanal)
+        # D2 V14: Recalibración semanal de pesos — DESACTIVADA (ajuste manual preferido)
+        # Llamar manualmente: engine.gerente._recalibrar_pesos() desde aurum_admin.py
+        # schedule.every().sunday.at("17:00").do(self.recalibrar_pesos_semanal)
         
         self.thread = threading.Thread(target=self._run_loop, daemon=True)
         self.thread.start()
