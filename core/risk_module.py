@@ -77,6 +77,48 @@ class RiskModule:
         
         return sl, tp
 
+    def verificar_ventana_ejecucion(self, simbolo_interno: str) -> bool:
+        """
+        D1 V14: Verifica si el activo está dentro de su ventana horaria de operación
+        y si ya pasaron los primeros 15 minutos de apertura (anti-volatilidad).
+        Se llama DESPUÉS de que los workers votan, solo bloquea la ejecución.
+        Retorna True si se puede ejecutar, False si hay que esperar.
+        """
+        if not self.db.cursor:
+            return True  # Sin DB: no bloquear
+        try:
+            self.db.cursor.execute(
+                """
+                SELECT hora_apertura, hora_cierre
+                FROM horarios_operativos h
+                JOIN activos a ON a.id = h.activo_id
+                WHERE a.simbolo = %s;
+                """,
+                (simbolo_interno,)
+            )
+            horarios = self.db.cursor.fetchall()
+            if not horarios:
+                return True  # Sin horarios configurados: no bloquear
+
+            from datetime import datetime, timezone
+            hora_actual = datetime.now(timezone.utc).time()
+            hora_actual_min = hora_actual.hour * 60 + hora_actual.minute
+
+            for apertura, cierre in horarios:
+                apertura_min = apertura.hour * 60 + apertura.minute
+                cierre_min   = cierre.hour   * 60 + cierre.minute
+                if apertura_min <= hora_actual_min <= cierre_min:
+                    min_arranque = hora_actual_min - apertura_min
+                    if min_arranque < 15:
+                        print(f"[RISK] EJECUCION BLOQUEADA: {simbolo_interno} en arranque de sesion ({min_arranque}/15 min). Analisis visible, sin orden.")
+                        return False
+                    return True  # Dentro de ventana y pasados los 15 min
+
+            print(f"[RISK] EJECUCION BLOQUEADA: {simbolo_interno} fuera de horario operativo.")
+            return False
+        except Exception:
+            return True  # En caso de error: no bloquear
+
     def _factor_riesgo_noticias(self) -> float:
         """
         D4 V14: IA-Risk — retorna 0.5 si hay noticias de alto impacto en los últimos 30 min.
@@ -162,47 +204,9 @@ class RiskModule:
             print(f"[RISK] BLOQUEO: Ya hay {len(posiciones)} posicion(es) abierta(s) en {simbolo_broker}.")
             return False
 
-        # Verificación 3: Ventana horaria + Anti-volatilidad de apertura (D1 V14)
-        if self.db.cursor:
-            try:
-                self.db.cursor.execute(
-                    """
-                    SELECT hora_apertura, hora_cierre
-                    FROM horarios_operativos h
-                    JOIN activos a ON a.id = h.activo_id
-                    WHERE a.simbolo = %s;
-                    """,
-                    (simbolo_interno,)
-                )
-                horarios = self.db.cursor.fetchall()
-                if horarios:
-                    from datetime import datetime, timezone
-                    hora_actual = datetime.now(timezone.utc).time()
-                    hora_actual_min = hora_actual.hour * 60 + hora_actual.minute
-
-                    dentro_ventana = False
-                    en_arranque = False
-                    min_arranque = 0
-
-                    for apertura, cierre in horarios:
-                        apertura_min = apertura.hour * 60 + apertura.minute
-                        cierre_min   = cierre.hour   * 60 + cierre.minute
-                        if apertura_min <= hora_actual_min <= cierre_min:
-                            dentro_ventana = True
-                            min_arranque = hora_actual_min - apertura_min
-                            # D1 V14: Anti-volatilidad — primeros 15 min de apertura de sesión
-                            if min_arranque < 15:
-                                en_arranque = True
-                            break
-
-                    if not dentro_ventana:
-                        print(f"[RISK] BLOQUEO: {simbolo_interno} fuera de horario operativo.")
-                        return False
-                    if en_arranque:
-                        print(f"[RISK] BLOQUEO: {simbolo_interno} en periodo anti-volatilidad de apertura ({min_arranque}/15 min).")
-                        return False
-            except Exception:
-                pass  # En caso de fallo, no bloquear por horarios
+        # Verificación 3: Ventana horaria — MOVIDA a verificar_ventana_ejecucion()
+        # Se llama desde manager.py DESPUES de que los workers voten, no aquí.
+        # Esto garantiza que el dashboard siempre muestre votos reales.
 
         # Verificación 4: Protección de Capital — umbral leído desde parametros_sistema en BD
         max_perdida_flotante = self.db.get_parametros().get("GERENTE.max_drawdown_usd", 1000.0)

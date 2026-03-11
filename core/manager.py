@@ -367,7 +367,17 @@ class Manager:
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": "IGNORADO", "veredicto": veredicto, "motivo": motivo}
 
-        # 6. Aprobado — calcular dirección y lotaje
+        # 6. Aprobado — verificar ventana de ejecución (D1 V14)
+        # Los workers ya votaron. Este check solo bloquea la ORDEN, no el análisis.
+        if not self.risk.verificar_ventana_ejecucion(simbolo_interno):
+            motivo = f"Veredicto {veredicto:+.4f} aprobado pero ejecucion bloqueada (horario/arranque de sesion)."
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                                    veredicto, "BLOQUEADO_HORARIO", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'])
+            return {"decision": "BLOQUEADO_HORARIO", "veredicto": veredicto, "motivo": motivo}
+
+        # 6b. Calcular dirección y lotaje
         direccion = "COMPRA" if veredicto > 0 else "VENTA"
         
         # --- NUEVA LOGICA DE RIESGO DINAMICO ---
