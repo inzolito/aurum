@@ -64,13 +64,25 @@ class RiskModule:
             return None, None
             
         tick = mt5_lib.symbol_info_tick(simbolo_broker)
-        if not tick:
+        info = mt5_lib.symbol_info(simbolo_broker)
+        if not tick or not info:
             return None, None
             
         precio = tick.ask if direccion == "COMPRA" else tick.bid
         
         dist_sl = atr * 1.5
         dist_tp = atr * 2.0
+        
+        # Validacion Anti-Error 10016: El spread a veces devora el ATR en volatilidades bajas
+        min_dist = max(info.spread, info.trade_stops_level) * info.point
+        min_sl = min_dist * 1.5
+        min_tp = min_dist * 2.0
+        
+        if dist_sl < min_sl:
+            print(f"[RISK] ATR SL ({dist_sl:.5f}) violaba StopLevel/Spread en {simbolo_broker}. SL ajustado a {min_sl:.5f}")
+            dist_sl = min_sl
+        if dist_tp < min_tp:
+            dist_tp = min_tp
         
         sl = precio - dist_sl if direccion == "COMPRA" else precio + dist_sl
         tp = precio + dist_tp if direccion == "COMPRA" else precio - dist_tp

@@ -9,7 +9,7 @@
 
 $ErrorActionPreference = "SilentlyContinue"
 $ProjectDir  = "C:\www\Aurum"
-$VenvPython  = "$ProjectDir\venv\Scripts\python.exe"
+$VenvPython  = "$ProjectDir\venv\Scripts\pythonw.exe"
 $MainScript  = "$ProjectDir\main.py"
 $PidFile     = "$ProjectDir\aurum_core.pid"
 $LogDir      = "$ProjectDir\logs"
@@ -63,13 +63,11 @@ if ($processList) {
 
 # Lanzar con el Python del venv (silencioso, log a archivo)
 Write-Host "[INIT] Lanzando main.py con venv Python..." -ForegroundColor Green
-$proc = Start-Process -FilePath $VenvPython `
-        -ArgumentList "-u `"$MainScript`"" `
-        -WorkingDirectory $ProjectDir `
-        -WindowStyle Hidden `
-        -RedirectStandardOutput $LogFile `
-        -RedirectStandardError "$LogDir\bot_err.log" `
-        -PassThru
+$proc = Start-Process -FilePath $VenvPython -ArgumentList "-u `"$MainScript`"" -WorkingDirectory $ProjectDir -WindowStyle Hidden -RedirectStandardOutput $LogFile -RedirectStandardError "$LogDir\bot_err.log" -PassThru
 
-Write-Host "[OK] Bot iniciado — PID $($proc.Id)" -ForegroundColor Green
+Write-Host "[INIT] Lanzando heartbeat.py (SHIELD) con venv Python..." -ForegroundColor Green
+$ShieldScript = "$ProjectDir\heartbeat.py"
+$procShield = Start-Process -FilePath $VenvPython -ArgumentList "-u `"$ShieldScript`"" -WorkingDirectory $ProjectDir -WindowStyle Hidden -RedirectStandardOutput "$LogDir\shield_stdout.log" -RedirectStandardError "$LogDir\shield_err.log" -PassThru
+
+Write-Host "[OK] Bot iniciado -- PID $($proc.Id) | SHIELD -- PID $($procShield.Id)" -ForegroundColor Green
 Write-Host "     Logs en: $LogFile" -ForegroundColor DarkGray

@@ -53,12 +53,13 @@ _modo_silencioso: bool = False
 
 def get_main_keyboard() -> ReplyKeyboardMarkup:
     keyboard = [
-        [KeyboardButton("📊 TABLERO GLOBAL"),    KeyboardButton("🩺 TEST DE SALUD")],
-        [KeyboardButton("🔍 LUPA DE ACTIVO"),    KeyboardButton("📰 RADAR DE NOTICIAS")],
-        [KeyboardButton("📋 MIS POSICIONES"),    KeyboardButton("📊 RENDIMIENTO HOY")],
-        [KeyboardButton("⚙️ PARAMETROS"),        KeyboardButton("🗞️ ULTIMAS NOTICIAS")],
+        ["📊 TABLERO GLOBAL", "🩺 TEST DE SALUD"],
+        ["🔍 LUPA DE ACTIVO", "📰 RADAR DE NOTICIAS"],
+        ["📋 MIS POSICIONES", "📊 RENDIMIENTO HOY"],
+        ["⚙️ PARAMETROS", "🗞️ ULTIMAS NOTICIAS"],
+        ["🔄 REINICIAR BOT"],
     ]
-    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True, persistent=True)
+    return ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
 
 
 # ------------------------------------------------------------------
@@ -256,6 +257,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await _accion_rendimiento_hoy(update)
     elif "PARAMETROS" in text:
         await _accion_parametros(update)
+    elif "REINICIAR BOT" in text:
+        await _accion_reiniciar(update)
     elif context.user_data.get("esperando_simbolo"):
         context.user_data["esperando_simbolo"] = False
         simbolo = text.upper().strip()
@@ -487,14 +490,14 @@ async def _accion_rendimiento_hoy(update: Update):
                 SUM(CASE WHEN pnl_usd <= 0 THEN 1 ELSE 0 END) AS perdidos,
                 COALESCE(SUM(pnl_usd), 0) AS pnl_neto
             FROM registro_operaciones
-            WHERE fecha_apertura::date = CURRENT_DATE
+            WHERE tiempo_entrada::date = CURRENT_DATE
               AND resultado_final IS NOT NULL;
         """)
         stats = db.cursor.fetchone()
 
         db.cursor.execute("""
             SELECT COUNT(*) FROM registro_operaciones
-            WHERE fecha_apertura::date = CURRENT_DATE AND resultado_final IS NULL;
+            WHERE tiempo_entrada::date = CURRENT_DATE AND resultado_final IS NULL;
         """)
         abiertos = db.cursor.fetchone()[0] or 0
         db.desconectar()
@@ -533,9 +536,9 @@ async def _accion_parametros(update: Update):
 
     try:
         db.cursor.execute("""
-            SELECT clave, valor FROM parametros_sistema
-            WHERE clave LIKE 'PESO.%' OR clave LIKE 'GERENTE.%'
-            ORDER BY clave;
+            SELECT nombre_parametro, valor FROM parametros_sistema
+            WHERE nombre_parametro LIKE 'PESO.%' OR nombre_parametro LIKE 'GERENTE.%'
+            ORDER BY nombre_parametro;
         """)
         params = db.cursor.fetchall()
         db.desconectar()
@@ -545,8 +548,8 @@ async def _accion_parametros(update: Update):
             return
 
         msg = "⚙️ <b>PARAMETROS DEL SISTEMA</b>\n━━━━━━━━━━━━━━━━━━━━━\n\n"
-        for clave, valor in params:
-            nombre = clave.replace("PESO.", "").replace("GERENTE.", "").replace("_", " ")
+        for nombre_param, valor in params:
+            nombre = nombre_param.replace("PESO.", "").replace("GERENTE.", "").replace("_", " ")
             msg += f"• <b>{nombre}:</b> <code>{valor}</code>\n"
 
         await update.message.reply_text(msg, parse_mode="HTML")
@@ -557,6 +560,13 @@ async def _accion_parametros(update: Update):
             db.desconectar()
         except Exception:
             pass
+
+
+async def _accion_reiniciar(update: Update):
+    """Reinicia todo el ecosistema python."""
+    await update.message.reply_text("🔄 <b>Iniciando secuencia de reinicio total...</b>\nSe apagará Aurum y volverá a encender en unos segundos.", parse_mode="HTML")
+    import subprocess
+    subprocess.Popen("start /b restart_all.bat", shell=True, cwd=os.path.dirname(os.path.abspath(__file__)))
 
 
 # ------------------------------------------------------------------

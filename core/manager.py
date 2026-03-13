@@ -115,7 +115,18 @@ class Manager:
 
         # 1. Filtro de seguridad previo (RiskModule)
         if not self.risk.filtro_seguridad(simbolo_interno):
-            motivo = f"Bloqueado por filtro_seguridad antes de evaluar Obreros."
+            # Determinar razón específica para diagnóstico en el admin
+            _sb = self.db.obtener_simbolo_broker(simbolo_interno)
+            _pos = mt5.positions_get(symbol=_sb) if _sb else None
+            if _pos is not None and len(_pos) > 0:
+                motivo = f"Posición abierta en {_sb} ({len(_pos)} pos.). Anti-duplicado activo."
+            else:
+                _acc = mt5.account_info()
+                _max_dd = float(self.db.get_parametros().get("GERENTE.max_drawdown_usd", 1000.0))
+                if _acc and _acc.profit < -_max_dd:
+                    motivo = f"Límite de pérdida flotante alcanzado ({_acc.profit:.2f} USD)."
+                else:
+                    motivo = f"Activo bloqueado: estado no operativo o sin mapeo en BD."
             self._guardar_auditoria(simbolo_interno, 0.0, 0.0, 0.0, 0.0,
                                     "CANCELADO_RIESGO", motivo)
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
@@ -153,7 +164,7 @@ class Manager:
         mt5.symbol_select(simbolo_broker, True)
         tick = mt5.symbol_info_tick(simbolo_broker)
         if tick is None:
-            # notificar_error_market_watch(simbolo_broker)
+            notificar_error_market_watch(simbolo_broker)
             print(f"[GERENTE] ⚠️ {simbolo_broker} no responde en el Market Watch.")
             return {"decision": "ERROR_CONEXION", "motivo": "Market Watch invisible"}
 

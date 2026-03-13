@@ -9,45 +9,16 @@
 
 ---
 
-## 📈 EXPANSIÓN DE ACTIVOS (Nivel V15)
+## 🚀 NUEVOS PENDIENTES (2026-03-12)
 
-**Objetivo:** Incrementar la diversificación temporal del bot, cubriendo las sesiones asiática (Tokio), europea (Londres) y americana (Nueva York) con activos de alta limpieza técnica.
-
-### 0. Activos Base (Estado de Verificación) 🛡️
-*   **XTIUSD** (Petróleo WTI) - [YA EXISTE ✅]
-*   **XBRUSD** (Petróleo Brent) - [YA EXISTE ✅]
-*   **US30 / DJIUSD** (Dow Jones) - [YA EXISTE ✅]
-*   **US500 / SPXUSD** (S&P 500) - [YA EXISTE ✅]
-
-### 1. Sesión Asiática (Tokio / Sídney) 🌏 [PENDIENTE]
-*   **AUDUSD** (Dólar Australiano - Materias Primas)
-*   **AUS200** (Índice Australia - Minería/Energía)
-*   **JP225** (Nikkei 225 - Índice Japón)
-*   **NZDUSD** (Dólar Neozelandés - Asia-Pacífico)
-*   **USDCNH** (Yuan - Clave para sentimiento en Asia)
-
-### 2. Sesión Europea (Londres) 🇪🇺 [PENDIENTE]
-*   **GER40** (DAX Alemán - Industrial)
-*   **UK100** (FTSE 100 - Índice Londres)
-*   **EURGBP** (Cruce técnico de alta estabilidad)
-*   **FRA40** (CAC 40 - Índice Francia)
-*   *EURUSD / GBPUSD - [YA EXISTEN ✅]*
-
-### 3. Sesión Americana (Nueva York) 🇺🇸 [PENDIENTE]
-*   **USDCAD** (Loonie - Correlación directa con Petróleo)
-*   **USDCHF** (Franco Suizo - Refugio seguro)
-*   **EURCAD** (Euro vs CAD - Materias primas)
-*   **AUDCAD** (AUD vs CAD - Cruce de recursos)
-*   **USDMXN** (Peso Mexicano - Emergente alta tasa)
-*   *USTEC / NDXUSD - [YA EXISTE ✅]*
-
----
-*Tarea planificada el 2026-03-11 | Pendiente de configuración en base de datos y horarios operativos.*
-
+- [ ] **Guardado de `version_id` en Trades:** Actualmente el sistema no está guardando con qué versión del bot se realizó cada trade. La columna `version_id` existe en la tabla `registro_operaciones`, pero llega como NULL. Aplicar solución para guardar la versión ACTIVA.
+- [ ] **Evitar Ejecuciones Dobles / Caída a Modo Supervivencia:** Interrupciones abruptas dejan procesos del bot ("zombies") corriendo en segundo plano. Esto ocasiona colisiones severas en la API de Telegram y satura el pool de PostgreSQL, provocando que el sistema asuma una caída de BD y dispare el **Modo Supervivencia** (dejando al bot aislado, usando RAM y parámetros hardcodeados). **Contexto de resolución:** Se debe implementar un mecanismo estricto de *Single Instance Lock* (ej. archivo PID, lock SO o registro en BD) en `Main.py` que garantice una única instancia en ejecución y sea capaz de terminar/purgar procesos huérfanos antes de iniciar.
 
 ---
 
 ## 🔍 SEGUIMIENTO POST-ACTUALIZACIONES 2026-03-11
+
+---
 
 **Fecha de planificación:** 2026-03-11
 **Contexto:** Tras aplicar FIX-NLP-02, FIX-VOL-02, FIX-CROSS-02 y los ajustes de TrendWorker (v*0.5 + voto respaldo ±0.20), el PF cayó de 1.95 a 0.05. Los cambios del 11-Mar deberían corregirlo, pero requiere monitoreo.

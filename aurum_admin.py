@@ -13,12 +13,13 @@ import psutil
 from datetime import datetime, timezone
 from pathlib import Path
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.table import Table
 from rich.panel import Panel
 from rich.live import Live
 from rich.text import Text
 from rich.prompt import Prompt, Confirm
+from rich.markup import escape as rich_escape
 from rich import box
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -46,6 +47,97 @@ _HEARTBEAT_PY = Path(__file__).parent / "heartbeat.py"
 
 
 # ── helpers ────────────────────────────────────────────────────────────────
+
+_DECISION_ICON = {
+    "EJECUTADO":          "✅",
+    "COMPRA":             "🟢",
+    "VENTA":              "🔴",
+    "IGNORADO":           "⚪",
+    "CANCELADO_RIESGO":   "🔒",
+    "BLOQUEADO_HORARIO":  "🕐",
+    "VOLATILIDAD_EXTREMA":"⚡",
+    "MERCADO_CERRADO":    "🚫",
+    "ERROR_CONEXION":     "⚠️",
+    "ERROR_BROKER":       "💥",
+    "ERROR_CONFIG":       "🔧",
+    "ERROR_INTERNO":      "🔧",
+    "HIBERNACION_10018":  "💤",
+}
+
+_DECISION_COLOR = {
+    "EJECUTADO":          "bold green",
+    "COMPRA":             "green",
+    "VENTA":              "red",
+    "IGNORADO":           "dim",
+    "CANCELADO_RIESGO":   "yellow",
+    "BLOQUEADO_HORARIO":  "cyan",
+    "VOLATILIDAD_EXTREMA":"bold yellow",
+    "MERCADO_CERRADO":    "dim",
+    "ERROR_CONEXION":     "bold red",
+    "ERROR_BROKER":       "bold red",
+    "ERROR_CONFIG":       "red",
+    "ERROR_INTERNO":      "bold red",
+    "HIBERNACION_10018":  "dim",
+}
+
+
+def _fmt_decision(decision: str) -> str:
+    icon  = _DECISION_ICON.get(str(decision), "❓")
+    color = _DECISION_COLOR.get(str(decision), "white")
+    return f"[{color}]{icon} {decision}[/{color}]"
+
+
+def _motivo_corto(motivo: str) -> str:
+    """Acorta el motivo para mostrar en tabla, priorizando la razón clave."""
+    if not motivo:
+        return "[dim]—[/dim]"
+    m = motivo.strip()
+    # Casos específicos conocidos — mostrar resumen legible
+    if "Posición abierta" in m:
+        parts = m.split("en ")
+        sym = rich_escape(parts[1].split(" ")[0].rstrip(".")) if len(parts) > 1 else ""
+        return f"[yellow]Pos. abierta: {sym}[/yellow]"
+    if "Límite de pérdida" in m:
+        try:
+            val = rich_escape(m.split("(")[1].split(" ")[0])
+            return f"[red]Drawdown: {val} USD[/red]"
+        except Exception:
+            return "[red]Drawdown límite[/red]"
+    if "DIVERGENCIA" in m:
+        return "[magenta]Divergencia Trend vs NLP[/magenta]"
+    if "insufficiente" in m or "Umbral" in m:
+        try:
+            v = rich_escape(m.split("Veredicto ")[1].split(" ")[0])
+            u = rich_escape(m.split("Umbral: ")[1].rstrip(")"))
+            return f"[dim]Umbral no alc. {v} < {u}[/dim]"
+        except Exception:
+            return "[dim]Umbral no alcanzado[/dim]"
+    if "Oportunidad detectada" in m:
+        try:
+            conv = rich_escape(m.split("(")[1].split(")")[0])
+            return f"[dim]Oport. detectada ({conv})[/dim]"
+        except Exception:
+            return "[dim]Oportunidad (baja conv.)[/dim]"
+    if "horario" in m.lower() or "sesion" in m.lower():
+        return "[cyan]Fuera de horario[/cyan]"
+    if "Volatilidad explosiva" in m:
+        try:
+            ratio = rich_escape(m.split("(")[1].split("x")[0])
+            return f"[bold yellow]Volatilidad {ratio}x[/bold yellow]"
+        except Exception:
+            return "[bold yellow]Volatilidad extrema[/bold yellow]"
+    if "Veredicto Ensemble" in m:
+        try:
+            v = m.split("Veredicto Ensemble: ")[1].split(" ")[0]
+            d = "COMPRA" if float(v) > 0 else "VENTA"
+            return f"[green]Ejecutado {d} ({rich_escape(v)})[/green]"
+        except Exception:
+            return "[green]Orden ejecutada[/green]"
+    if "SL/TP" in m:
+        return "[red]Error cálculo SL/TP[/red]"
+    # Fallback: escapar todo el texto crudo
+    return rich_escape(m[:50]) + ("…" if len(m) > 50 else "")
+
 
 def _fmt_voto(v, neutro_val=0.0) -> str:
     """Formatea un voto numérico con color rich."""
@@ -110,27 +202,13 @@ def _get_proceso(script_name: str):
 def tabla_votos(db: DBConnector):
     """
     Muestra la tabla de votos por obrero para todos los activos.
-    Consulta registro_senales con el último registro de cada activo.
-    Modo Live: se refresca cada 30 segundos hasta que el usuario presiona Ctrl+C.
+    Panel 1: Votos numéricos (compacto).
+    Panel 2: Diagnóstico — motivo específico + análisis NLP de Gemini.
+    Modo Live: se refresca cada 30 segundos.
     """
 
     def _generar():
-        t = Table(
-            title="📊 TABLA DE VOTOS POR OBRERO — Último ciclo registrado",
-            box=box.ROUNDED, expand=True, show_lines=True
-        )
-        t.add_column("Activo",     style="bold yellow", width=8)
-        t.add_column("Tendencia",  justify="center", width=10)
-        t.add_column("NLP",        justify="center", width=8)
-        t.add_column("Flow",       justify="center", width=8)
-        t.add_column("Sniper",     justify="center", width=8)
-        t.add_column("Hurst",      justify="center", width=8)
-        t.add_column("Volumen",    justify="center", width=9)
-        t.add_column("Cross",      justify="center", width=8)
-        t.add_column("Veredicto",  justify="center", width=10)
-        t.add_column("Decisión",   justify="center", width=18)
-        t.add_column("Hace",       justify="right",  width=6)
-
+        # ── Query 1: votos + motivo ──────────────────────────────────────
         try:
             if not db.conn or db.conn.closed:
                 db.conectar()
@@ -139,7 +217,8 @@ def tabla_votos(db: DBConnector):
                        rs.voto_tendencia, rs.voto_nlp, rs.voto_order_flow,
                        rs.voto_sniper,    rs.voto_hurst,
                        rs.voto_volume,    rs.voto_cross,
-                       rs.voto_final_ponderado, rs.decision_gerente, rs.tiempo
+                       rs.voto_final_ponderado, rs.decision_gerente,
+                       rs.motivo,         rs.tiempo
                 FROM registro_senales rs
                 JOIN activos a ON rs.activo_id = a.id
                 WHERE rs.tiempo = (
@@ -151,27 +230,59 @@ def tabla_votos(db: DBConnector):
             """)
             rows = db.cursor.fetchall()
         except Exception as e:
-            t.add_row("[red]Error DB[/red]", *["—"]*10)
-            return Panel(t, subtitle=f"[red]{e}[/red]")
+            err_t = Table(box=box.SIMPLE)
+            err_t.add_column("Error")
+            err_t.add_row(f"[red]{e}[/red]")
+            return Panel(err_t)
 
-        decision_colors = {
-            "IGNORADO":         "dim",
-            "CANCELADO_RIESGO": "red",
-            "EJECUTADO":        "bold green",
-            "COMPRA":           "green",
-            "VENTA":            "red",
-            "ERROR_BROKER":     "bold red",
-            "VOLATILIDAD_EXTREMA": "bold yellow",
-        }
+        # ── Query 2: NLP reasoning desde cache ──────────────────────────
+        nlp_map = {}
+        try:
+            db.cursor.execute("""
+                SELECT c.simbolo, c.razonamiento
+                FROM cache_nlp_impactos c
+                WHERE c.creado_en = (
+                    SELECT MAX(c2.creado_en) FROM cache_nlp_impactos c2
+                    WHERE c2.simbolo = c.simbolo
+                );
+            """)
+            for sym, razon in db.cursor.fetchall():
+                nlp_map[sym] = razon or ""
+        except Exception:
+            pass  # Si falla, simplemente no hay reasoning
+
+        # ── Panel 1: Tabla de votos ──────────────────────────────────────
+        t_votos = Table(
+            title="📊 VOTOS POR OBRERO — Último ciclo",
+            box=box.ROUNDED, expand=True, show_lines=True
+        )
+        t_votos.add_column("Activo",    style="bold yellow", width=8)
+        t_votos.add_column("Tend",      justify="center", width=8)
+        t_votos.add_column("NLP",       justify="center", width=8)
+        t_votos.add_column("Flow",      justify="center", width=8)
+        t_votos.add_column("Sniper",    justify="center", width=8)
+        t_votos.add_column("Hurst",     justify="center", width=8)
+        t_votos.add_column("Vol",       justify="center", width=8)
+        t_votos.add_column("Cross",     justify="center", width=8)
+        t_votos.add_column("Veredicto", justify="center", width=10)
+        t_votos.add_column("Hace",      justify="right",  width=5)
+
+        # ── Panel 2: Tabla de diagnóstico ────────────────────────────────
+        t_diag = Table(
+            title="🔍 DIAGNÓSTICO — Razón de la decisión + Análisis IA",
+            box=box.ROUNDED, expand=True, show_lines=True
+        )
+        t_diag.add_column("Activo",   style="bold yellow", width=8)
+        t_diag.add_column("Estado",   justify="center",    width=22)
+        t_diag.add_column("Motivo",                        width=38)
+        t_diag.add_column("NLP / Gemini",                  ratio=1)
 
         for r in rows:
             (simbolo, v_trend, v_nlp, v_flow, v_sniper, v_hurst,
-             v_vol, v_cross, veredicto, decision, tiempo) = r
+             v_vol, v_cross, veredicto, decision, motivo, tiempo) = r
 
-            d_color = decision_colors.get(str(decision), "white")
-            d_str   = f"[{d_color}]{decision}[/{d_color}]"
-
-            t.add_row(
+            # Fila de votos
+            t_votos.add_row(
                 simbolo,
                 _fmt_voto(v_trend),
                 _fmt_voto(v_nlp),
@@ -181,12 +292,27 @@ def tabla_votos(db: DBConnector):
                 _fmt_voto(v_vol),
                 _fmt_voto(v_cross),
                 _fmt_voto(veredicto),
-                d_str,
                 _hace_cuanto(tiempo),
             )
 
+            # Fila de diagnóstico
+            razon_nlp = nlp_map.get(simbolo, "")
+            razon_nlp_esc = rich_escape(razon_nlp[:110]) + ("…" if len(razon_nlp) > 110 else "")
+            nlp_display = f"[dim]{razon_nlp_esc}[/dim]" if razon_nlp_esc else "[dim]Sin análisis IA reciente[/dim]"
+
+            t_diag.add_row(
+                simbolo,
+                _fmt_decision(str(decision)),
+                _motivo_corto(motivo or ""),
+                nlp_display,
+            )
+
         ts = datetime.now().strftime("%H:%M:%S")
-        return Panel(t, subtitle=f"[dim]Actualizado: {ts} | Ctrl+C para volver[/dim]")
+        subtitle = f"[dim]Actualizado: {ts} | Ctrl+C para volver[/dim]"
+        return Group(
+            Panel(t_votos, subtitle=subtitle),
+            Panel(t_diag),
+        )
 
     console.print("[dim]Cargando... Ctrl+C para volver al menú[/dim]")
     with Live(_generar(), refresh_per_second=0.5, screen=False) as live:

@@ -261,11 +261,15 @@ class DBConnector:
         return [a["simbolo"] for a in self.obtener_activos_patrullaje()]
 
     # Mapa de símbolo interno -> símbolo broker (fallback Survival Mode V13.1)
+    # V15.3: Nomenclatura real de Weltrade — índices americanos sin sufijo _i,
+    # DAX como GEREUR. Actualizar si se cambia de broker.
     _SIMBOLO_BROKER_MAP = {
         "EURUSD": "EURUSD_i", "GBPUSD": "GBPUSD_i", "USDJPY": "USDJPY_i",
-        "GBPJPY": "GBPJPY_i", "USDCAD": "USDCAD_i", "US30": "US30_i",
-        "US500": "US500_i", "USTEC": "USTEC_i", "XTIUSD": "XTIUSD_i",
-        "XAUUSD": "XAUUSD_i", "XAGUSD": "XAGUSD_i", "XBRUSD": "XBRUSD_i",
+        "GBPJPY": "GBPJPY_i", "USDCAD": "USDCAD_i",
+        "US30":  "DJIUSD",  "US500": "SPXUSD",  "USTEC": "NDXUSD",
+        "GER40": "GEREUR",
+        "XTIUSD": "XTIUSD_i", "XAUUSD": "XAUUSD_i",
+        "XAGUSD": "XAGUSD_i", "XBRUSD": "XBRUSD_i",
     }
 
     def obtener_impactos_por_activo(self, id_activo: int) -> list:

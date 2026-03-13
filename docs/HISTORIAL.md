@@ -6,6 +6,103 @@ Log cronológico de todo lo resuelto. Las entradas más recientes van arriba.
 
 ---
 
+## 2026-03-12 (V15.6 — Tácticas de Supervivencia: Centinela Cloud y Control Remoto)
+
+### Problema resuelto: Ceguera de caídas y Errores de compatibilidad V15
+
+El sistema adolecía de tres problemas silentes que bloqueaban el control remoto de la aplicación: (1) Telegram generaba un `UnicodeEncodeError`/`ArgumentError` al lanzar el comando `/start` debido a un parámetro de teclado incompatible en su librería. (2) Las consultas de reportes como "Rendimiento Hoy" fallaban porque la tabla `registro_operaciones` actualizó el nombre de varias columnas importantes que el Daemon seguía buscando en versión antigua. (3) No había manera de enterarse si la computadora host (el Windows físico) sufría una desconexión total hasta retornar al equipo presencialmente.
+
+#### Cambios implementados
+
+- **`cloud_sentinel.py` (Dead Man's Switch)** — Nuevo componente *Cloud-Ready*. Evalúa la tabla `estado_bot` cada par de minutos desde un servidor remoto independiente. Si detecta que no hay latidos del Core por más de 5 minutos, automáticamente levanta alertas de emergencia vía Telegram para informar de la avería del equipo raíz (Windows).
+- **`telegram_daemon.py`** — Fix crítico y Compatibilidad V15.
+  - Se removió `persistent=True` de `ReplyKeyboardMarkup` para reparar el fallo del despliegue del teclado interactivo en `/start`.
+  - Consultas actualizadas a la nueva arquitectura SQL: `fecha_apertura` → `tiempo_entrada` y `clave` → `nombre_parametro`.
+  - **Nuevo Comando Maestro (`🔄 REINICIAR BOT`):** Permite exterminar de forma forzada toda instancia huérfana y relanzar el entorno limpiamente a control remoto.
+- **`restart_all.bat`** — Nuevo *script* de purga para entorno de Windows. Obliga el exterminio (`/F`) de todos los remanentes fantasma cargados como `pythonw.exe` e invoca instantáneamente `start_bot.ps1` reconstruyendo todo el motor a la perfección.
+
+---
+
+## 2026-03-12 (V15.5 — Infraestructura: Reparación de Arranque PS1 y Lanzamiento Dual)
+
+### Problema resuelto: Caídas de fondo sin notificación y error sintáctico
+
+La directriz de la V15 exigía que `heartbeat.py` (SHIELD) fuese el encargado de encender y monitorizar a los bots secundarios (News Hunter y Telegram Daemon). Sin embargo, el script de arranque `start_bot.ps1` lanzaba únicamente a `main.py` y, peor aún, tenía un error de sintaxis que impedía que funcionase, forzando a lanzar el bot manualmente desde consolas que al cerrarse aniquilaban el subproceso de Windows en seco.
+
+#### Cambios implementados
+
+- **`start_bot.ps1`** — Refactorizado para el entorno V15 de Windows:
+  - Se subsanó el error del apóstrofe fantasma en la línea final del log.
+  - Se migró el intérprete de `python.exe` a `pythonw.exe` para ambos procesos, lo que garantiza inmunidad ante cierres accidentales de ventanas de comandos.
+  - **Lanzamiento Dual:** Ahora el script levanta y aísla simultáneamente a `main.py` y a `heartbeat.py`. Una vez vivos en RAM, el SHIELD se hace cargo automáticamente de levantar a Telegram y News Hunter, devolviendo la robustez perdida al ecosistema V15.
+
+---
+
+## 2026-03-11 (V15.4 — Dashboard Diagnóstico: Fin de fallos silenciosos)
+
+### Problema resuelto: "CANCELADO_RIESGO" sin contexto en el admin
+
+El panel de votos de `aurum_admin.py` mostraba todos los bloqueos como
+`CANCELADO_RIESGO` sin explicar la causa, haciendo imposible distinguir
+un bug de un comportamiento correcto (posición abierta, drawdown, etc.).
+
+#### Cambios implementados
+
+- **`core/manager.py`** — Motivo específico cuando `filtro_seguridad()` bloquea:
+  - Consulta MT5 post-bloqueo para determinar la causa real.
+  - `"Posición abierta en DJIUSD (1 pos.). Anti-duplicado activo."` si hay posición.
+  - `"Límite de pérdida flotante alcanzado (-$X.XX USD)."` si es drawdown.
+  - `"Activo bloqueado: estado no operativo o sin mapeo en BD."` en otros casos.
+
+- **`aurum_admin.py`** — Nuevo panel de diagnóstico bajo la tabla de votos:
+  - `_fmt_decision()` — Icono + color por tipo de decisión (✅🟢🔴⚪🔒🕐⚡🚫⚠️💥).
+  - `_motivo_corto()` — Parser inteligente que convierte el motivo largo en resumen
+    legible: "Pos. abierta: DJIUSD", "Umbral no alc. +0.12 < 0.45",
+    "Divergencia Trend↔NLP", "Fuera de horario", etc.
+  - **Panel 1** (sin cambios): Tabla numérica de votos por obrero.
+  - **Panel 2** (nuevo): Tabla de diagnóstico con `Estado | Motivo | NLP/Gemini`.
+    El análisis NLP se lee de `cache_nlp_impactos.razonamiento` (solo si existe).
+    Texto truncado a 110 caracteres para legibilidad. Si no hay análisis: "Sin análisis IA reciente".
+
+---
+
+## 2026-03-11 (V15.3 — Remapeo de Símbolos Broker Weltrade)
+
+### Problema resuelto: Workers devolvían 0.000 en todos los índices
+
+Los workers de US30, US500, USTEC y GER40 llamaban a `obtener_velas("US30_i")` —
+ese símbolo no existe en Weltrade. MT5 devolvía DataFrame vacío y los workers
+retornaban silenciosamente `0.000` en todos los ciclos.
+
+**Nomenclatura real de Weltrade:**
+- Índices americanos: sin sufijo `_i` → `DJIUSD`, `SPXUSD`, `NDXUSD`
+- DAX: `GEREUR`
+- FOREX y commodities: mantienen sufijo `_i` (sin cambios)
+
+**Activos fantasma pausados:** AUS200, JP225, UK100, FRA40 no están disponibles
+en Weltrade. Cada ciclo el NLP intentaba analizarlos y quemaba quota de Gemini.
+
+#### Cambios implementados
+
+- **`config/db_connector.py`** — `_SIMBOLO_BROKER_MAP` actualizado:
+  `US30→DJIUSD`, `US500→SPXUSD`, `USTEC→NDXUSD`, `GER40→GEREUR`.
+  Este mapa es el fallback de Survival Mode — la fuente primaria es la BD.
+
+- **BD `activos.simbolo_broker`** — Actualizado para los 4 índices.
+  Script: `db/migration_v15_broker_map.sql`
+
+- **BD `activos.estado_operativo`** — AUS200, JP225, UK100, FRA40 → `PAUSADO`.
+
+- **`db/apply_migration.py`** — Nuevo runner Python reutilizable para futuros
+  archivos `.sql` de migración.
+
+- **`core/manager.py`** — Se descomentó `notificar_error_market_watch(simbolo_broker)`.
+  Ahora si un activo (ej. un índice mal mapeado o cerrado) no responde en el
+  Market Watch, el sistema dispara una alerta roja en Telegram en lugar de
+  fallar silenciosamente y botar `0.000`.
+
+---
+
 ## 2026-03-11 (V15.2 — Process Management: Mutex + SHIELD Rewrite)
 
 ### Problema resuelto: Duplicados de procesos y botones Telegram sin respuesta
@@ -40,6 +137,21 @@ anterior los contaba como duplicados y mataba uno de cada par, rompiendo los scr
 - **`heartbeat.py` — `cleanup_ghost_processes()` reescrita:**
   Para verdaderos duplicados, mata el árbol completo (launcher + todos los hijos)
   usando `p.children(recursive=True)` antes de matar la raíz.
+
+---
+
+## 2026-03-11 (V15.2 — Implementación de Expansión de Portafolio)
+
+### Expansión de Activos en Base de Datos
+
+Se ha completado la integración física de **14 nuevos activos** en la tabla `activos` de la base de datos, configurados inicialmente en estado `PAUSADO` y listos para su activación operativa.
+
+**Activos Incorporados:**
+- **Sesión de Tokio:** `AUDUSD`, `AUS200`, `JP225`, `NZDUSD`, `USDCNH`.
+- **Sesión de Londres:** `GER40`, `UK100`, `EURGBP`, `FRA40`.
+- **Sesión de Nueva York:** `USDCAD`, `USDCHF`, `EURCAD`, `AUDCAD`, `USDMXN`.
+
+**Impacto:** El sistema ahora reconoce estos símbolos para futuras configuraciones de horarios operativos y ejecución. No se han activado para trading real todavía.
 
 ---
 

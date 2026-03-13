@@ -5,8 +5,8 @@ echo   AURUM OMNI V1.0 - PROFESSIONAL INTERFACE
 echo ===========================================
 echo.
 
-:: Check for venv
-if not exist "venv\Scripts\python.exe" (
+:: Check for venv (pythonw.exe es el unico interprete en este venv)
+if not exist "venv\Scripts\pythonw.exe" (
     echo [ERROR] No se detecto el entorno virtual (venv).
     echo Asegurate de estar en la carpeta c:\www\Aurum
     pause
@@ -14,7 +14,7 @@ if not exist "venv\Scripts\python.exe" (
 )
 
 :: Run script
-".\venv\Scripts\python.exe" aurum_cli.py
+".\venv\Scripts\pythonw.exe" aurum_admin.py
 
 :: Keep window open ONLY if there was a crash
 if %ERRORLEVEL% neq 0 (
