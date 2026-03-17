@@ -42,6 +42,7 @@ SYMBOL_TRADE_MODE_SHORTSONLY = 3
 SYMBOL_TRADE_MODE_FULL      = 4
 
 ORDER_TYPE_BUY  = 0;  ORDER_TYPE_SELL = 1
+POSITION_TYPE_BUY = 0; POSITION_TYPE_SELL = 1
 ORDER_FILLING_FOK = 0; ORDER_FILLING_IOC = 1; ORDER_FILLING_RETURN = 2
 
 TRADE_ACTION_DEAL = 1; TRADE_ACTION_SLTP = 6
@@ -90,7 +91,9 @@ def _run(coro, timeout=30):
         return None
     except Exception as e:
         future.cancel()
-        _set_last_error(1, str(e))
+        detail = getattr(e, 'details', None)
+        msg = str(e) + " | details: " + str(detail) if detail else str(e)
+        _set_last_error(1, msg)
         return None
 
 
@@ -194,12 +197,12 @@ def symbol_info(symbol):
             digits=int(_g(spec, 'digits', 5)),
             trade_mode=SYMBOL_TRADE_MODE_FULL,
             filling_mode=3,
-            spread=int(_g(spec, 'spread', 0)),
-            point=float(_g(spec, 'point', 0.00001)),
+            spread=int(_g(spec, 'Spread', 0) or _g(spec, 'spread', 0)),
+            point=float(_g(spec, 'points', 0) or _g(spec, 'point', 0)) or 10 ** (-int(_g(spec, 'digits', 5))),
             contract_size=float(_g(spec, 'contractSize', 100000)),
             volume_min=float(_g(spec, 'minVolume', 0.01)),
             volume_max=float(_g(spec, 'maxVolume', 100.0)),
-            trade_stops_level=0,
+            trade_stops_level=int(_g(spec, 'stopsLevel', 0) or 0),
             volume_step=float(_g(spec, 'volumeStep', 0.01)),
         )
     except Exception as e:
@@ -460,7 +463,7 @@ async def _send_deal_async(request):
     position_ticket = request.get('position')
     order_type      = request.get('type')
 
-    options = {'comment': comment, 'clientId': magic, 'slippage': slippage}
+    options = {'comment': comment, 'slippage': slippage}
 
     if position_ticket is not None:
         result = await _connection.close_position(str(position_ticket), options)

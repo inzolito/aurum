@@ -74,20 +74,24 @@ class RiskModule:
         dist_tp = atr * 2.0
         
         # Validacion Anti-Error 10016: El spread a veces devora el ATR en volatilidades bajas
-        min_dist = max(info.spread, info.trade_stops_level) * info.point
+        # Safety minimum: 30 pips (pip = point * 10), para cubrir brokers con stop mínimo oculto elevado
+        pip = info.point * 10
+        min_dist = max(max(info.spread, info.trade_stops_level) * info.point, pip * 30)
         min_sl = min_dist * 1.5
         min_tp = min_dist * 2.0
-        
+
         if dist_sl < min_sl:
             print(f"[RISK] ATR SL ({dist_sl:.5f}) violaba StopLevel/Spread en {simbolo_broker}. SL ajustado a {min_sl:.5f}")
             dist_sl = min_sl
         if dist_tp < min_tp:
             dist_tp = min_tp
-        
+
         sl = precio - dist_sl if direccion == "COMPRA" else precio + dist_sl
         tp = precio + dist_tp if direccion == "COMPRA" else precio - dist_tp
-        
-        return sl, tp
+
+        # Redondear a la precision del simbolo para evitar rechazos por floating point
+        digits = info.digits
+        return round(sl, digits), round(tp, digits)
 
     def verificar_ventana_ejecucion(self, simbolo_interno: str) -> bool:
         """
