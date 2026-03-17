@@ -126,7 +126,10 @@ def last_error():
 async def _conectar_async():
     global _api, _account, _connection, _ws, _account_id, _connected
     from metaapi_cloud_sdk import MetaApi
-    _api = MetaApi(_TOKEN)
+    _api = MetaApi(_TOKEN, options={
+        'requestTimeout': 9000,
+        'retryOpts': {'retries': 0, 'minDelayInSeconds': 0, 'maxDelayInSeconds': 0},
+    })
     _account = await _api.metatrader_account_api.get_account(_ACCOUNT_ID)
     _connection = _account.get_rpc_connection()
     await _connection.connect()
@@ -168,7 +171,7 @@ _SPEC_TTL = 300
 
 
 async def _get_spec_async(symbol):
-    return await asyncio.wait_for(_ws.get_symbol_specification(_account_id, symbol), timeout=8)
+    return await _ws.get_symbol_specification(_account_id, symbol)
 
 
 def symbol_info(symbol):
@@ -203,7 +206,7 @@ def symbol_info(symbol):
 
 
 async def _get_price_async(symbol):
-    return await asyncio.wait_for(_ws.get_symbol_price(_account_id, symbol), timeout=8)
+    return await _ws.get_symbol_price(_account_id, symbol)
 
 
 def symbol_info_tick(symbol):
@@ -236,10 +239,7 @@ def symbol_select(symbol, enable=True):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _get_candles_async(symbol, tf_str, start_time, count):
-    return await asyncio.wait_for(
-        _account.get_historical_candles(symbol, tf_str, start_time, limit=count),
-        timeout=8
-    )
+    return await _account.get_historical_candles(symbol, tf_str, start_time, limit=count)
 
 
 def copy_rates_from_pos(symbol, timeframe, from_pos, count):
@@ -276,12 +276,7 @@ def copy_rates_from_pos(symbol, timeframe, from_pos, count):
 
 async def _get_ticks_async(symbol, from_date, count):
     try:
-        return await asyncio.wait_for(
-            _account.get_historical_ticks(symbol, from_date, count),
-            timeout=8
-        )
-    except (asyncio.TimeoutError, asyncio.CancelledError):
-        return []
+        return await _account.get_historical_ticks(symbol, from_date, count)
     except Exception:
         return []
 
@@ -310,9 +305,7 @@ def copy_ticks_from(symbol, from_date, count, flags):
 
 async def _get_book_async(symbol):
     try:
-        return await asyncio.wait_for(_ws.get_order_book(_account_id, symbol), timeout=8)
-    except (asyncio.TimeoutError, asyncio.CancelledError):
-        return None
+        return await _ws.get_order_book(_account_id, symbol)
     except Exception:
         return None
 
@@ -344,7 +337,7 @@ def market_book_get(symbol):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _get_account_info_async():
-    return await asyncio.wait_for(_ws.get_account_information(_account_id), timeout=15)
+    return await _ws.get_account_information(_account_id)
 
 
 def account_info():
@@ -399,24 +392,22 @@ class _Position:
 
 
 async def _get_all_positions_async():
-    return await asyncio.wait_for(_ws.get_positions(_account_id), timeout=10)
+    return await _ws.get_positions(_account_id)
 
 
 async def _get_position_by_ticket_async(ticket):
     try:
-        pos = await asyncio.wait_for(_ws.get_position(_account_id, str(ticket)), timeout=10)
+        pos = await _ws.get_position(_account_id, str(ticket))
         return [pos] if pos else []
-    except (asyncio.TimeoutError, asyncio.CancelledError):
-        return []
     except Exception:
-        all_pos = await asyncio.wait_for(_ws.get_positions(_account_id), timeout=10)
+        all_pos = await _ws.get_positions(_account_id)
         if not all_pos:
             return []
         return [p for p in all_pos if str(_g(p, 'id', '')) == str(ticket)]
 
 
 async def _get_positions_by_symbol_async(symbol):
-    all_pos = await asyncio.wait_for(_ws.get_positions(_account_id), timeout=10)
+    all_pos = await _ws.get_positions(_account_id)
     if not all_pos:
         return []
     return [p for p in all_pos if _g(p, 'symbol', '') == symbol]
@@ -462,20 +453,20 @@ async def _send_deal_async(request):
     options = {'comment': comment, 'clientId': magic, 'slippage': slippage}
 
     if position_ticket is not None:
-        result = await asyncio.wait_for(_connection.close_position(str(position_ticket), options), timeout=30)
+        result = await _connection.close_position(str(position_ticket), options)
     elif order_type == ORDER_TYPE_BUY:
-        result = await asyncio.wait_for(_connection.create_market_buy_order(symbol, volume, sl, tp, options), timeout=30)
+        result = await _connection.create_market_buy_order(symbol, volume, sl, tp, options)
     else:
-        result = await asyncio.wait_for(_connection.create_market_sell_order(symbol, volume, sl, tp, options), timeout=30)
+        result = await _connection.create_market_sell_order(symbol, volume, sl, tp, options)
     return result
 
 
 async def _send_sltp_async(request):
-    await asyncio.wait_for(_connection.modify_position(
+    await _connection.modify_position(
         str(request.get('position', '')),
         request.get('sl') or None,
         request.get('tp') or None,
-    ), timeout=30)
+    )
 
 
 def order_send(request):
