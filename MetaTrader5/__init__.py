@@ -462,20 +462,20 @@ async def _send_deal_async(request):
     options = {'comment': comment, 'clientId': magic, 'slippage': slippage}
 
     if position_ticket is not None:
-        result = await _connection.close_position(str(position_ticket), options)
+        result = await asyncio.wait_for(_connection.close_position(str(position_ticket), options), timeout=30)
     elif order_type == ORDER_TYPE_BUY:
-        result = await _connection.create_market_buy_order(symbol, volume, sl, tp, options)
+        result = await asyncio.wait_for(_connection.create_market_buy_order(symbol, volume, sl, tp, options), timeout=30)
     else:
-        result = await _connection.create_market_sell_order(symbol, volume, sl, tp, options)
+        result = await asyncio.wait_for(_connection.create_market_sell_order(symbol, volume, sl, tp, options), timeout=30)
     return result
 
 
 async def _send_sltp_async(request):
-    await _connection.modify_position(
+    await asyncio.wait_for(_connection.modify_position(
         str(request.get('position', '')),
         request.get('sl') or None,
         request.get('tp') or None,
-    )
+    ), timeout=30)
 
 
 def order_send(request):
