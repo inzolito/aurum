@@ -194,6 +194,8 @@ def symbol_info(symbol):
             contract_size=float(_g(spec, 'contractSize', 100000)),
             volume_min=float(_g(spec, 'minVolume', 0.01)),
             volume_max=float(_g(spec, 'maxVolume', 100.0)),
+            trade_stops_level=0,
+            volume_step=float(_g(spec, 'volumeStep', 0.01)),
         )
     except Exception as e:
         _set_last_error(1, str(e))
@@ -247,10 +249,7 @@ def copy_rates_from_pos(symbol, timeframe, from_pos, count):
         tf_str = _TF_MAP.get(timeframe, '1m')
         total = count + from_pos
         start_time = datetime.now(timezone.utc)
-        t0 = time.time()
-        print(f"[MT5_SHIM] copy_rates_from_pos START: {symbol} tf={tf_str} n={total}", flush=True)
         candles = _run(_get_candles_async(symbol, tf_str, start_time, total), timeout=10)
-        print(f"[MT5_SHIM] copy_rates_from_pos END: {symbol} got={len(candles) if candles else 0} in {time.time()-t0:.1f}s", flush=True)
         if not candles:
             return None
         if from_pos > 0 and len(candles) > from_pos:
