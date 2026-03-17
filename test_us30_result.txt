@@ -1,0 +1,1 @@
+{'decision': 'CANCELADO_RIESGO', 'motivo': 'Bloqueado por filtro_seguridad antes de evaluar Obreros.'}

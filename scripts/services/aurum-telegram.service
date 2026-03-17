@@ -1,0 +1,25 @@
+[Unit]
+Description=Aurum Telegram Daemon V2 (telegram_daemon.py)
+Documentation=https://github.com/inzolito/aurum
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aurum_bot
+Group=root
+WorkingDirectory=/opt/aurum
+EnvironmentFile=/opt/aurum/.env
+ExecStart=/opt/aurum/venv/bin/python telegram_daemon.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-telegram
+
+LimitNOFILE=65536
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,5 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['build', '-t', 'us-central1-docker.pkg.dev/maikbottrade/prism-repo/backend:v1', '-f', 'dashboard/backend/Dockerfile', '.']
+images:
+  - 'us-central1-docker.pkg.dev/maikbottrade/prism-repo/backend:v1'

@@ -1,0 +1,9 @@
+2026-03-11 00:34:52 [INFO    ] aurum                | Logging inicializado — nivel=INFO | archivo=C:\www\Aurum\logs\aurum.log
+[DB] Conexión exitosa a PostgreSQL.
+[MAIN] Conexión a Base de Datos Cloud establecida.
+[MT5] Conectado -> MT5 Weltrade | Build: 5663
+Account: 19789812
+Traceback (most recent call last):
+  File "<string>", line 13, in <module>
+AttributeError: 'NoneType' object has no attribute 'gestionar_posiciones_abiertas'
+

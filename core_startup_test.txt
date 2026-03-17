@@ -1,0 +1,2 @@
+2026-03-11 00:34:36 [INFO    ] aurum                | Logging inicializado — nivel=INFO | archivo=C:\www\Aurum\logs\aurum.log
+Import OK
