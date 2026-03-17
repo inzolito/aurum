@@ -168,7 +168,7 @@ _SPEC_TTL = 300
 
 
 async def _get_spec_async(symbol):
-    return await _ws.get_symbol_specification(_account_id, symbol)
+    return await asyncio.wait_for(_ws.get_symbol_specification(_account_id, symbol), timeout=8)
 
 
 def symbol_info(symbol):
@@ -203,7 +203,7 @@ def symbol_info(symbol):
 
 
 async def _get_price_async(symbol):
-    return await _ws.get_symbol_price(_account_id, symbol)
+    return await asyncio.wait_for(_ws.get_symbol_price(_account_id, symbol), timeout=8)
 
 
 def symbol_info_tick(symbol):
@@ -310,7 +310,9 @@ def copy_ticks_from(symbol, from_date, count, flags):
 
 async def _get_book_async(symbol):
     try:
-        return await _ws.get_order_book(_account_id, symbol)
+        return await asyncio.wait_for(_ws.get_order_book(_account_id, symbol), timeout=8)
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        return None
     except Exception:
         return None
 
@@ -342,7 +344,7 @@ def market_book_get(symbol):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _get_account_info_async():
-    return await _ws.get_account_information(_account_id)
+    return await asyncio.wait_for(_ws.get_account_information(_account_id), timeout=15)
 
 
 def account_info():
@@ -397,22 +399,24 @@ class _Position:
 
 
 async def _get_all_positions_async():
-    return await _ws.get_positions(_account_id)
+    return await asyncio.wait_for(_ws.get_positions(_account_id), timeout=10)
 
 
 async def _get_position_by_ticket_async(ticket):
     try:
-        pos = await _ws.get_position(_account_id, str(ticket))
+        pos = await asyncio.wait_for(_ws.get_position(_account_id, str(ticket)), timeout=10)
         return [pos] if pos else []
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        return []
     except Exception:
-        all_pos = await _ws.get_positions(_account_id)
+        all_pos = await asyncio.wait_for(_ws.get_positions(_account_id), timeout=10)
         if not all_pos:
             return []
         return [p for p in all_pos if str(_g(p, 'id', '')) == str(ticket)]
 
 
 async def _get_positions_by_symbol_async(symbol):
-    all_pos = await _ws.get_positions(_account_id)
+    all_pos = await asyncio.wait_for(_ws.get_positions(_account_id), timeout=10)
     if not all_pos:
         return []
     return [p for p in all_pos if _g(p, 'symbol', '') == symbol]
