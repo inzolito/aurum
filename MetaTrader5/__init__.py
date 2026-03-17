@@ -234,7 +234,10 @@ def symbol_select(symbol, enable=True):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def _get_candles_async(symbol, tf_str, start_time, count):
-    return await _account.get_historical_candles(symbol, tf_str, start_time, limit=count)
+    return await asyncio.wait_for(
+        _account.get_historical_candles(symbol, tf_str, start_time, limit=count),
+        timeout=8
+    )
 
 
 def copy_rates_from_pos(symbol, timeframe, from_pos, count):
@@ -271,7 +274,12 @@ def copy_rates_from_pos(symbol, timeframe, from_pos, count):
 
 async def _get_ticks_async(symbol, from_date, count):
     try:
-        return await _account.get_historical_ticks(symbol, from_date, count)
+        return await asyncio.wait_for(
+            _account.get_historical_ticks(symbol, from_date, count),
+            timeout=8
+        )
+    except (asyncio.TimeoutError, asyncio.CancelledError):
+        return []
     except Exception:
         return []
 
