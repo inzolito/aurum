@@ -180,7 +180,9 @@ def symbol_info(symbol):
     try:
         now = time.time()
         if symbol not in _symbol_specs_cache or now - _symbol_specs_ttl.get(symbol, 0) > _SPEC_TTL:
+            print(f"[SHIM] spec_start {symbol}", flush=True)
             spec = _run(_get_spec_async(symbol))
+            print(f"[SHIM] spec_end {symbol} got={'ok' if spec else 'none'}", flush=True)
             if spec:
                 _symbol_specs_cache[symbol] = spec
                 _symbol_specs_ttl[symbol] = now
@@ -213,7 +215,9 @@ def symbol_info_tick(symbol):
     if not _connected:
         return None
     try:
+        print(f"[SHIM] tick_start {symbol}", flush=True)
         price = _run(_get_price_async(symbol))
+        print(f"[SHIM] tick_end {symbol} got={'ok' if price else 'none'}", flush=True)
         if not price:
             return None
         bid = float(_g(price, 'bid', 0.0))
