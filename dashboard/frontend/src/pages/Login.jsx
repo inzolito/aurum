@@ -14,8 +14,7 @@ const Login = ({ setAuth }) => {
         setLoading(true);
 
         try {
-            const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-            const response = await axios.post(`${apiUrl}/api/auth/login`, {
+            const response = await axios.post(`/api/auth/login`, {
                 username,
                 password
             });

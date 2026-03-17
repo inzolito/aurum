@@ -3,6 +3,8 @@ import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import List, Optional
 
@@ -163,6 +165,21 @@ async def get_dashboard_status(token: str = Depends(oauth2_scheme), db: DBConnec
 @app.get("/health")
 async def health_check():
     return {"status": "operational", "version": "Prism 1.0"}
+
+
+# ── Servir frontend compilado (SPA) ──────────────────────────────────────────
+_dist = os.path.join(os.path.dirname(__file__), "..", "frontend", "dist")
+if os.path.exists(_dist):
+    _assets = os.path.join(_dist, "assets")
+    if os.path.exists(_assets):
+        app.mount("/assets", StaticFiles(directory=_assets), name="assets")
+
+    @app.get("/{full_path:path}")
+    async def spa_handler(full_path: str):
+        return FileResponse(os.path.join(_dist, "index.html"))
+else:
+    print("[PRISM] Frontend no compilado. Corre: cd dashboard/frontend && npm run build")
+
 
 if __name__ == "__main__":
     import uvicorn
