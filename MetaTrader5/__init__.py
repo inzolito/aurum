@@ -110,7 +110,7 @@ async def _conectar_async():
     global _api, _connection, _connected
     from metaapi_cloud_sdk import MetaApi
     _api = MetaApi(_TOKEN)
-    account = await _api.metatrader_account.get_account(_ACCOUNT_ID)
+    account = await _api.metatrader_account_api.get_account(_ACCOUNT_ID)
     _connection = account.get_rpc_connection()
     await _connection.connect()
     await _connection.wait_synchronized({'timeoutInSeconds': 60})
