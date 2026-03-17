@@ -15,6 +15,7 @@ import os
 import asyncio
 import threading
 import time
+import concurrent.futures
 from datetime import datetime, timezone
 from types import SimpleNamespace
 
@@ -80,13 +81,15 @@ threading.Thread(target=_loop.run_forever, daemon=True, name="MetaAPILoop").star
 
 def _run(coro, timeout=30):
     """Ejecuta una coroutine async de forma síncrona."""
+    future = asyncio.run_coroutine_threadsafe(coro, _loop)
     try:
-        future = asyncio.run_coroutine_threadsafe(coro, _loop)
         return future.result(timeout=timeout)
-    except asyncio.TimeoutError:
+    except (concurrent.futures.TimeoutError, asyncio.TimeoutError):
+        future.cancel()
         _set_last_error(1, "MetaAPI timeout")
         return None
     except Exception as e:
+        future.cancel()
         _set_last_error(1, str(e))
         return None
 
@@ -241,7 +244,7 @@ def copy_rates_from_pos(symbol, timeframe, from_pos, count):
         tf_str = _TF_MAP.get(timeframe, '1m')
         total = count + from_pos
         start_time = datetime.now(timezone.utc)
-        candles = _run(_get_candles_async(symbol, tf_str, start_time, total), timeout=30)
+        candles = _run(_get_candles_async(symbol, tf_str, start_time, total), timeout=10)
         if not candles:
             return None
         if from_pos > 0 and len(candles) > from_pos:
