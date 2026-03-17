@@ -129,7 +129,6 @@ async def _conectar_async():
     _api = MetaApi(_TOKEN, opts={
         'requestTimeout': 10,
         'historicalMarketDataRequestTimeout': 10,
-        'retryOpts': {'retries': 0, 'minDelayInSeconds': 0, 'maxDelayInSeconds': 0},
     })
     _account = await _api.metatrader_account_api.get_account(_ACCOUNT_ID)
     _connection = _account.get_rpc_connection()
