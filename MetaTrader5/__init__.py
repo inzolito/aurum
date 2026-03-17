@@ -126,8 +126,9 @@ def last_error():
 async def _conectar_async():
     global _api, _account, _connection, _ws, _account_id, _connected
     from metaapi_cloud_sdk import MetaApi
-    _api = MetaApi(_TOKEN, options={
-        'requestTimeout': 9000,
+    _api = MetaApi(_TOKEN, opts={
+        'requestTimeout': 10,
+        'historicalMarketDataRequestTimeout': 10,
         'retryOpts': {'retries': 0, 'minDelayInSeconds': 0, 'maxDelayInSeconds': 0},
     })
     _account = await _api.metatrader_account_api.get_account(_ACCOUNT_ID)
