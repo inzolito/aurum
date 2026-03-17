@@ -249,7 +249,10 @@ def copy_rates_from_pos(symbol, timeframe, from_pos, count):
         tf_str = _TF_MAP.get(timeframe, '1m')
         total = count + from_pos
         start_time = datetime.now(timezone.utc)
-        candles = _run(_get_candles_async(symbol, tf_str, start_time, total), timeout=10)
+        _t0 = time.time()
+        print(f"[SHIM] rates_start {symbol} {tf_str} n={total}", flush=True)
+        candles = _run(_get_candles_async(symbol, tf_str, start_time, total), timeout=15)
+        print(f"[SHIM] rates_end {symbol} {tf_str} got={len(candles) if candles else 0} in {time.time()-_t0:.1f}s", flush=True)
         if not candles:
             return None
         if from_pos > 0 and len(candles) > from_pos:
@@ -285,7 +288,10 @@ def copy_ticks_from(symbol, from_date, count, flags):
     if not _connected:
         return None
     try:
-        ticks = _run(_get_ticks_async(symbol, from_date, count), timeout=30)
+        _t0 = time.time()
+        print(f"[SHIM] ticks_start {symbol}", flush=True)
+        ticks = _run(_get_ticks_async(symbol, from_date, count), timeout=15)
+        print(f"[SHIM] ticks_end {symbol} got={len(ticks) if ticks else 0} in {time.time()-_t0:.1f}s", flush=True)
         if not ticks:
             return None
         result = []
