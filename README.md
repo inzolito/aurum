@@ -15,19 +15,26 @@ Utiliza una arquitectura de "Modelo Ensemble" (Votación Heurística). El sistem
 
 ---
 
-## 2. Arquitectura de Hardware y Despliegue (Modelo de Datos 100% Nube)
+## 2. Arquitectura de Hardware y Despliegue (Modelo 100% Nube)
 
-El sistema ha evolucionado hacia un modelo donde la máquina local es puramente un nodo de ejecución, mientras que la inteligencia y los datos residen en la nube.
+El ecosistema Aurum opera bajo una arquitectura híbrida distribuida en **Google Cloud Platform (GCP)**, garantizando alta disponibilidad y seguridad de datos.
 
-**Nodo de Ejecución (Local/Windows):**
-- **Hardware:** Máquina local (Surface Pro 5 o similar).
+**Nodo de Ejecución (Local/Hybrid):**
+- **Hardware:** Máquina local (Surface Pro / Servidor dedicado).
 - **Software Core:** MetaTrader 5 (MT5).
-- **Procesos:** Los scripts Python (Manager + Obreros) se conectan a la nube para obtener parámetros y contexto antes de ejecutar órdenes en MT5.
+- **Procesos:** Los scripts Python (Manager + Obreros) ejecutan órdenes en MT5 conectándose a la nube.
 
-**Cerebro de Datos y Control (Google Cloud Platform - GCP):**
-- **Hardware:** Instancia e2-micro con PostgreSQL 15.
-- **Base de Datos:** Centraliza parámetros, estados, señales y noticias.
-- **Ventaja:** Permite el control del bot desde cualquier interfaz (Telegram/Frontend) sin depender de archivos locales.
+**Cerebro de Datos (GCP VM):**
+- **Hardware:** Instancia de **Google Compute Engine (VM)** `aurum-server` en el proyecto `aurum-489120`.
+- **Base de Datos:** PostgreSQL 15 (Puerto 5432).
+- **Acceso:** Protegido por reglas de firewall para permitir solo tráfico autorizado (GCP Cloud Run, Surface Pro, Bot Server).
+
+**Terminal Operativa (GCP Cloud Run):**
+- **Dashboard Prism:** Desplegado como contenedores Docker en **Cloud Run** (Proyecto `maikbottrade`).
+- **Escalabilidad:** Siempre en línea, escala de 0 a 20 instancias según la demanda.
+
+> [!TIP]
+> Para detalles técnicos de red, IPs específicas y reglas de firewall, consulta el manual de [Infraestructura GCP](docs/INFRAESTRUCTURA_GCP.md).
 
 ---
 

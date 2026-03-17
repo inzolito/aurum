@@ -242,7 +242,7 @@ class AurumEngine:
                     
                 if es_finde:
                     print(f"\n[GATEKEEPER] {ahora_dt.strftime('%A %H:%M')} -> MODO VIGILANCIA (Fin de semana).")
-                    self.db.update_estado_bot("VIGILANCIA_FIN_DE_SEMANA", "Gatekeeper activo. Patrullando noticias...")
+                    self.db.update_estado_bot("VIGILANCIA_FINDE", "Gatekeeper activo. Patrullando noticias...")
                     self.gerente.mantener_vigilancia()
                     time.sleep(600)
                     continue

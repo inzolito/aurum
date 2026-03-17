@@ -595,9 +595,9 @@ class DBConnector:
     def get_top_news(self, limit: int = 10) -> list:
         """Retorna las últimas noticias crudas con su fecha original (V13.0)."""
         with self._lock:
-            query = "SELECT title, source, timestamp FROM raw_news_feed ORDER BY timestamp DESC LIMIT %s"
+            query = "SELECT title, source, timestamp, hash_id FROM raw_news_feed ORDER BY timestamp DESC LIMIT %s"
             self.cursor.execute(query, (limit,))
-            return [dict(zip(["title", "source", "fecha"], row)) for row in self.cursor.fetchall()]
+            return [dict(zip(["title", "source", "fecha", "hash_id"], row)) for row in self.cursor.fetchall()]
 
     @survival_shield
     def verificar_hash_noticia(self, hash_id: str) -> bool:
@@ -719,7 +719,7 @@ class DBConnector:
                 ORDER BY a.id;
             """
             self.cursor.execute(query)
-            cols = ["simbolo", "trend", "nlp", "flow", "vol", "cross", "hurst", "sniper", "veredicto", "ia_analysis", "fecha"]
+            cols = ["simbolo", "trend", "nlp", "flow", "vol", "cross", "hurst", "sniper", "verdict", "ia_analysis", "fecha"]
             return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
 
 

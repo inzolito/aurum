@@ -1,0 +1,25 @@
+[Unit]
+Description=Aurum News Hunter — Daemon de Noticias RSS (news_hunter.py)
+Documentation=https://github.com/inzolito/aurum
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aurum_bot
+Group=root
+WorkingDirectory=/opt/aurum
+EnvironmentFile=/opt/aurum/.env
+ExecStart=/opt/aurum/venv/bin/python news_hunter.py
+Restart=always
+RestartSec=20
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-hunter
+
+LimitNOFILE=65536
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

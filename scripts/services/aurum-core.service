@@ -1,0 +1,29 @@
+[Unit]
+Description=Aurum Bot — Motor Principal (main.py)
+Documentation=https://github.com/inzolito/aurum
+After=network-online.target postgresql.service
+Wants=network-online.target
+# Esperar a que aurum-hunter y aurum-telegram estén listos
+After=aurum-hunter.service aurum-telegram.service
+
+[Service]
+Type=simple
+User=aurum_bot
+Group=root
+WorkingDirectory=/opt/aurum
+EnvironmentFile=/opt/aurum/.env
+ExecStart=/opt/aurum/venv/bin/python main.py
+Restart=always
+RestartSec=15
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-core
+
+# Límites de recursos
+LimitNOFILE=65536
+# Apagar limpiamente con SIGTERM
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

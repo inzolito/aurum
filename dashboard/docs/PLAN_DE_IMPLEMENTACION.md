@@ -3,33 +3,39 @@
 > **Estado:** Documento de Ejecución Táctica  
 > **Regla de Oro:** NADA HARDCOREADO.
 
-Este plan organiza la construcción de **Aurum Prism** desde los cimientos lógicos hasta la interacción estética de alto nivel, asegurando estabilidad y coherencia en cada paso.
+Este plan organiza la construcción de **Aurum Prism** desde los cimientos lógicos hasta la interacción de usuario final, asegurando estabilidad y coherencia en cada paso.
 
 ---
 
 ## 🔝 ÁPICE: Interactividad y Pulido (Nivel 5)
-*Toque final que otorga el prestigio "Prism".*
-- [ ] **Capa "Polvo de Oro":** Implementación de la refracción dinámica de partículas.
-- [ ] **Dashboard Vivo:** Lógica para que la densidad de partículas responda al PnL del día en tiempo real.
-- [ ] **Auditoría Forense:** Modales de inspección detallada por trade (Autopsia de obreros).
+*Toque final que otorga la funcionalidad completa del sistema.*
+- [ ] **Optimización UI:** Ajuste de la respuesta visual de la interfaz según el flujo de datos.
+- [ ] **Dashboard Técnico:** Consolidación de la vista principal con indicadores de rendimiento en tiempo real.
+- [ ] **Auditoría Forense:** Módulos de inspección detallada por trade.
+
+## 🚀 NIVEL CLOUD: Infraestructura en Google Cloud (Online)
+*Garantizando disponibilidad total desde cualquier lugar.*
+- [ ] **Dockerización de Prism:** Creación del `Dockerfile` optimizado para el entorno de producción.
+- [ ] **Cloud Run Deployment:** Despliegue del dashboard en GCP para disponibilidad 24/7.
+- [ ] **Punto de Enlace:** Configuración de la URL/IP pública de acceso para Maikol.
 
 ## 📊 NIVEL 4: Inteligencia de Datos (Visualización)
 *Donde la rentabilidad se vuelve visible.*
 - [ ] **The Upper-Deck:** Implementación de la barra de poder (Equity/PnL) conectada a la DB.
-- [ ] **La Matriz de Refracción:** Tabla maestra de trades con lógica de clasificación dinámica de activos.
+- [ ] **Módulo Histórico:** Tabla técnica de trades con lógica de clasificación dinámica de activos.
 - [ ] **AI Insights:** Integración del razonamiento de Gemini (`cache_nlp_impactos`) en la tabla.
 
 ## 🔑 NIVEL 3: Autenticación y Acceso (La Puerta)
 *Primer contacto con el entorno Aurum Prism.*
-- [ ] **Portal de Login:** Construcción de la interfaz bajo la **Opción B (Oro Líquido)**.
-- [ ] **Controlador de Sesiones:** Gestión de tokens JWT y persistencia basada en la tabla `prism_sesiones`.
-- [ ] **Middleware de Protección:** Solo usuarios autenticados acceden a los datos de trading.
+- [ ] **Portal de Login:** Implementación de la interfaz de acceso protegida.
+- [ ] **Controlador de Sesiones:** Gestión de tokens y persistencia basada en la tabla `prism_sesiones`.
+- [ ] **Middleware de Protección:** Restricción de acceso a datos de trading para usuarios no autorizados.
 
 ## 🎨 NIVEL 2: ADN Visual (Design System)
 *La estructura estética que sostiene la Regla de Oro.*
-- [ ] **Configuración de Tailwind Prism:** Definición del mapa de degradados metálicos y colores institucionales.
-- [ ] **Librería de Componentes:** Creación de tarjetas (Cards), botones "Gold Leaf" y tipografía *Playfair Display*.
-- [ ] **Layout Base:** El lienzo `bg-stone-50` y la estructura de navegación minimalista.
+- [ ] **Diseño Base:** Implementación del sistema de componentes técnicos y tipografía funcional.
+- [ ] **Librería de Componentes:** Creación de tarjetas y elementos de control estandarizados.
+- [ ] **Layout Estructural:** Definición de la estructura de navegación y contenedores de datos.
 
 ## 🔌 NIVEL 1: El Puente Lógico (Backend)
 *La tubería que alimenta la interfaz.*

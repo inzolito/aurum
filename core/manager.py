@@ -317,9 +317,9 @@ class Manager:
 
         # 6. Decisión y Telemetría Extra
         # Black Swan Emergency
-        umbral_base = params.get("GERENTE.umbral_disparo", 0.45)
+        umbral_base = float(params.get("GERENTE.umbral_disparo", 0.45))
         umbral = 0.60 if v_cross['black_swan'] else umbral_base
-        
+
         if v_cross['black_swan']:
             print(f"[GERENTE] 🚨 MODO EMERGENCIA: DXY Volátil. Umbral elevado a {umbral}")
 
@@ -342,9 +342,7 @@ class Manager:
             "ajuste": v_cross['ajuste'],
             "black_swan": v_cross['black_swan']
         }
-        # 5. Decisión
-        umbral = params.get("GERENTE.umbral_disparo", 0.45)
-        
+
         print(f"\n[GERENTE] Pesos V12.0 Dynamic: Trend({p_trend*100:.0f}%) NLP({p_nlp*100:.0f}%) Flow({p_flow*100:.0f}%) Sniper({p_sniper*100:.0f}%)")
         print(f"[GERENTE] Veredicto: {veredicto:+.4f} | Sniper: {v_struct['sniper_veredicto']} | Fuerza: {fuerza_dominante}")
         print(f"[GERENTE] Hurst: {h_val:.4f} ({h_estado}) | Status: {'MODO EMERGENCIA' if v_cross['black_swan'] else 'Normal'}")
@@ -807,7 +805,7 @@ class Manager:
             print(f"[VIGILANCIA] {ahora} -> Patrullando noticias...")
             
             # 1. Update Heartbeat
-            self.db.update_estado_bot("AHORRO (VIGILANCIA)", f"Vigilando noticias desde las {ahora}. MT5 en reposo.")
+            self.db.update_estado_bot("VIGILANCIA_AHORRO", f"Vigilando noticias desde las {ahora}. MT5 en reposo.")
             
             # 2. Patrullar Noticias (Nuevas notificaciones a Telegram)
             self.nlp.patrullar_noticias()

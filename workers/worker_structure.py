@@ -146,9 +146,9 @@ class StructureWorker:
                 voto = 0.5
                 veredicto = "🧲 Atraccion por FVG"
             else:
-                voto = -0.30
-                veredicto = "🚫 En el aire (Riesgo FOMO)"
-                
+                voto = 0.0  # Estructura alcista presente pero sin zona de entrada — neutral, no penalizar
+                veredicto = "⏳ BOS Alcista sin OB/FVG (Esperar)"
+
         elif bos_bearish:
             estado_smc = "BOS Bajista Confirmado"
             if ob_precio > 0 and abs(precio_actual - ob_precio) / ob_precio < 0.0005:
@@ -158,10 +158,10 @@ class StructureWorker:
                 voto = -0.5
                 veredicto = "🧲 Atraccion por FVG"
             else:
-                voto = -0.30 # Negativo por estar en el aire
-                veredicto = "🚫 En el aire (Riesgo FOMO)"
+                voto = 0.0  # Estructura bajista presente pero sin zona de entrada — neutral, no penalizar
+                veredicto = "⏳ BOS Bajista sin OB/FVG (Esperar)"
         else:
-            voto = -0.30 # Si no hay estructura clara, penalizamos
+            voto = 0.0  # Sin estructura clara — el Sniper no tiene opinión, deja decidir a Trend+NLP
             veredicto = "Sin Estructura Clara"
 
         return {

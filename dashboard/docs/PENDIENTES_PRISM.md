@@ -19,9 +19,9 @@
 ## 🗓️ ETAPA 1: INFRAESTRUCTURA Y LOGIN
 
 - [x] **Despliegue de DB Schema:** Crear las tablas `prism_usuarios`, `prism_sesiones`, `prism_preferencias` y `prism_log_seguridad` en la base de datos de GCP.
-- [ ] **Configuración de Tailwind (Prism Theme):** Definir el mapa de degradados "Gold Liquid" y "Light Gold Digital" en el archivo de configuración.
-- [ ] **Prototipo de Login (Opción B):** Implementar la interfaz de login con el fondo de oro líquido y el efecto de refracción al mover el cursor.
-- [ ] **Sistema de Auth:** Implementar el backend de autenticación (JWT o sesiones persistentes) vinculado a las nuevas tablas.
+- [x] **Configuración de Tailwind (Prism Theme):** Definir el mapa de degradados "Gold Liquid" y "Light Gold Digital" en el archivo de configuración.
+- [x] **Prototipo de Login:** Implementar la interfaz de acceso técnica y el sistema de autenticación seguro.
+- [x] **Sistema de Auth:** Implementar el backend de autenticación (JWT o sesiones persistentes) vinculado a las nuevas tablas.
 
 ---
 

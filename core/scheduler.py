@@ -65,8 +65,9 @@ class AurumScheduler:
             resumen += "📰 <b>NOTICIAS CRUDAS:</b>\n"
             if raw_news:
                 for n in raw_news:
-                    fecha_str = n['fecha'].strftime("%H:%M") if n['fecha'] else "Incierta"
-                    resumen += f"• {n['title']} | Pub: {fecha_str} | ID: {n['hash'][:6]}\n"
+                    fecha_str = n['fecha'].strftime("%H:%M") if n.get('fecha') else "Incierta"
+                    hash_str = n.get('hash_id', '')[:6] if n.get('hash_id') else 'N/A'
+                    resumen += f"• {n['title']} | Pub: {fecha_str} | ID: {hash_str}\n"
             else:
                 resumen += "<i>Sin noticias recientes.</i>\n"
             

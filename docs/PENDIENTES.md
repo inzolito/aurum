@@ -5,7 +5,67 @@
 
 > **Propósito:** Hoja de Ruta Inmediata. Registro de tareas activas, planes detallados de implementación y mejoras próximas. Es el documento de trabajo diario para coordinar los siguientes pasos del desarrollo.
 
-**Última actualización:** 2026-03-11
+**Última actualización:** 2026-03-15
+
+---
+
+## 🌐 MIGRACIÓN A OANDA REST API v20 (2026-03-15)
+
+> **Contexto:** El broker actual (Weltrade MT5) se reemplazará por OANDA en un servidor Linux. OANDA ofrece una REST API v20 nativa que no requiere MT5 ni Wine, lo que elimina la dependencia de Windows. La lógica de votación, workers y BD no cambia — solo se reemplaza la capa de conexión al broker.
+> **Prerequisito bloqueante:** Obtener el **API Token** desde el panel web de OANDA (My Account → Manage API Access). Sin él no se puede arrancar.
+
+---
+
+### ETAPA A — Conector OANDA (`config/oanda_connector.py`)
+
+Crear el archivo `oanda_connector.py` implementando la misma interfaz pública que `mt5_connector.py`. Todos los workers y el manager llaman estos métodos — si la firma es idéntica, nada más cambia.
+
+- [ ] **`obtener_velas(simbolo, cantidad, timeframe)`** — `GET /v3/accounts/{id}/instruments/{instrument}/candles`. Convertir respuesta JSON al mismo DataFrame (`apertura`, `maximo`, `minimo`, `cierre`, `volumen`) que usa el sistema hoy.
+- [ ] **`obtener_atr(simbolo, periodo, timeframe)`** — Calcular ATR localmente sobre las velas obtenidas (OANDA no lo devuelve directo).
+- [ ] **`obtener_order_book(simbolo)`** — `GET /v3/instruments/{instrument}/orderBook`. Mapear `shortCountPercent`/`longCountPercent` al formato `{bids, asks}` que espera el FlowWorker.
+- [ ] **`symbol_info_tick(simbolo)`** — `GET /v3/accounts/{id}/pricing?instruments=`. Devolver objeto con `.ask` y `.bid`.
+- [ ] **`symbol_info(simbolo)`** — `GET /v3/instruments/{instrument}`. Devolver objeto con `.spread`, `.point`, `trade_stops_level=0` (OANDA no tiene stop level mínimo fijo).
+- [ ] **`positions_get(symbol)`** — `GET /v3/accounts/{id}/positions/{instrument}`. Retornar lista vacía si no hay posición.
+- [ ] **`account_info()`** — `GET /v3/accounts/{id}/summary`. Devolver objeto con `.balance`, `.equity`, `.profit`, `.login`.
+- [ ] **`enviar_orden(simbolo, direccion, lotes, sl, tp)`** — `POST /v3/accounts/{id}/orders`. Convertir lotes → unidades OANDA (`lotes × tamaño_contrato`). Manejar respuesta y retornar `{status, ticket, retcode}`.
+- [ ] **`conectar()` / `desconectar()`** — Verificar token con `GET /v3/accounts/{id}`. Sin estado persistente (REST es stateless).
+
+---
+
+### ETAPA B — Mapa de Símbolos OANDA
+
+OANDA usa formato `XAU_USD` en vez de `XAUUSD`. Crear tabla de traducción en la BD o en variables de entorno.
+
+- [ ] Actualizar columna `simbolo_broker` en tabla `activos` con los nombres OANDA para los 11 activos activos (`XAU_USD`, `XAG_USD`, `BCO_USD`, `WTICO_USD`, `US30_USD`, `SPX500_USD`, `NAS100_USD`, `EUR_USD`, `GBP_USD`, `USD_JPY`, `GBP_JPY`).
+- [ ] Verificar cuáles están disponibles en la cuenta OANDA demo antes de activarlos.
+
+---
+
+### ETAPA C — Limpiar llamadas directas a `mt5.*` en el Core
+
+El `manager.py` y `risk_module.py` llaman al módulo `MetaTrader5` directamente en ~15 puntos. Redirigirlos al nuevo conector.
+
+- [ ] `manager.py` — Reemplazar `mt5.positions_get()`, `mt5.symbol_info()`, `mt5.account_info()`, `mt5.symbol_info_tick()`, `mt5.symbol_select()` por llamadas a `self.mt5.*` (el conector inyectado).
+- [ ] `risk_module.py` — Mismo patrón: `mt5_lib.positions_get()`, `mt5_lib.account_info()`, `mt5_lib.symbol_info()`, `mt5_lib.symbol_info_tick()`.
+- [ ] Eliminar `import MetaTrader5 as mt5` de todos los archivos del core una vez redirigidos.
+
+---
+
+### ETAPA D — Variables de Entorno y Arranque en Linux
+
+- [ ] Nuevas variables de entorno requeridas: `OANDA_API_TOKEN`, `OANDA_ACCOUNT_ID`, `OANDA_ENV` (`practice` o `live`). Reemplaza `MT5_LOGIN`, `MT5_PASSWORD`, `MT5_SERVER`.
+- [ ] Actualizar `heartbeat.py` — el check de proceso MT5 ya no aplica. Reemplazar por ping al endpoint `/v3/accounts/{id}`.
+- [ ] Crear `run_aurum_linux.sh` — script de arranque equivalente al `.bat` actual.
+- [ ] Verificar compatibilidad de todas las dependencias Python en Linux (`ta`, `pandas`, `psycopg2`, `python-telegram-bot`, `google-generativeai`). El único que cae es `MetaTrader5` — se elimina del `requirements.txt`.
+
+---
+
+### ETAPA E — Conversión de Lotaje → Unidades OANDA
+
+OANDA no usa lotes. Usa **unidades** por instrumento.
+
+- [ ] Definir tabla de conversión por activo (ej: 1 lote XAU_USD = 100 unidades, 1 lote EUR_USD = 100,000 unidades). Guardar en `parametros_sistema` o en el conector.
+- [ ] Actualizar `risk_module.calcular_lotes_dinamicos()` para que devuelva unidades cuando el conector es OANDA, o hacer la conversión en `enviar_orden()`.
 
 ---
 
