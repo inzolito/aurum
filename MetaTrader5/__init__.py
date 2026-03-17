@@ -491,7 +491,8 @@ def order_send(request):
         if action == TRADE_ACTION_DEAL:
             result = _run(_send_deal_async(request))
             if result is None:
-                return SimpleNamespace(retcode=10004, order=0, comment="MetaAPI error")
+                err_msg = _last_error[1] if _last_error[0] != 0 else "MetaAPI error"
+                return SimpleNamespace(retcode=10004, order=0, comment=err_msg)
             order_id = _g(result, 'positionId') or _g(result, 'orderId') or '0'
             try:
                 ticket = int(order_id)
