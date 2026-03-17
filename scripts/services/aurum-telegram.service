@@ -10,6 +10,7 @@ User=aurum_bot
 Group=root
 WorkingDirectory=/opt/aurum
 EnvironmentFile=/opt/aurum/.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/aurum/venv/bin/python telegram_daemon.py
 Restart=always
 RestartSec=10

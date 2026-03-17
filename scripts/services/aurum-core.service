@@ -12,6 +12,7 @@ User=aurum_bot
 Group=root
 WorkingDirectory=/opt/aurum
 EnvironmentFile=/opt/aurum/.env
+Environment=PYTHONUNBUFFERED=1
 ExecStart=/opt/aurum/venv/bin/python main.py
 Restart=always
 RestartSec=15
