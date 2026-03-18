@@ -17,37 +17,91 @@ const QUICK_FILTERS = [
 ];
 
 const ACTIVOS = ['XAUUSD','XAGUSD','XTIUSD','XBRUSD','US30','US500','USTEC','EURUSD','GBPUSD','USDJPY','GBPJPY','USDMXN'];
+const WORKER_LABELS = { trend: 'Trend', nlp: 'NLP', flow: 'Flow', sniper: 'Sniper', volume: 'Volume', cross: 'Cross' };
 
-function toDateStr(d) {
-    return d.toISOString().slice(0, 10);
-}
+function toDateStr(d) { return d.toISOString().slice(0, 10); }
 
-const TradeDetail = ({ t }) => (
-    <div style={{ background: 'var(--bg-primary)', padding: '16px 24px', borderTop: '1px solid var(--border-color)', display: 'flex', gap: 32, flexWrap: 'wrap' }}>
-        {t.tipo_fallo ? (
-            <div style={{ flex: 1, minWidth: 260 }}>
-                <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Autopsia IA (Gemini)</p>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 10, flexWrap: 'wrap' }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 10, background: FALLO_COLOR[t.tipo_fallo] || '#6b7280', color: '#fff' }}>{t.tipo_fallo}</span>
-                    {t.worker_culpable && <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: 'var(--bg-tertiary)', color: 'var(--text-secondary)' }}>{t.worker_culpable}</span>}
+const VotoBar = ({ label, voto, peso }) => {
+    const pct = Math.min(Math.abs(voto) * 100, 100);
+    const color = voto > 0 ? 'var(--success)' : voto < 0 ? 'var(--danger)' : 'var(--text-secondary)';
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <span style={{ width: 52, fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{label}</span>
+            <div style={{ flex: 1, background: 'var(--bg-tertiary)', borderRadius: 3, height: 6, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, background: color, height: '100%', borderRadius: 3 }} />
+            </div>
+            <span style={{ width: 52, fontSize: 12, color, fontWeight: 700, textAlign: 'right' }}>
+                {voto >= 0 ? '+' : ''}{voto?.toFixed(3)}
+            </span>
+            <span style={{ width: 36, fontSize: 11, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                {((peso ?? 0) * 100).toFixed(0)}%
+            </span>
+        </div>
+    );
+};
+
+const TradeDetail = ({ t }) => {
+    const a = t.analisis || {};
+    return (
+        <div style={{ background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}>
+            {/* Fila 1: misma vista que posiciones abiertas */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24, padding: '16px 24px' }}>
+                {/* Votación workers */}
+                <div>
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Votación de Entrada</p>
+                    {Object.keys(a.votos || {}).length > 0
+                        ? Object.entries(a.votos).map(([k, v]) => (
+                            <VotoBar key={k} label={WORKER_LABELS[k] || k} voto={v} peso={a.pesos?.[k]} />
+                        ))
+                        : <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Sin datos de votación</p>
+                    }
                 </div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, marginBottom: 8 }}>{t.descripcion_fallo}</p>
-                {t.correccion && (
-                    <p style={{ fontSize: 12, color: 'var(--accent-primary)', lineHeight: 1.5 }}>
-                        <b>Corrección:</b> {t.correccion}
+                {/* Filtros técnicos */}
+                <div>
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Filtros Técnicos</p>
+                    <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {a.hurst && <span>🌊 Hurst: <b>{a.hurst?.valor?.toFixed(3)}</b> — {a.hurst?.estado}</span>}
+                        {a.volumen?.poc && <span>📊 Vol POC: <b>{a.volumen?.poc}</b> ({a.volumen?.contexto})</span>}
+                        {a.volumen?.va && <span>📐 VA: {a.volumen?.va}</span>}
+                        {a.estructura?.estado && <span>🏗 SMC: {a.estructura?.estado} | OB: {a.estructura?.ob_precio}</span>}
+                        {a.cross && <span>🌍 DXY: {a.cross?.dxy > 0 ? '+' : ''}{a.cross?.dxy?.toFixed(2)}% | SPX: {a.cross?.spx > 0 ? '+' : ''}{a.cross?.spx?.toFixed(2)}%</span>}
+                        {a.cross?.divergencia && <span style={{ color: 'var(--danger)' }}>⚠ Divergencia detectada</span>}
+                        {!a.hurst && !a.volumen && !a.estructura && !a.cross && (
+                            <span style={{ color: 'var(--text-secondary)' }}>Sin datos técnicos</span>
+                        )}
+                    </div>
+                </div>
+                {/* Análisis Gemini de entrada */}
+                <div>
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Análisis IA de Entrada</p>
+                    <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>
+                        {a.ia_texto || 'Sin análisis disponible'}
                     </p>
-                )}
+                    {a.fuerza_dominante && (
+                        <p style={{ marginTop: 8, fontSize: 11, color: 'var(--accent-primary)' }}>
+                            Fuerza dominante: {a.fuerza_dominante}
+                        </p>
+                    )}
+                </div>
             </div>
-        ) : (
-            <div style={{ flex: 1, minWidth: 260 }}>
-                <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Análisis de Entrada</p>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>
-                    {t.analisis?.ia_texto || 'Sin análisis disponible'}
-                </p>
-            </div>
-        )}
-    </div>
-);
+
+            {/* Fila 2: autopsia (solo si existe) */}
+            {t.tipo_fallo && (
+                <div style={{ borderTop: '1px solid var(--border-color)', padding: '14px 24px', background: '#fff8f8', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 0, flexShrink: 0, paddingTop: 2 }}>Autopsia IA:</p>
+                    <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 10, background: FALLO_COLOR[t.tipo_fallo] || '#6b7280', color: '#fff', flexShrink: 0 }}>{t.tipo_fallo}</span>
+                    {t.worker_culpable && <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', flexShrink: 0 }}>{t.worker_culpable}</span>}
+                    <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.5, margin: 0, flex: 1 }}>{t.descripcion_fallo}</p>
+                    {t.correccion && (
+                        <p style={{ fontSize: 12, color: 'var(--accent-primary)', lineHeight: 1.5, margin: 0, width: '100%' }}>
+                            <b>Corrección:</b> {t.correccion}
+                        </p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 const Historial = ({ setAuth, botVersion }) => {
     const [trades, setTrades] = useState([]);
