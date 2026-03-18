@@ -308,6 +308,38 @@ async def get_noticias(token: str = Depends(oauth2_scheme), db: DBConnector = De
             return {"noticias": [], "total": 0}
 
 
+@app.post("/api/control/sync-mt5")
+async def sync_mt5(token: str = Depends(oauth2_scheme)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    import asyncio, os
+    script = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "sync_operaciones.py"))
+
+    if not os.path.exists(script):
+        raise HTTPException(status_code=500, detail=f"Script no encontrado: {script}")
+
+    python = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "venv", "bin", "python"))
+    if not os.path.exists(python):
+        python = sys.executable
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            python, script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=120)
+        output = stdout.decode(errors="replace")
+        ok = proc.returncode == 0
+        return {"status": "ok" if ok else "error", "output": output}
+    except asyncio.TimeoutError:
+        return {"status": "timeout", "output": "La sincronización tardó más de 2 minutos."}
+    except Exception as e:
+        return {"status": "error", "output": str(e)}
+
+
 @app.post("/api/control/deploy")
 async def deploy(token: str = Depends(oauth2_scheme)):
     payload = decode_access_token(token)

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, Activity, TrendingUp, DollarSign, Cpu, RefreshCw } from 'lucide-react';
+import { Clock, Activity, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { toChileTime } from '../utils/time';
 
@@ -12,6 +12,8 @@ const Control = ({ setAuth }) => {
     const [tick, setTick] = useState(new Date());
     const [deploying, setDeploying] = useState(false);
     const [deployLog, setDeployLog] = useState(null);
+    const [syncing, setSyncing] = useState(false);
+    const [syncLog, setSyncLog] = useState(null);
 
     const token = localStorage.getItem('token');
 
@@ -39,6 +41,23 @@ const Control = ({ setAuth }) => {
         const clockInterval = setInterval(() => setTick(new Date()), 1000);
         return () => { clearInterval(dataInterval); clearInterval(clockInterval); };
     }, []);
+
+    const handleSync = async () => {
+        setSyncing(true);
+        setSyncLog(null);
+        try {
+            const res = await axios.post('/api/control/sync-mt5', {}, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 130000,
+            });
+            setSyncLog({ status: res.data.status, output: res.data.output });
+            if (res.data.status === 'ok') fetchAll();
+        } catch (err) {
+            setSyncLog({ status: 'error', output: err.message });
+        } finally {
+            setSyncing(false);
+        }
+    };
 
     const handleDeploy = async () => {
         setDeploying(true);
@@ -173,6 +192,30 @@ const Control = ({ setAuth }) => {
                             </tbody>
                         </table>
                     </div>
+                </section>
+
+                {/* Sincronizar MT5 */}
+                <section className="section">
+                    <h2 className="section-title">Sincronización MT5</h2>
+                    <div className="deploy-card">
+                        <div className="deploy-info">
+                            <p className="deploy-desc">Importa todas las posiciones abiertas y deals históricos de MetaAPI hacia la base de datos para análisis.</p>
+                        </div>
+                        <button
+                            className={`deploy-btn ${syncing ? 'deploying' : ''}`}
+                            onClick={handleSync}
+                            disabled={syncing}
+                        >
+                            <DatabaseZap size={16} className={syncing ? 'spin' : ''} />
+                            {syncing ? 'Sincronizando...' : 'Sincronizar MT5'}
+                        </button>
+                    </div>
+                    {syncLog && (
+                        <div className={`deploy-log ${syncLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
+                            <p className="deploy-log-status">{syncLog.status === 'ok' ? '✓ Sincronización exitosa' : '✗ Error en sincronización'}</p>
+                            <pre className="deploy-log-output">{syncLog.output}</pre>
+                        </div>
+                    )}
                 </section>
 
                 {/* Deploy */}

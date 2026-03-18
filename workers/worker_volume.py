@@ -110,7 +110,7 @@ class VolumeWorker:
             prev_low_vol = hist[low_idx-1] if low_idx > 0 else 0
             next_high_vol = hist[high_idx+1] if high_idx < len(hist) - 1 else 0
             
-            if prev_low_vol >= next_high_vol:
+            if prev_low_vol >= next_high_vol and low_idx > 0:
                 curr_vol += prev_low_vol
                 low_idx -= 1
             else:
