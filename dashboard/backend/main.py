@@ -162,6 +162,150 @@ async def get_dashboard_status(token: str = Depends(oauth2_scheme), db: DBConnec
     from datetime import datetime
     return {"data": data, "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 
+@app.get("/api/control/estado")
+async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    result = {
+        "estado": {"estado_general": "DESCONOCIDO", "pensamiento_actual": "Sin datos", "tiempo": None},
+        "posiciones_abiertas": 0,
+        "trades_hoy": 0,
+        "pnl_hoy": 0.0,
+    }
+
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT estado_general, pensamiento_actual, tiempo FROM estado_bot WHERE id = 1")
+            row = db.cursor.fetchone()
+            if row:
+                result["estado"] = {
+                    "estado_general": row[0],
+                    "pensamiento_actual": row[1],
+                    "tiempo": row[2].isoformat() if row[2] else None,
+                }
+        except Exception:
+            db.conn.rollback()
+
+        try:
+            db.cursor.execute("SELECT COUNT(*) FROM registro_operaciones WHERE cerrado_en IS NULL")
+            result["posiciones_abiertas"] = db.cursor.fetchone()[0] or 0
+        except Exception:
+            db.conn.rollback()
+
+        try:
+            db.cursor.execute(
+                "SELECT COUNT(*), COALESCE(SUM(pnl_usd), 0) FROM registro_operaciones WHERE DATE(tiempo_apertura) = CURRENT_DATE"
+            )
+            row = db.cursor.fetchone()
+            if row:
+                result["trades_hoy"] = row[0] or 0
+                result["pnl_hoy"] = float(row[1] or 0)
+        except Exception:
+            db.conn.rollback()
+
+    return result
+
+
+@app.get("/api/control/posiciones")
+async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
+                       ro.precio_entrada, ro.stop_loss, ro.take_profit,
+                       ro.tamano_real_usd, ro.tiempo_apertura
+                FROM registro_operaciones ro
+                JOIN activos a ON a.id = ro.activo_id
+                WHERE ro.cerrado_en IS NULL
+                ORDER BY ro.tiempo_apertura DESC
+            """)
+            cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp", "tamano_usd", "apertura"]
+            rows = db.cursor.fetchall()
+            posiciones = []
+            for r in rows:
+                d = dict(zip(cols, r))
+                if d.get("apertura"):
+                    d["apertura"] = d["apertura"].isoformat()
+                posiciones.append(d)
+            return {"posiciones": posiciones}
+        except Exception:
+            db.conn.rollback()
+            return {"posiciones": []}
+
+
+@app.get("/api/control/logs")
+async def get_control_logs(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT nivel, modulo, mensaje, tiempo
+                FROM log_sistema
+                ORDER BY tiempo DESC
+                LIMIT 100
+            """)
+            rows = db.cursor.fetchall()
+            return {"logs": [
+                {"nivel": r[0], "modulo": r[1], "mensaje": r[2],
+                 "tiempo": r[3].isoformat() if r[3] else None}
+                for r in rows
+            ]}
+        except Exception:
+            db.conn.rollback()
+            return {"logs": []}
+
+
+@app.get("/api/noticias")
+async def get_noticias(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT title, source, content_summary, timestamp, published_at
+                FROM raw_news_feed
+                ORDER BY timestamp DESC
+                LIMIT 100
+            """)
+            rows = db.cursor.fetchall()
+            noticias = []
+            for r in rows:
+                title, source, summary, ts, pub_at = r
+                impacto = None
+                tipo = "filtrada"
+                if summary and "Impacto:" in summary:
+                    try:
+                        impacto = int(summary.split("|")[0].replace("Impacto:", "").strip())
+                        tipo = "relevante"
+                    except Exception:
+                        pass
+                elif summary and "Descargada" in summary:
+                    tipo = "descartada"
+                noticias.append({
+                    "titulo": title,
+                    "fuente": source,
+                    "impacto": impacto,
+                    "tipo": tipo,
+                    "timestamp": ts.isoformat() if ts else None,
+                    "published_at": pub_at.isoformat() if pub_at else None,
+                })
+            return {"noticias": noticias, "total": len(noticias)}
+        except Exception:
+            db.conn.rollback()
+            return {"noticias": [], "total": 0}
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "operational", "version": "Prism 1.0"}

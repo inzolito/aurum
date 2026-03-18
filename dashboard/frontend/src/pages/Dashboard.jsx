@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { LogOut, Activity, BarChart3, Clock, LayoutGrid } from 'lucide-react';
+import { Clock } from 'lucide-react';
+import SideNav from '../components/SideNav';
 
 const Dashboard = ({ setAuth }) => {
     const [data, setData] = useState([]);
@@ -27,7 +28,7 @@ const Dashboard = ({ setAuth }) => {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 30000); // 30s
+        const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, []);
 
@@ -38,17 +39,7 @@ const Dashboard = ({ setAuth }) => {
 
     return (
         <div className="dashboard-layout">
-            <nav className="side-nav">
-                <div className="nav-brand">▽</div>
-                <div className="nav-items">
-                    <div className="nav-item active"><LayoutGrid size={20} /></div>
-                    <div className="nav-item"><Activity size={20} /></div>
-                    <div className="nav-item"><BarChart3 size={20} /></div>
-                </div>
-                <button onClick={handleLogout} className="logout-btn">
-                    <LogOut size={20} />
-                </button>
-            </nav>
+            <SideNav onLogout={handleLogout} />
 
             <main className="main-content">
                 <header className="main-header">
