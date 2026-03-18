@@ -81,14 +81,22 @@ async def fetch_metaapi(dias):
     api     = MetaApi(TOKEN)
     account = await api.metatrader_account_api.get_account(ACCOUNT_ID)
 
-    # Streaming connection → terminal_state + history storage
-    conn = account.get_streaming_connection()
+    # Usar RPC igual que el shim (patrón probado)
+    conn = account.get_rpc_connection()
     await conn.connect()
-    print("[SYNC] Sincronizando terminal_state (máx 90s)...")
-    await conn.wait_synchronized(timeout_in_seconds=90)
+    print("[SYNC] Esperando sincronización...")
+    await asyncio.wait_for(conn.wait_synchronized(), timeout=90)
+
+    ws = conn._websocket_client
+    account_id = account.id
 
     # 1. Posiciones abiertas
-    open_pos = list(conn.terminal_state.positions or [])
+    try:
+        raw_pos = await ws.get_positions(account_id)
+        open_pos = list(raw_pos or [])
+    except Exception as e:
+        print(f"[SYNC] Error obteniendo posiciones: {e}")
+        open_pos = []
     print(f"[SYNC] Posiciones abiertas: {len(open_pos)}")
 
     # 2. Deals históricos
@@ -96,26 +104,17 @@ async def fetch_metaapi(dias):
     start = end - timedelta(days=dias)
     deals = []
     try:
-        raw = conn.history_storage.get_deals_by_time_range(start, end)
-        deals = list(raw) if raw else []
-    except AttributeError:
-        pass  # Algunos SDK no exponen get_deals_by_time_range en history_storage
-
-    if not deals:
-        # Fallback: pedir deals directamente al broker vía RPC
-        try:
-            rpc = account.get_rpc_connection()
-            await rpc.connect()
-            await rpc.wait_synchronized()
-            raw = await rpc.get_deals_by_time_range(start, end)
-            deals = list(raw) if raw else []
-            await rpc.close()
-        except Exception as e:
-            print(f"[SYNC] RPC get_deals_by_time_range: {e}")
+        raw_deals = await ws.get_deals_by_time_range(account_id, start, end)
+        deals = list(raw_deals or [])
+    except Exception as e:
+        print(f"[SYNC] get_deals_by_time_range: {e}")
 
     print(f"[SYNC] Deals históricos encontrados: {len(deals)}")
 
-    await conn.close()
+    try:
+        await conn.close()
+    except Exception:
+        pass
     try:
         api.close()
     except Exception:
