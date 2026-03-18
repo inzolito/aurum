@@ -22,12 +22,12 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 log "Verificando dependencias Python..."
 "$AURUM_DIR/venv/bin/pip" install --quiet -r "$AURUM_DIR/requirements_linux.txt" 2>&1 | tee -a "$LOG_FILE" || true
 
-# 3. Reiniciar servicios (sudoers permite cada uno individualmente)
+# 3. Reiniciar servicios del bot
 log "Reiniciando servicios..."
-sudo systemctl restart aurum-core    2>&1 | tee -a "$LOG_FILE"
-sudo systemctl restart aurum-hunter  2>&1 | tee -a "$LOG_FILE"
+sudo systemctl restart aurum-core     2>&1 | tee -a "$LOG_FILE"
+sudo systemctl restart aurum-hunter   2>&1 | tee -a "$LOG_FILE"
 sudo systemctl restart aurum-telegram 2>&1 | tee -a "$LOG_FILE"
-sudo systemctl restart aurum-dashboard 2>&1 | tee -a "$LOG_FILE"
+# aurum-dashboard se reinicia solo desde el backend después de responder al cliente
 
 log "=== Update completado ==="
 cat "$LOG_FILE"
