@@ -718,6 +718,11 @@ class Manager:
         if history is None:
             return
 
+        try:
+            self.db.conn.rollback()
+        except Exception:
+            pass
+
         for ticket, veredicto, prob, p_ent, tp, sl, simbolo in pendientes:
             # Buscar el deal de salida para este ticket de orden
             deals = [d for d in history if d.order == ticket and d.entry == mt5_api.DEAL_ENTRY_OUT]
@@ -728,7 +733,7 @@ class Manager:
                 resultado = "GANADO" if ganancia > 0 else "PERDIDO"
 
                 exito_real = 100.0 if resultado == "GANADO" else 0.0
-                divergencia = abs(exito_real - float(prob))
+                divergencia = abs(exito_real - float(prob or 50))
 
                 print(f"[GERENTE] Auditoria de Cierre #{ticket}: Result={resultado} | Prob={prob}% | Div={divergencia:.1f}")
 
@@ -741,6 +746,10 @@ class Manager:
                     self.db.conn.commit()
                 except Exception as e:
                     print(f"[GERENTE] Error actualizando precision de cierre #{ticket}: {e}")
+                    try:
+                        self.db.conn.rollback()
+                    except Exception:
+                        pass
 
                 # FASE 4 V15: Consultar cuenta para notificaciones de cierre
                 try:
@@ -772,7 +781,7 @@ class Manager:
                         notificar_tp_alcanzado(
                             ticket=ticket, simbolo=simbolo, pnl=ganancia,
                             p_entrada=float(p_ent), tp=float(tp), p_cierre=deal.price,
-                            veredicto=float(veredicto),
+                            veredicto=float(veredicto or 0),
                             prob_est=float(prob) if prob else 0.0,
                             balance=bal_cierre, equity=eq_cierre,
                         )
@@ -797,7 +806,7 @@ class Manager:
                         notificar_sl_alcanzado(
                             ticket=ticket, simbolo=simbolo, pnl=ganancia,
                             p_entrada=float(p_ent), sl=float(sl), p_cierre=deal.price,
-                            veredicto=float(veredicto),
+                            veredicto=float(veredicto or 0),
                             prob_est=float(prob) if prob else 0.0,
                             balance=bal_cierre, equity=eq_cierre,
                             motivo_entrada=motivo_entrada,

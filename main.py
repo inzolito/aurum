@@ -263,17 +263,16 @@ class AurumEngine:
                 self.gerente.auditar_precision_cierres()
 
                 info_acc = mt5_api.account_info()
-                # --- UMBRAL DE PERDIDAS — leído desde parametros_sistema en BD ---
-                _params_dd = self.db.get_parametros()
-                _max_dd = _params_dd.get("GERENTE.max_drawdown_usd", 1000.0)
-                if info_acc and info_acc.equity < _max_dd:
-                    msg_kill = f"🚨 MAX DRAWDOWN ALCANZADO (${_max_dd:,.0f}). SISTEMA HIBERNANDO HASTA MAÑANA."
-                    print(f"\n[MAIN] {msg_kill}")
-                    self.db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
-                    notificar_error_critico("KILL-SWITCH", msg_kill)
-                    self.mt5_conn.cerrar_todas_las_posiciones()
-                    self.running = False
-                    break
+                # KILL-SWITCH DESHABILITADO (demo — cuenta sin drawdown real)
+                # _params_dd = self.db.get_parametros()
+                # _max_dd = _params_dd.get("GERENTE.max_drawdown_usd", 1000.0)
+                # if info_acc and info_acc.equity < _max_dd:
+                #     msg_kill = f"MAX DRAWDOWN ALCANZADO (${_max_dd:,.0f}). SISTEMA HIBERNANDO HASTA MANANA."
+                #     self.db.update_estado_bot("PAUSADO_POR_RIESGO", msg_kill)
+                #     notificar_error_critico("KILL-SWITCH", msg_kill)
+                #     self.mt5_conn.cerrar_todas_las_posiciones()
+                #     self.running = False
+                #     break
 
                 for activo in activos_db:
                     print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
