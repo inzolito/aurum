@@ -12,10 +12,11 @@ log() { echo "[$(date '+%H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
 
 log "=== Aurum Update iniciado ==="
 
-# 1. Git pull
-log "Descargando cambios de Git..."
+# 1. Git — forzar sincronización con origin (ignora cambios locales)
+log "Sincronizando con Git..."
 cd "$AURUM_DIR"
-git pull origin main 2>&1 | tee -a "$LOG_FILE"
+git fetch origin 2>&1 | tee -a "$LOG_FILE"
+git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 
 # 2. Dependencias Python (por si hay nuevas)
 log "Verificando dependencias Python..."
