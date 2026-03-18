@@ -254,12 +254,26 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
         except Exception:
             db.conn.rollback()
 
-    # Cuenta MT5 (balance, equity, pnl_flotante) — non-blocking, best-effort
+    # Balance/equity desde estado_bot (escrito por el bot cada ciclo)
     cuenta = _get_mt5_cuenta()
-    result["balance"]      = cuenta.get("balance")
-    result["equity"]       = cuenta.get("equity")
-    result["pnl_flotante"] = cuenta.get("pnl_flotante")
-    result["currency"]     = cuenta.get("currency", "USD")
+    result["balance"]  = cuenta.get("balance")
+    result["equity"]   = cuenta.get("equity")
+    result["currency"] = cuenta.get("currency", "USD")
+
+    # PnL flotante: suma de pnl_usd de posiciones abiertas en BD
+    # (más fiable que account_info().profit de MetaAPI que devuelve 0)
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT COALESCE(SUM(pnl_usd), 0)
+                FROM registro_operaciones
+                WHERE resultado_final IS NULL AND ticket_mt5 != 999999
+                  AND pnl_usd IS NOT NULL
+            """)
+            result["pnl_flotante"] = float(db.cursor.fetchone()[0] or 0)
+        except Exception:
+            db.conn.rollback()
+            result["pnl_flotante"] = cuenta.get("pnl_flotante", 0)
 
     return result
 
