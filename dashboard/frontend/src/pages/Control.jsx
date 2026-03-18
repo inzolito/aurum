@@ -1,8 +1,67 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, Activity, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap } from 'lucide-react';
+import { Clock, Activity, Wallet, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap, ChevronDown, ChevronRight } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { toChileTime } from '../utils/time';
+
+const WORKER_LABELS = { trend: 'Trend', nlp: 'NLP', flow: 'Flow', sniper: 'Sniper', volume: 'Volume', cross: 'Cross' };
+
+const VotoBar = ({ label, voto, peso }) => {
+    const pct = Math.min(Math.abs(voto) * 100, 100);
+    const color = voto > 0 ? 'var(--success)' : voto < 0 ? 'var(--danger)' : 'var(--text-secondary)';
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <span style={{ width: 52, fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{label}</span>
+            <div style={{ flex: 1, background: 'var(--bg-primary)', borderRadius: 3, height: 6, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, background: color, height: '100%', borderRadius: 3 }} />
+            </div>
+            <span style={{ width: 52, fontSize: 12, color, fontWeight: 700, textAlign: 'right' }}>
+                {voto >= 0 ? '+' : ''}{voto?.toFixed(3)}
+            </span>
+            <span style={{ width: 36, fontSize: 11, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                {((peso ?? 0) * 100).toFixed(0)}%
+            </span>
+        </div>
+    );
+};
+
+const TradeDetail = ({ a }) => (
+    <div style={{ background: 'var(--bg-primary)', padding: '16px 24px', borderTop: '1px solid var(--border-color)' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
+            {/* Votación */}
+            <div>
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Votación de la Cuadrilla</p>
+                {Object.entries(a.votos || {}).map(([k, v]) => (
+                    <VotoBar key={k} label={WORKER_LABELS[k] || k} voto={v} peso={a.pesos?.[k]} />
+                ))}
+            </div>
+            {/* Filtros Técnicos */}
+            <div>
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Filtros Técnicos</p>
+                <div style={{ fontSize: 13, display: 'flex', flexDirection: 'column', gap: 5 }}>
+                    <span>🌊 Hurst: <b>{a.hurst?.valor?.toFixed(3)}</b> — {a.hurst?.estado}</span>
+                    <span>📊 Vol POC: <b>{a.volumen?.poc}</b> ({a.volumen?.contexto})</span>
+                    <span>📐 VA: {a.volumen?.va}</span>
+                    <span>🏗 SMC: {a.estructura?.estado} | OB: {a.estructura?.ob_precio}</span>
+                    <span>🌍 DXY: {a.cross?.dxy > 0 ? '+' : ''}{a.cross?.dxy?.toFixed(2)}% | SPX: {a.cross?.spx > 0 ? '+' : ''}{a.cross?.spx?.toFixed(2)}%</span>
+                    {a.cross?.divergencia && <span style={{ color: 'var(--danger)' }}>⚠ Divergencia detectada</span>}
+                </div>
+            </div>
+            {/* Análisis IA */}
+            <div>
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Análisis IA (Gemini)</p>
+                <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6 }}>
+                    {a.ia_texto || 'Sin análisis disponible'}
+                </p>
+                {a.fuerza_dominante && (
+                    <p style={{ marginTop: 8, fontSize: 11, color: 'var(--accent-primary)' }}>
+                        Fuerza dominante: {a.fuerza_dominante}
+                    </p>
+                )}
+            </div>
+        </div>
+    </div>
+);
 
 const Control = ({ setAuth }) => {
     const [estado, setEstado] = useState(null);
@@ -14,6 +73,7 @@ const Control = ({ setAuth }) => {
     const [deployLog, setDeployLog] = useState(null);
     const [syncing, setSyncing] = useState(false);
     const [syncLog, setSyncLog] = useState(null);
+    const [expandedRow, setExpandedRow] = useState(null);
 
     const token = localStorage.getItem('token');
 
@@ -125,18 +185,24 @@ const Control = ({ setAuth }) => {
                         </div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon"><TrendingUp size={22} /></div>
+                        <div className="stat-icon"><Wallet size={22} /></div>
                         <div className="stat-body">
-                            <p className="stat-label">Trades Hoy</p>
-                            <p className="stat-value">{estado?.trades_hoy ?? '---'}</p>
+                            <p className="stat-label">Patrimonio (Equity)</p>
+                            <p className="stat-value neutral">
+                                {estado?.equity != null
+                                    ? `${estado.currency ?? '$'}${estado.equity.toLocaleString('es-CL', { minimumFractionDigits: 2 })}`
+                                    : '---'}
+                            </p>
                         </div>
                     </div>
                     <div className="stat-card">
                         <div className="stat-icon"><DollarSign size={22} /></div>
                         <div className="stat-body">
-                            <p className="stat-label">P&L Hoy</p>
-                            <p className={`stat-value ${(estado?.pnl_hoy ?? 0) >= 0 ? 'bullish' : 'bearish'}`}>
-                                {estado?.pnl_hoy != null ? `$${estado.pnl_hoy.toFixed(2)}` : '---'}
+                            <p className="stat-label">P&L Flotante</p>
+                            <p className={`stat-value ${(estado?.pnl_flotante ?? 0) >= 0 ? 'bullish' : 'bearish'}`}>
+                                {estado?.pnl_flotante != null
+                                    ? `${(estado.pnl_flotante >= 0 ? '+' : '')}$${estado.pnl_flotante.toFixed(2)}`
+                                    : '---'}
                             </p>
                         </div>
                     </div>
@@ -158,6 +224,7 @@ const Control = ({ setAuth }) => {
                         <table className="prism-table">
                             <thead>
                                 <tr>
+                                    <th></th>
                                     <th>Activo</th>
                                     <th>Ticket</th>
                                     <th>Tipo</th>
@@ -165,28 +232,47 @@ const Control = ({ setAuth }) => {
                                     <th>Entrada</th>
                                     <th>SL</th>
                                     <th>TP</th>
-                                    <th>P&L</th>
+                                    <th>Veredicto</th>
+                                    <th>Prob.</th>
                                     <th>Apertura</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="9" className="text-center">Cargando...</td></tr>
+                                    <tr><td colSpan="11" className="text-center">Cargando...</td></tr>
                                 ) : posiciones.length === 0 ? (
-                                    <tr><td colSpan="9" className="text-center">Sin posiciones abiertas</td></tr>
+                                    <tr><td colSpan="11" className="text-center">Sin posiciones abiertas</td></tr>
                                 ) : (
                                     posiciones.map((p, i) => (
-                                        <tr key={i}>
+                                        <>
+                                        <tr key={i} style={{ cursor: p.analisis ? 'pointer' : 'default' }}
+                                            onClick={() => p.analisis && setExpandedRow(expandedRow === i ? null : i)}>
+                                            <td style={{ width: 24, color: 'var(--text-secondary)' }}>
+                                                {p.analisis ? (expandedRow === i ? <ChevronDown size={14}/> : <ChevronRight size={14}/>) : null}
+                                            </td>
                                             <td className="symbol">{p.simbolo}</td>
                                             <td className="time">{p.ticket}</td>
-                                            <td className={`verdict ${p.tipo === 'BUY' ? 'bullish' : 'bearish'}`}>{p.tipo}</td>
+                                            <td className={`verdict ${p.tipo === 'COMP' ? 'bullish' : 'bearish'}`}>
+                                                {p.tipo === 'COMP' ? 'BUY' : 'SELL'}
+                                            </td>
                                             <td>{p.lotes?.toFixed(2)}</td>
                                             <td>{p.precio_entrada?.toFixed(5)}</td>
                                             <td>{p.sl?.toFixed(5)}</td>
                                             <td>{p.tp?.toFixed(5)}</td>
-                                            <td className={p.pnl_usd >= 0 ? 'verdict bullish' : 'verdict bearish'}>${p.pnl_usd?.toFixed(2) ?? '---'}</td>
+                                            <td className={(p.veredicto ?? 0) >= 0 ? 'verdict bullish' : 'verdict bearish'}>
+                                                {p.veredicto != null ? `${p.veredicto >= 0 ? '+' : ''}${p.veredicto?.toFixed(4)}` : '---'}
+                                            </td>
+                                            <td>{p.probabilidad != null ? `${p.probabilidad?.toFixed(1)}%` : '---'}</td>
                                             <td className="time">{toChileTime(p.apertura, 'time')}</td>
                                         </tr>
+                                        {expandedRow === i && p.analisis && (
+                                            <tr key={`detail-${i}`}>
+                                                <td colSpan="11" style={{ padding: 0 }}>
+                                                    <TradeDetail a={p.analisis} />
+                                                </td>
+                                            </tr>
+                                        )}
+                                        </>
                                     ))
                                 )}
                             </tbody>

@@ -1,5 +1,7 @@
 import sys
 import os
+import time as _time
+import threading as _threading
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -18,6 +20,38 @@ from dotenv import load_dotenv
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 app = FastAPI(title="Aurum Prism API")
+
+# ── Cache MT5 (evita reconectar MetaAPI en cada request) ─────────────────────
+_mt5_cache      = {}
+_mt5_cache_ts   = 0.0
+_mt5_cache_lock = _threading.Lock()
+_MT5_TTL        = 30  # segundos
+
+def _get_mt5_cuenta():
+    global _mt5_cache, _mt5_cache_ts
+    now = _time.time()
+    with _mt5_cache_lock:
+        if now - _mt5_cache_ts < _MT5_TTL and _mt5_cache:
+            return _mt5_cache
+    try:
+        import MetaTrader5 as _mt5
+        if not _mt5.initialize():
+            return {}
+        info = _mt5.account_info()
+        if not info:
+            return {}
+        result = {
+            "balance":      round(info.balance, 2),
+            "equity":       round(info.equity,  2),
+            "pnl_flotante": round(info.profit,  2),
+            "currency":     info.currency,
+        }
+        with _mt5_cache_lock:
+            _mt5_cache    = result
+            _mt5_cache_ts = now
+        return result
+    except Exception:
+        return {}
 
 # Configuración de CORS
 app.add_middleware(
@@ -207,6 +241,13 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
         except Exception:
             db.conn.rollback()
 
+    # Cuenta MT5 (balance, equity, pnl_flotante) — non-blocking, best-effort
+    cuenta = _get_mt5_cuenta()
+    result["balance"]      = cuenta.get("balance")
+    result["equity"]       = cuenta.get("equity")
+    result["pnl_flotante"] = cuenta.get("pnl_flotante")
+    result["currency"]     = cuenta.get("currency", "USD")
+
     return result
 
 
@@ -221,19 +262,29 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
             db.cursor.execute("""
                 SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
-                       ro.pnl_usd, ro.tiempo_entrada
+                       ro.pnl_usd, ro.tiempo_entrada, ro.justificacion_entrada,
+                       ro.veredicto_apertura, ro.probabilidad_est
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
                 WHERE ro.resultado_final IS NULL AND ro.ticket_mt5 != 999999
                 ORDER BY ro.tiempo_entrada DESC
             """)
-            cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp", "pnl_usd", "apertura"]
+            cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
+                    "pnl_usd", "apertura", "justificacion_entrada", "veredicto", "probabilidad"]
             rows = db.cursor.fetchall()
             posiciones = []
+            import json as _json
             for r in rows:
                 d = dict(zip(cols, r))
                 if d.get("apertura"):
                     d["apertura"] = d["apertura"].isoformat()
+                # Parsear justificacion JSON si existe
+                raw = d.pop("justificacion_entrada", None)
+                if raw:
+                    try:
+                        d["analisis"] = _json.loads(raw)
+                    except Exception:
+                        d["analisis"] = {"ia_texto": raw}
                 posiciones.append(d)
             return {"posiciones": posiciones}
         except Exception:

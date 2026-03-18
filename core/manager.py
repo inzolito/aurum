@@ -543,7 +543,44 @@ class Manager:
                 prob_exito = 65 + ((confianza - 0.45) / (0.55)) * (33)
                 prob_exito = max(65, min(98, round(prob_exito, 1)))
 
-                # Persistir trade en BD (INSERT antes del UPDATE de precisión)
+                # Persistir trade en BD con análisis completo
+                import json as _json
+                _analisis = {
+                    "veredicto": veredicto,
+                    "umbral": umbral,
+                    "votos": {
+                        "trend":   round(v_trend, 4),
+                        "nlp":     round(v_nlp, 4),
+                        "flow":    round(v_flow, 4),
+                        "sniper":  round(v_struct_voto, 4),
+                        "volume":  round(v_volume['voto'], 4),
+                        "cross":   round(v_cross['voto'], 4),
+                    },
+                    "pesos": {"trend": p_trend, "nlp": p_nlp, "flow": p_flow, "sniper": p_sniper},
+                    "hurst": {"valor": round(h_val, 4), "estado": h_estado},
+                    "estructura": {
+                        "estado": v_struct['estado_smc'],
+                        "ob_precio": v_struct['ob_precio'],
+                        "sniper_veredicto": v_struct['sniper_veredicto'],
+                    },
+                    "volumen": {
+                        "poc": vol_map['poc'],
+                        "va": vol_map['va'],
+                        "contexto": vol_map['contexto'],
+                        "ajuste": vol_map['ajuste'],
+                    },
+                    "cross": {
+                        "dxy": cross_map['dxy'],
+                        "spx": cross_map['spx'],
+                        "oil": cross_map['oil'],
+                        "divergencia": cross_map['divergencia'],
+                        "ajuste": cross_map['ajuste'],
+                    },
+                    "ia_texto": gemini_thought or "",
+                    "fuerza_dominante": fuerza_dominante,
+                    "balance": balance_real,
+                    "equity": equity_real,
+                }
                 self.db.guardar_operacion({
                     "simbolo": simbolo_interno,
                     "ticket_mt5": ticket,
@@ -552,7 +589,7 @@ class Manager:
                     "precio_entrada": precio_real,
                     "stop_loss": sl,
                     "take_profit": tp,
-                    "justificacion_entrada": motivo,
+                    "justificacion_entrada": _json.dumps(_analisis, ensure_ascii=False),
                     "veredicto_apertura": veredicto,
                     "probabilidad_est": prob_exito,
                 })
