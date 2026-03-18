@@ -160,13 +160,41 @@ const Control = ({ setAuth }) => {
                 <header className="main-header">
                     <div>
                         <h1>Panel de Control</h1>
-                        <p className="subtitle">Estado operativo y monitoreo del bot en tiempo real</p>
+                        <p className="subtitle">Estado operativo en tiempo real</p>
                     </div>
-                    <div className="status-badge">
-                        <Clock size={16} />
-                        <span>{tick.toLocaleTimeString()}</span>
+                    <div className="header-actions">
+                        <button className={`action-btn ${syncing ? 'deploying' : ''}`} onClick={handleSync} disabled={syncing} title="Importar operaciones MT5 → BD">
+                            <DatabaseZap size={15} className={syncing ? 'spin' : ''} />
+                            <span>{syncing ? 'Sincronizando...' : 'Sync MT5'}</span>
+                        </button>
+                        <button className={`action-btn action-btn-primary ${deploying ? 'deploying' : ''}`} onClick={handleDeploy} disabled={deploying} title="Git pull + build + restart">
+                            <RefreshCw size={15} className={deploying ? 'spin' : ''} />
+                            <span>{deploying ? 'Impactando...' : 'El Meteorito'}</span>
+                        </button>
+                        <div className="status-badge">
+                            <Clock size={14} />
+                            <span>{tick.toLocaleTimeString()}</span>
+                        </div>
                     </div>
                 </header>
+
+                {/* Logs inline de acciones */}
+                {(syncLog || deployLog) && (
+                    <div style={{ marginBottom: 20 }}>
+                        {syncLog && (
+                            <div className={`deploy-log ${syncLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
+                                <p className="deploy-log-status">{syncLog.status === 'ok' ? '✓ Sync exitoso' : '✗ Error sync'}</p>
+                                <pre className="deploy-log-output">{syncLog.output}</pre>
+                            </div>
+                        )}
+                        {deployLog && (
+                            <div className={`deploy-log ${deployLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`} style={{ marginTop: syncLog ? 8 : 0 }}>
+                                <p className="deploy-log-status">{deployLog.status === 'ok' ? '✓ Deploy exitoso' : '✗ Error en deploy'}</p>
+                                <pre className="deploy-log-output">{deployLog.output}</pre>
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Stat Cards */}
                 <div className="stats-grid">
@@ -278,54 +306,6 @@ const Control = ({ setAuth }) => {
                             </tbody>
                         </table>
                     </div>
-                </section>
-
-                {/* Sincronizar MT5 */}
-                <section className="section">
-                    <h2 className="section-title">Sincronización MT5</h2>
-                    <div className="deploy-card">
-                        <div className="deploy-info">
-                            <p className="deploy-desc">Importa todas las posiciones abiertas y deals históricos de MetaAPI hacia la base de datos para análisis.</p>
-                        </div>
-                        <button
-                            className={`deploy-btn ${syncing ? 'deploying' : ''}`}
-                            onClick={handleSync}
-                            disabled={syncing}
-                        >
-                            <DatabaseZap size={16} className={syncing ? 'spin' : ''} />
-                            {syncing ? 'Sincronizando...' : 'Sincronizar MT5'}
-                        </button>
-                    </div>
-                    {syncLog && (
-                        <div className={`deploy-log ${syncLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
-                            <p className="deploy-log-status">{syncLog.status === 'ok' ? '✓ Sincronización exitosa' : '✗ Error en sincronización'}</p>
-                            <pre className="deploy-log-output">{syncLog.output}</pre>
-                        </div>
-                    )}
-                </section>
-
-                {/* Deploy */}
-                <section className="section">
-                    <h2 className="section-title">Actualización del Sistema</h2>
-                    <div className="deploy-card">
-                        <div className="deploy-info">
-                            <p className="deploy-desc">Descarga los últimos cambios de Git, compila el frontend y reinicia los servicios del bot.</p>
-                        </div>
-                        <button
-                            className={`deploy-btn ${deploying ? 'deploying' : ''}`}
-                            onClick={handleDeploy}
-                            disabled={deploying}
-                        >
-                            <RefreshCw size={16} className={deploying ? 'spin' : ''} />
-                            {deploying ? 'Impactando...' : 'El Meteorito'}
-                        </button>
-                    </div>
-                    {deployLog && (
-                        <div className={`deploy-log ${deployLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
-                            <p className="deploy-log-status">{deployLog.status === 'ok' ? '✓ Deploy exitoso' : '✗ Error en deploy'}</p>
-                            <pre className="deploy-log-output">{deployLog.output}</pre>
-                        </div>
-                    )}
                 </section>
 
                 {/* Log del Sistema */}

@@ -23,6 +23,7 @@ const SideNav = ({ onLogout }) => {
                         title={item.title}
                     >
                         {item.icon}
+                        <span className="nav-label">{item.title}</span>
                     </div>
                 ))}
             </div>
