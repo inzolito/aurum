@@ -23,7 +23,7 @@ function App() {
       <Routes>
         <Route
           path="/login"
-          element={!isAuthenticated ? <Login setAuth={setIsAuthenticated} /> : <Navigate to="/dashboard" />}
+          element={!isAuthenticated ? <Login setAuth={setIsAuthenticated} /> : <Navigate to="/control" />}
         />
         <Route path="/dashboard" element={<PrivateRoute element={<Dashboard setAuth={setIsAuthenticated} />} />} />
         <Route path="/control"   element={<PrivateRoute element={<Control   setAuth={setIsAuthenticated} />} />} />
