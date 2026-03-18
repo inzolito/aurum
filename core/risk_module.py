@@ -55,11 +55,11 @@ class RiskModule:
 
     def obtener_sl_tp_atr(self, simbolo_broker: str, direccion: str) -> tuple[float, float] | tuple[None, None]:
         """
-        Calcula SL y TP usando ATR(14) en M15.
+        Calcula SL y TP usando ATR(14) en H1.
         SL = entrada +- 1.5 * ATR
-        TP = entrada +- 2.0 * ATR
+        TP = entrada +- 2.5 * ATR  (R:R 1.67 para compensar spread)
         """
-        atr = self.mt5.obtener_atr(simbolo_broker, periodo=14, timeframe=mt5_lib.TIMEFRAME_M15)
+        atr = self.mt5.obtener_atr(simbolo_broker, periodo=14, timeframe=mt5_lib.TIMEFRAME_H1)
         if not atr:
             return None, None
             
@@ -71,7 +71,7 @@ class RiskModule:
         precio = tick.ask if direccion == "COMPRA" else tick.bid
         
         dist_sl = atr * 1.5
-        dist_tp = atr * 2.0
+        dist_tp = atr * 2.5
         
         # Validacion Anti-Error 10016: El spread a veces devora el ATR en volatilidades bajas
         # Safety minimum: 30 pips (pip = point * 10), para cubrir brokers con stop mínimo oculto elevado
