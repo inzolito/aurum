@@ -12,7 +12,7 @@ log() { echo "[$(date '+%H:%M:%S')] $1" | tee -a "$LOG_FILE"; }
 
 log "=== Aurum Update iniciado ==="
 
-# 1. Git — forzar sincronización con origin (ignora cambios locales)
+# 1. Git — forzar sincronización con origin
 log "Sincronizando con Git..."
 cd "$AURUM_DIR"
 git fetch origin 2>&1 | tee -a "$LOG_FILE"
@@ -22,13 +22,12 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 log "Verificando dependencias Python..."
 "$AURUM_DIR/venv/bin/pip" install --quiet -r "$AURUM_DIR/requirements_linux.txt" 2>&1 | tee -a "$LOG_FILE" || true
 
-# 3. Permisos del dist (viene del repo, no se compila aquí)
-log "Aplicando permisos al frontend..."
-sudo chown -R aurum_bot:aurum_bot "$AURUM_DIR/dashboard/frontend/dist" 2>&1 | tee -a "$LOG_FILE" || true
-
-# 4. Reiniciar todos los servicios
+# 3. Reiniciar servicios (sudoers permite cada uno individualmente)
 log "Reiniciando servicios..."
-sudo systemctl restart aurum-core aurum-hunter aurum-telegram aurum-dashboard 2>&1 | tee -a "$LOG_FILE"
+sudo systemctl restart aurum-core    2>&1 | tee -a "$LOG_FILE"
+sudo systemctl restart aurum-hunter  2>&1 | tee -a "$LOG_FILE"
+sudo systemctl restart aurum-telegram 2>&1 | tee -a "$LOG_FILE"
+sudo systemctl restart aurum-dashboard 2>&1 | tee -a "$LOG_FILE"
 
 log "=== Update completado ==="
 cat "$LOG_FILE"
