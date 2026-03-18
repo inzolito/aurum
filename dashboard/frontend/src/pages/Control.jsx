@@ -128,7 +128,7 @@ const Control = ({ setAuth }) => {
                                     <th>Entrada</th>
                                     <th>SL</th>
                                     <th>TP</th>
-                                    <th>Tamaño USD</th>
+                                    <th>P&L</th>
                                     <th>Apertura</th>
                                 </tr>
                             </thead>
@@ -147,7 +147,7 @@ const Control = ({ setAuth }) => {
                                             <td>{p.precio_entrada?.toFixed(5)}</td>
                                             <td>{p.sl?.toFixed(5)}</td>
                                             <td>{p.tp?.toFixed(5)}</td>
-                                            <td>${p.tamano_usd?.toFixed(0)}</td>
+                                            <td className={p.pnl_usd >= 0 ? 'verdict bullish' : 'verdict bearish'}>${p.pnl_usd?.toFixed(2) ?? '---'}</td>
                                             <td className="time">{toChileTime(p.apertura, 'time')}</td>
                                         </tr>
                                     ))

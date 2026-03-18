@@ -6,8 +6,8 @@ const SideNav = ({ onLogout }) => {
     const location = useLocation();
 
     const navItems = [
-        { path: '/dashboard', icon: <LayoutGrid size={20} />, title: 'Señales' },
         { path: '/control', icon: <Activity size={20} />, title: 'Control' },
+        { path: '/dashboard', icon: <LayoutGrid size={20} />, title: 'Señales' },
         { path: '/noticias', icon: <Newspaper size={20} />, title: 'Noticias' },
     ];
 

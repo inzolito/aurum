@@ -219,13 +219,13 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
             db.cursor.execute("""
                 SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
-                       ro.tamano_real_usd, ro.tiempo_entrada
+                       ro.pnl_usd, ro.tiempo_entrada
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
                 WHERE ro.estado = 'ABIERTA'
                 ORDER BY ro.tiempo_entrada DESC
             """)
-            cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp", "tamano_usd", "apertura"]
+            cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp", "pnl_usd", "apertura"]
             rows = db.cursor.fetchall()
             posiciones = []
             for r in rows:
