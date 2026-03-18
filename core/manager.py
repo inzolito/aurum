@@ -543,6 +543,20 @@ class Manager:
                 prob_exito = 65 + ((confianza - 0.45) / (0.55)) * (33)
                 prob_exito = max(65, min(98, round(prob_exito, 1)))
 
+                # Persistir trade en BD (INSERT antes del UPDATE de precisión)
+                self.db.guardar_operacion({
+                    "simbolo": simbolo_interno,
+                    "ticket_mt5": ticket,
+                    "tipo_orden": direccion[:4],
+                    "volumen_lotes": lotes,
+                    "precio_entrada": precio_real,
+                    "stop_loss": sl,
+                    "take_profit": tp,
+                    "justificacion_entrada": motivo,
+                    "veredicto_apertura": veredicto,
+                    "probabilidad_est": prob_exito,
+                })
+
                 notificar_orden_ejecutada(
                     simbolo=simbolo_interno,
                     direccion=direccion,

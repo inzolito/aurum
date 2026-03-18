@@ -373,11 +373,12 @@ class DBConnector:
                 self.cursor.execute(
                     """
                     INSERT INTO registro_operaciones
-                        (activo_id, ticket_mt5, tipo_orden, tamano_real_usd, volumen_lotes,
-                         precio_entrada, stop_loss, take_profit, fee_comision, justificacion_entrada)
-                    SELECT a.id, %(ticket_mt5)s, %(tipo_orden)s, %(tamano_real_usd)s,
-                           %(volumen_lotes)s, %(precio_entrada)s, %(stop_loss)s,
-                           %(take_profit)s, %(fee_comision)s, %(justificacion_entrada)s
+                        (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
+                         precio_entrada, stop_loss, take_profit,
+                         justificacion_entrada, veredicto_apertura, probabilidad_est)
+                    SELECT a.id, %(ticket_mt5)s, %(tipo_orden)s, %(volumen_lotes)s,
+                           %(precio_entrada)s, %(stop_loss)s, %(take_profit)s,
+                           %(justificacion_entrada)s, %(veredicto_apertura)s, %(probabilidad_est)s
                     FROM activos a WHERE a.simbolo = %(simbolo)s;
                     """,
                     datos,

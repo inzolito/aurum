@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, Activity, TrendingUp, DollarSign, Cpu } from 'lucide-react';
+import { Clock, Activity, TrendingUp, DollarSign, Cpu, RefreshCw } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { toChileTime } from '../utils/time';
 
@@ -10,6 +10,8 @@ const Control = ({ setAuth }) => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [tick, setTick] = useState(new Date());
+    const [deploying, setDeploying] = useState(false);
+    const [deployLog, setDeployLog] = useState(null);
 
     const token = localStorage.getItem('token');
 
@@ -37,6 +39,22 @@ const Control = ({ setAuth }) => {
         const clockInterval = setInterval(() => setTick(new Date()), 1000);
         return () => { clearInterval(dataInterval); clearInterval(clockInterval); };
     }, []);
+
+    const handleDeploy = async () => {
+        setDeploying(true);
+        setDeployLog(null);
+        try {
+            const res = await axios.post('/api/control/deploy', {}, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 200000,
+            });
+            setDeployLog({ status: res.data.status, output: res.data.output });
+        } catch (err) {
+            setDeployLog({ status: 'error', output: err.message });
+        } finally {
+            setDeploying(false);
+        }
+    };
 
     const handleLogout = () => {
         localStorage.removeItem('token');
@@ -155,6 +173,30 @@ const Control = ({ setAuth }) => {
                             </tbody>
                         </table>
                     </div>
+                </section>
+
+                {/* Deploy */}
+                <section className="section">
+                    <h2 className="section-title">Actualización del Sistema</h2>
+                    <div className="deploy-card">
+                        <div className="deploy-info">
+                            <p className="deploy-desc">Descarga los últimos cambios de Git, compila el frontend y reinicia los servicios del bot.</p>
+                        </div>
+                        <button
+                            className={`deploy-btn ${deploying ? 'deploying' : ''}`}
+                            onClick={handleDeploy}
+                            disabled={deploying}
+                        >
+                            <RefreshCw size={16} className={deploying ? 'spin' : ''} />
+                            {deploying ? 'Actualizando...' : 'Actualizar Sistema'}
+                        </button>
+                    </div>
+                    {deployLog && (
+                        <div className={`deploy-log ${deployLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
+                            <p className="deploy-log-status">{deployLog.status === 'ok' ? '✓ Deploy exitoso' : '✗ Error en deploy'}</p>
+                            <pre className="deploy-log-output">{deployLog.output}</pre>
+                        </div>
+                    )}
                 </section>
 
                 {/* Log del Sistema */}

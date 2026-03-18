@@ -189,15 +189,17 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
             db.conn.rollback()
 
         try:
-            db.cursor.execute("SELECT COUNT(*) FROM registro_operaciones WHERE estado = 'ABIERTA'")
+            db.cursor.execute("SELECT COUNT(*) FROM registro_operaciones WHERE resultado_final IS NULL AND ticket_mt5 != 999999")
             result["posiciones_abiertas"] = db.cursor.fetchone()[0] or 0
         except Exception:
             db.conn.rollback()
 
         try:
-            db.cursor.execute(
-                "SELECT COUNT(*), COALESCE(SUM(pnl_usd), 0) FROM registro_operaciones WHERE DATE(tiempo_entrada) = CURRENT_DATE"
-            )
+            db.cursor.execute("""
+                SELECT COUNT(*), COALESCE(SUM(pnl_usd), 0)
+                FROM registro_operaciones
+                WHERE DATE(tiempo_entrada) = CURRENT_DATE
+            """)
             row = db.cursor.fetchone()
             if row:
                 result["trades_hoy"] = row[0] or 0
@@ -222,7 +224,7 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
                        ro.pnl_usd, ro.tiempo_entrada
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
-                WHERE ro.estado = 'ABIERTA'
+                WHERE ro.resultado_final IS NULL AND ro.ticket_mt5 != 999999
                 ORDER BY ro.tiempo_entrada DESC
             """)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp", "pnl_usd", "apertura"]
@@ -304,6 +306,44 @@ async def get_noticias(token: str = Depends(oauth2_scheme), db: DBConnector = De
         except Exception:
             db.conn.rollback()
             return {"noticias": [], "total": 0}
+
+
+@app.post("/api/control/deploy")
+async def deploy(token: str = Depends(oauth2_scheme)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    import asyncio, os
+    script = os.path.join(os.path.dirname(__file__), "..", "..", "scripts", "update.sh")
+    script = os.path.abspath(script)
+
+    if not os.path.exists(script):
+        raise HTTPException(status_code=500, detail=f"Script no encontrado: {script}")
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "/bin/bash", script,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=180)
+        output = stdout.decode(errors="replace")
+        ok = proc.returncode == 0
+
+        # Auto-restart del dashboard en background (2s de delay para enviar respuesta)
+        if ok:
+            async def _restart_self():
+                await asyncio.sleep(2)
+                import subprocess
+                subprocess.Popen(["sudo", "systemctl", "restart", "aurum-dashboard"])
+            asyncio.create_task(_restart_self())
+
+        return {"status": "ok" if ok else "error", "output": output, "returncode": proc.returncode}
+    except asyncio.TimeoutError:
+        return {"status": "timeout", "output": "El deploy tardó más de 3 minutos.", "returncode": -1}
+    except Exception as e:
+        return {"status": "error", "output": str(e), "returncode": -1}
 
 
 @app.get("/health")
