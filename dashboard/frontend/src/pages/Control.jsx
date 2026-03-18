@@ -63,7 +63,7 @@ const TradeDetail = ({ a }) => (
     </div>
 );
 
-const Control = ({ setAuth }) => {
+const Control = ({ setAuth, botVersion }) => {
     const [estado, setEstado] = useState(null);
     const [posiciones, setPosiciones] = useState([]);
     const [logs, setLogs] = useState([]);
@@ -195,7 +195,7 @@ const Control = ({ setAuth }) => {
 
     return (
         <div className="dashboard-layout">
-            <SideNav onLogout={handleLogout} />
+            <SideNav onLogout={handleLogout} botVersion={botVersion} />
             <main className="main-content">
                 <header className="main-header">
                     <div>
@@ -322,14 +322,15 @@ const Control = ({ setAuth }) => {
                                     <th>TP</th>
                                     <th>Veredicto</th>
                                     <th>Prob.</th>
+                                    <th>P&L</th>
                                     <th>Apertura</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="11" className="text-center">Cargando...</td></tr>
+                                    <tr><td colSpan="12" className="text-center">Cargando...</td></tr>
                                 ) : posiciones.length === 0 ? (
-                                    <tr><td colSpan="11" className="text-center">Sin posiciones abiertas</td></tr>
+                                    <tr><td colSpan="12" className="text-center">Sin posiciones abiertas</td></tr>
                                 ) : (
                                     posiciones.map((p, i) => (
                                         <>
@@ -351,11 +352,14 @@ const Control = ({ setAuth }) => {
                                                 {p.veredicto != null ? `${p.veredicto >= 0 ? '+' : ''}${p.veredicto?.toFixed(4)}` : '---'}
                                             </td>
                                             <td>{p.probabilidad != null ? `${p.probabilidad?.toFixed(1)}%` : '---'}</td>
+                                            <td className={`verdict ${(p.pnl_usd ?? 0) >= 0 ? 'bullish' : 'bearish'}`}>
+                                                {p.pnl_usd != null ? `${p.pnl_usd >= 0 ? '+' : ''}$${p.pnl_usd?.toFixed(2)}` : '---'}
+                                            </td>
                                             <td className="time">{toChileTime(p.apertura, 'time')}</td>
                                         </tr>
                                         {expandedRow === i && p.analisis && (
                                             <tr key={`detail-${i}`}>
-                                                <td colSpan="11" style={{ padding: 0 }}>
+                                                <td colSpan="12" style={{ padding: 0 }}>
                                                     <TradeDetail a={p.analisis} />
                                                 </td>
                                             </tr>

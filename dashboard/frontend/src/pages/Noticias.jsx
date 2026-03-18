@@ -13,7 +13,7 @@ const ImpactoBadge = ({ impacto, tipo }) => {
     return <span className="badge badge-green">IMPACTO {impacto}/10</span>;
 };
 
-const Noticias = ({ setAuth }) => {
+const Noticias = ({ setAuth, botVersion }) => {
     const [noticias, setNoticias] = useState([]);
     const [filtro, setFiltro] = useState('todas');
     const [loading, setLoading] = useState(true);
@@ -61,7 +61,7 @@ const Noticias = ({ setAuth }) => {
 
     return (
         <div className="dashboard-layout">
-            <SideNav onLogout={handleLogout} />
+            <SideNav onLogout={handleLogout} botVersion={botVersion} />
             <main className="main-content">
                 <header className="main-header">
                     <div>

@@ -28,23 +28,26 @@ _mt5_cache_lock = _threading.Lock()
 _MT5_TTL        = 30  # segundos
 
 def _get_mt5_cuenta():
+    """Lee balance/equity/pnl desde estado_bot (escrito por aurum-core cada ciclo)."""
     global _mt5_cache, _mt5_cache_ts
     now = _time.time()
     with _mt5_cache_lock:
         if now - _mt5_cache_ts < _MT5_TTL and _mt5_cache:
             return _mt5_cache
     try:
-        import MetaTrader5 as _mt5
-        if not _mt5.initialize():
+        db = DBConnector()
+        if not db.conectar():
             return {}
-        info = _mt5.account_info()
-        if not info:
+        with db._lock:
+            db.cursor.execute("SELECT balance, equity, pnl_flotante FROM estado_bot WHERE id = 1")
+            row = db.cursor.fetchone()
+        if not row or row[0] is None:
             return {}
         result = {
-            "balance":      round(info.balance, 2),
-            "equity":       round(info.equity,  2),
-            "pnl_flotante": round(info.profit,  2),
-            "currency":     info.currency,
+            "balance":      float(row[0]),
+            "equity":       float(row[1]) if row[1] is not None else float(row[0]),
+            "pnl_flotante": float(row[2]) if row[2] is not None else 0.0,
+            "currency":     "USD",
         }
         with _mt5_cache_lock:
             _mt5_cache    = result
@@ -227,6 +230,16 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
             result["posiciones_abiertas"] = db.cursor.fetchone()[0] or 0
         except Exception:
             db.conn.rollback()
+
+        try:
+            db.cursor.execute("SELECT numero_version, descripcion FROM versiones_sistema WHERE estado = 'ACTIVA' ORDER BY id DESC LIMIT 1")
+            vrow = db.cursor.fetchone()
+            result["version"] = vrow[0] if vrow else "v1.0.0"
+            result["version_desc"] = vrow[1] if vrow else ""
+        except Exception:
+            db.conn.rollback()
+            result["version"] = "v1.0.0"
+            result["version_desc"] = ""
 
         try:
             db.cursor.execute("""
@@ -427,6 +440,81 @@ async def deploy(token: str = Depends(oauth2_scheme)):
         return {"status": "timeout", "output": "El deploy tardó más de 3 minutos.", "returncode": -1}
     except Exception as e:
         return {"status": "error", "output": str(e), "returncode": -1}
+
+
+@app.get("/api/historial")
+async def get_historial(
+    token: str = Depends(oauth2_scheme),
+    db: DBConnector = Depends(get_db),
+    limit: int = 200,
+    desde: Optional[str] = None,
+    hasta: Optional[str] = None,
+    simbolo: Optional[str] = None,
+    resultado: Optional[str] = None,
+):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            conditions = ["(ro.resultado_final IS NOT NULL OR ro.ticket_mt5 = 999999)"]
+            params: list = []
+            if desde:
+                conditions.append("ro.tiempo_entrada >= %s")
+                params.append(desde)
+            if hasta:
+                conditions.append("ro.tiempo_entrada < %s::date + interval '1 day'")
+                params.append(hasta)
+            if simbolo:
+                conditions.append("a.simbolo = %s")
+                params.append(simbolo)
+            if resultado:
+                conditions.append("ro.resultado_final = %s")
+                params.append(resultado.upper())
+            where = " AND ".join(conditions)
+            params.append(limit)
+            db.cursor.execute(f"""
+                SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
+                       ro.precio_entrada, ro.stop_loss, ro.take_profit,
+                       ro.pnl_usd, ro.tiempo_entrada, ro.resultado_final,
+                       ro.veredicto_apertura, ro.probabilidad_est, ro.divergencia_precision,
+                       ro.justificacion_entrada,
+                       ap.tipo_fallo, ap.worker_culpable, ap.descripcion, ap.correccion_sugerida,
+                       vs.numero_version
+                FROM registro_operaciones ro
+                JOIN activos a ON a.id = ro.activo_id
+                LEFT JOIN autopsias_perdidas ap ON ap.ticket_mt5 = ro.ticket_mt5
+                LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
+                WHERE {where}
+                ORDER BY ro.tiempo_entrada DESC
+                LIMIT %s
+            """, params)
+            cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
+                    "pnl_usd", "apertura", "resultado", "veredicto", "probabilidad",
+                    "divergencia", "justificacion_entrada",
+                    "tipo_fallo", "worker_culpable", "descripcion_fallo", "correccion",
+                    "version"]
+            rows = db.cursor.fetchall()
+            import json as _json
+            trades = []
+            for r in rows:
+                d = dict(zip(cols, r))
+                if d.get("apertura"):
+                    d["apertura"] = d["apertura"].isoformat()
+                for k in ["pnl_usd", "veredicto", "probabilidad", "divergencia"]:
+                    if d[k] is not None:
+                        d[k] = float(d[k])
+                raw = d.pop("justificacion_entrada", None)
+                if raw:
+                    try:
+                        d["analisis"] = _json.loads(raw)
+                    except Exception:
+                        d["analisis"] = {"ia_texto": raw}
+                trades.append(d)
+            return {"trades": trades}
+        except Exception as e:
+            db.conn.rollback()
+            return {"trades": [], "error": str(e)}
 
 
 @app.post("/api/control/restart-bot")

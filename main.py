@@ -131,6 +131,34 @@ def _lanzar_telegram_daemon():
 # El motor obtiene los activos dinámicamente desde la tabla 'activos' en GCP.
 
 
+def _iniciar_actualizador_pnl(db, intervalo=10):
+    """Hilo daemon que actualiza pnl_usd de posiciones abiertas cada `intervalo` segundos."""
+    import threading
+    def _loop():
+        while True:
+            try:
+                posiciones = mt5_api.positions_get()
+                if posiciones:
+                    with db._lock:
+                        for pos in posiciones:
+                            db.cursor.execute(
+                                "UPDATE registro_operaciones SET pnl_usd = %s "
+                                "WHERE ticket_mt5 = %s AND resultado_final IS NULL",
+                                (round(float(pos.profit), 2), int(pos.ticket))
+                            )
+                        db.conn.commit()
+            except Exception as e:
+                print(f"[PNL-UPDATER] Error: {e}")
+                try:
+                    db.conn.rollback()
+                except Exception:
+                    pass
+            time.sleep(intervalo)
+    t = threading.Thread(target=_loop, daemon=True, name="pnl-updater")
+    t.start()
+    print(f"[MAIN] PnL-Updater iniciado (intervalo {intervalo}s).")
+
+
 class AurumEngine:
     def __init__(self):
         self.db = None
@@ -206,6 +234,9 @@ class AurumEngine:
         self.programador = AurumScheduler(self.gerente)
         self.programador.start()
 
+        # Hilo daemon: actualiza pnl_usd de posiciones abiertas cada 10s
+        _iniciar_actualizador_pnl(self.db, intervalo=10)
+
         # V15.0: Los daemons independientes (Telegram + News Hunter) son gestionados
         # exclusivamente por heartbeat.py (SHIELD). Main no los lanza para evitar
         # condición de carrera con duplicados. El SHIELD los detecta y lanza en su
@@ -263,6 +294,14 @@ class AurumEngine:
                 self.gerente.auditar_precision_cierres()
 
                 info_acc = mt5_api.account_info()
+                if info_acc:
+                    self.db.update_estado_bot(
+                        "OPERANDO",
+                        f"Ciclo #{self.ciclo} en curso. Monitoreando: {', '.join(simbolos)}.",
+                        balance=round(float(info_acc.balance), 2),
+                        equity=round(float(info_acc.equity), 2),
+                        pnl_flotante=round(float(info_acc.profit), 2),
+                    )
                 # KILL-SWITCH DESHABILITADO (demo — cuenta sin drawdown real)
                 # _params_dd = self.db.get_parametros()
                 # _max_dd = _params_dd.get("GERENTE.max_drawdown_usd", 1000.0)

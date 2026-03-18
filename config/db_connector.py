@@ -375,10 +375,12 @@ class DBConnector:
                     INSERT INTO registro_operaciones
                         (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
                          precio_entrada, stop_loss, take_profit,
-                         justificacion_entrada, veredicto_apertura, probabilidad_est)
+                         justificacion_entrada, veredicto_apertura, probabilidad_est,
+                         version_id)
                     SELECT a.id, %(ticket_mt5)s, %(tipo_orden)s, %(volumen_lotes)s,
                            %(precio_entrada)s, %(stop_loss)s, %(take_profit)s,
-                           %(justificacion_entrada)s, %(veredicto_apertura)s, %(probabilidad_est)s
+                           %(justificacion_entrada)s, %(veredicto_apertura)s, %(probabilidad_est)s,
+                           (SELECT id FROM versiones_sistema WHERE estado = 'ACTIVA' ORDER BY id DESC LIMIT 1)
                     FROM activos a WHERE a.simbolo = %(simbolo)s;
                     """,
                     datos,
@@ -433,20 +435,23 @@ class DBConnector:
     # ------------------------------------------------------------------
 
     @survival_shield
-    def update_estado_bot(self, estado: str, pensamiento: str):
+    def update_estado_bot(self, estado: str, pensamiento: str, balance: float = None, equity: float = None, pnl_flotante: float = None):
         """Upsert en estado_bot con bloqueo de hilo (V8.0)."""
         with self._lock:
             try:
                 self.cursor.execute(
                     """
-                    INSERT INTO estado_bot (id, estado_general, pensamiento_actual, tiempo)
-                    VALUES (1, %s, %s, CURRENT_TIMESTAMP)
+                    INSERT INTO estado_bot (id, estado_general, pensamiento_actual, tiempo, balance, equity, pnl_flotante)
+                    VALUES (1, %s, %s, CURRENT_TIMESTAMP, %s, %s, %s)
                     ON CONFLICT (id) DO UPDATE
                         SET estado_general    = EXCLUDED.estado_general,
                             pensamiento_actual = EXCLUDED.pensamiento_actual,
-                            tiempo            = CURRENT_TIMESTAMP;
+                            tiempo            = CURRENT_TIMESTAMP,
+                            balance           = COALESCE(EXCLUDED.balance, estado_bot.balance),
+                            equity            = COALESCE(EXCLUDED.equity, estado_bot.equity),
+                            pnl_flotante      = COALESCE(EXCLUDED.pnl_flotante, estado_bot.pnl_flotante);
                     """,
-                    (estado, pensamiento),
+                    (estado, pensamiento, balance, equity, pnl_flotante),
                 )
                 self.conn.commit()
             except Exception as e:

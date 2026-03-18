@@ -4,7 +4,7 @@ import { Clock } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { toChileTime } from '../utils/time';
 
-const Dashboard = ({ setAuth }) => {
+const Dashboard = ({ setAuth, botVersion }) => {
     const [data, setData] = useState([]);
     const [loading, setLoading] = useState(true);
     const [timestamp, setTimestamp] = useState('');
@@ -40,7 +40,7 @@ const Dashboard = ({ setAuth }) => {
 
     return (
         <div className="dashboard-layout">
-            <SideNav onLogout={handleLogout} />
+            <SideNav onLogout={handleLogout} botVersion={botVersion} />
 
             <main className="main-content">
                 <header className="main-header">
