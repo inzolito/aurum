@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Clock, Activity, TrendingUp, DollarSign, Cpu } from 'lucide-react';
 import SideNav from '../components/SideNav';
+import { toChileTime } from '../utils/time';
 
 const Control = ({ setAuth }) => {
     const [estado, setEstado] = useState(null);
@@ -109,9 +110,7 @@ const Control = ({ setAuth }) => {
                     <div className="thought-card">
                         <p className="thought-label">Pensamiento Actual</p>
                         <p className="thought-text">{estado.estado.pensamiento_actual}</p>
-                        <p className="thought-time">
-                            {estado.estado.tiempo ? new Date(estado.estado.tiempo).toLocaleString() : ''}
-                        </p>
+                        <p className="thought-time">{toChileTime(estado.estado.tiempo)}</p>
                     </div>
                 )}
 
@@ -149,7 +148,7 @@ const Control = ({ setAuth }) => {
                                             <td>{p.sl?.toFixed(5)}</td>
                                             <td>{p.tp?.toFixed(5)}</td>
                                             <td>${p.tamano_usd?.toFixed(0)}</td>
-                                            <td className="time">{p.apertura ? new Date(p.apertura).toLocaleTimeString() : '---'}</td>
+                                            <td className="time">{toChileTime(p.apertura, 'time')}</td>
                                         </tr>
                                     ))
                                 )}
@@ -167,7 +166,7 @@ const Control = ({ setAuth }) => {
                         ) : (
                             logs.map((log, i) => (
                                 <div key={i} className={getLogClass(log.nivel)}>
-                                    <span className="log-time">{log.tiempo ? new Date(log.tiempo).toLocaleTimeString() : '??:??'}</span>
+                                    <span className="log-time">{toChileTime(log.tiempo, 'time')}</span>
                                     <span className="log-nivel">{log.nivel}</span>
                                     <span className="log-modulo">[{log.modulo}]</span>
                                     <span className="log-msg">{log.mensaje}</span>

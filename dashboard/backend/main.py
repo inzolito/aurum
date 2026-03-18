@@ -191,19 +191,31 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
         try:
             db.cursor.execute("SELECT COUNT(*) FROM registro_operaciones WHERE cerrado_en IS NULL")
             result["posiciones_abiertas"] = db.cursor.fetchone()[0] or 0
-        except Exception:
+        except Exception as e1:
             db.conn.rollback()
+            print(f"[PRISM] posiciones query1 failed ({e1}), trying precio_cierre fallback")
+            try:
+                db.cursor.execute("SELECT COUNT(*) FROM registro_operaciones WHERE precio_cierre IS NULL")
+                result["posiciones_abiertas"] = db.cursor.fetchone()[0] or 0
+            except Exception:
+                db.conn.rollback()
 
         try:
             db.cursor.execute(
-                "SELECT COUNT(*), COALESCE(SUM(pnl_usd), 0) FROM registro_operaciones WHERE DATE(tiempo_apertura) = CURRENT_DATE"
+                "SELECT COUNT(*), COALESCE(SUM(pnl_usd), 0) FROM registro_operaciones WHERE DATE(tiempo) = CURRENT_DATE"
             )
             row = db.cursor.fetchone()
             if row:
                 result["trades_hoy"] = row[0] or 0
                 result["pnl_hoy"] = float(row[1] or 0)
-        except Exception:
+        except Exception as e2:
             db.conn.rollback()
+            print(f"[PRISM] trades_hoy query failed ({e2}), trying total fallback")
+            try:
+                db.cursor.execute("SELECT COUNT(*) FROM registro_operaciones")
+                result["trades_hoy"] = db.cursor.fetchone()[0] or 0
+            except Exception:
+                db.conn.rollback()
 
     return result
 
@@ -219,11 +231,11 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
             db.cursor.execute("""
                 SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
-                       ro.tamano_real_usd, ro.tiempo_apertura
+                       ro.tamano_real_usd, ro.tiempo
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
                 WHERE ro.cerrado_en IS NULL
-                ORDER BY ro.tiempo_apertura DESC
+                ORDER BY ro.tiempo DESC
             """)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp", "tamano_usd", "apertura"]
             rows = db.cursor.fetchall()

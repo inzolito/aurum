@@ -28,7 +28,7 @@ function App() {
         <Route path="/dashboard" element={<PrivateRoute element={<Dashboard setAuth={setIsAuthenticated} />} />} />
         <Route path="/control"   element={<PrivateRoute element={<Control   setAuth={setIsAuthenticated} />} />} />
         <Route path="/noticias"  element={<PrivateRoute element={<Noticias  setAuth={setIsAuthenticated} />} />} />
-        <Route path="/" element={<Navigate to="/dashboard" />} />
+        <Route path="/" element={<Navigate to="/control" />} />
       </Routes>
     </Router>
   );

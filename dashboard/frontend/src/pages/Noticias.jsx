@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Clock } from 'lucide-react';
 import SideNav from '../components/SideNav';
+import { toChileTime } from '../utils/time';
 
 const ImpactoBadge = ({ impacto, tipo }) => {
     if (tipo === 'filtrada') return <span className="badge badge-gray">Ignorada</span>;
@@ -99,11 +100,7 @@ const Noticias = ({ setAuth }) => {
                                 <div className="news-meta">
                                     <span className="news-fuente">{n.fuente}</span>
                                     <span className="news-time">
-                                        {n.published_at
-                                            ? new Date(n.published_at).toLocaleString('es-CR', { dateStyle: 'short', timeStyle: 'short' })
-                                            : n.timestamp
-                                                ? new Date(n.timestamp).toLocaleString('es-CR', { dateStyle: 'short', timeStyle: 'short' })
-                                                : '---'}
+                                        {toChileTime(n.published_at || n.timestamp)}
                                     </span>
                                     <ImpactoBadge impacto={n.impacto} tipo={n.tipo} />
                                 </div>

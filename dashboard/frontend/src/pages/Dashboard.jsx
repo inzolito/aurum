@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Clock } from 'lucide-react';
 import SideNav from '../components/SideNav';
+import { toChileTime } from '../utils/time';
 
 const Dashboard = ({ setAuth }) => {
     const [data, setData] = useState([]);
@@ -28,7 +29,7 @@ const Dashboard = ({ setAuth }) => {
 
     useEffect(() => {
         fetchData();
-        const interval = setInterval(fetchData, 30000);
+        const interval = setInterval(fetchData, 15000);
         return () => clearInterval(interval);
     }, []);
 
@@ -49,7 +50,7 @@ const Dashboard = ({ setAuth }) => {
                     </div>
                     <div className="status-badge">
                         <Clock size={16} />
-                        <span>Last Update: {timestamp}</span>
+                        <span>Last Update: {timestamp ? toChileTime(timestamp) : '---'}</span>
                     </div>
                 </header>
 
@@ -83,7 +84,7 @@ const Dashboard = ({ setAuth }) => {
                                             <td>{item.nlp?.toFixed(2) || '0.00'}</td>
                                             <td>{item.flow?.toFixed(2) || '0.00'}</td>
                                             <td>{item.sniper?.toFixed(2) || '0.00'}</td>
-                                            <td className="time">{new Date(item.fecha).toLocaleTimeString()}</td>
+                                            <td className="time">{toChileTime(item.fecha, 'time')}</td>
                                         </tr>
                                     ))
                                 )}
