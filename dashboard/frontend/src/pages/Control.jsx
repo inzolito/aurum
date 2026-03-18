@@ -231,7 +231,7 @@ const Control = ({ setAuth }) => {
                             disabled={deploying}
                         >
                             <RefreshCw size={16} className={deploying ? 'spin' : ''} />
-                            {deploying ? 'Rezando...' : 'Modo Dios'}
+                            {deploying ? 'Evolucionando...' : 'Selección Natural'}
                         </button>
                     </div>
                     {deployLog && (

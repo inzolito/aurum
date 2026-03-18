@@ -10,20 +10,12 @@ sys.path.insert(0, ROOT)
 from dotenv import load_dotenv
 load_dotenv(os.path.join(ROOT, '.env'))
 
-import psycopg2
 from datetime import datetime, timezone, timedelta
+from config.db_connector import DBConnector
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 TOKEN      = os.getenv('METAAPI_TOKEN', '')
 ACCOUNT_ID = os.getenv('METAAPI_ACCOUNT_ID', '')
-
-DB_CONF = dict(
-    host    =os.getenv('DB_HOST', 'localhost'),
-    port    =int(os.getenv('DB_PORT', '5432')),
-    dbname  =os.getenv('DB_NAME'),
-    user    =os.getenv('DB_USER'),
-    password=os.getenv('DB_PASSWORD'),
-)
 
 def _g(obj, *keys, default=None):
     """Obtiene un campo de un dict o de un objeto con atributos."""
@@ -44,9 +36,18 @@ def _ts(val):
     return None
 
 # ─── DB helpers ───────────────────────────────────────────────────────────────
-def get_activos(cur):
-    cur.execute("SELECT simbolo, id FROM activos")
-    return {r[0]: r[1] for r in cur.fetchall()}
+def db_connect():
+    db = DBConnector()
+    if not db.conectar():
+        os.environ['DB_HOST'] = 'localhost'
+        if not db.conectar():
+            raise Exception("No se pudo conectar a la base de datos")
+    return db
+
+def get_activos(db):
+    with db._lock:
+        db.cursor.execute("SELECT simbolo, id FROM activos")
+        return {r[0]: r[1] for r in db.cursor.fetchall()}
 
 def match_symbol(symbol, activos_map):
     """Busca activo_id para un símbolo, tolerando sufijos de broker (e.g. XAUUSDm)."""
@@ -63,9 +64,10 @@ def match_symbol(symbol, activos_map):
             return aid
     return None
 
-def ticket_exists(cur, ticket):
-    cur.execute("SELECT 1 FROM registro_operaciones WHERE ticket_mt5 = %s", (ticket,))
-    return cur.fetchone() is not None
+def ticket_exists(db, ticket):
+    with db._lock:
+        db.cursor.execute("SELECT 1 FROM registro_operaciones WHERE ticket_mt5 = %s", (ticket,))
+        return db.cursor.fetchone() is not None
 
 def to_ticket(raw):
     try:
@@ -123,13 +125,13 @@ async def fetch_metaapi(dias):
     return open_pos, deals
 
 # ─── Procesamiento ────────────────────────────────────────────────────────────
-def process_open(cur, activos, open_pos):
+def process_open(db, activos, open_pos):
     count = 0
     for p in open_pos:
         symbol = _g(p, 'symbol')
         ticket = to_ticket(_g(p, 'id'))
 
-        if ticket_exists(cur, ticket):
+        if ticket_exists(db, ticket):
             continue
 
         activo_id = match_symbol(symbol, activos)
@@ -140,25 +142,25 @@ def process_open(cur, activos, open_pos):
         ptype = _g(p, 'type', 'positionType', default='')
         tipo  = 'COMP' if 'BUY' in str(ptype).upper() else 'VENT'
 
-        cur.execute("""
-            INSERT INTO registro_operaciones
-                (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
-                 precio_entrada, stop_loss, take_profit, tiempo_entrada)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            activo_id, ticket, tipo,
-            float(_g(p, 'volume', default=0) or 0),
-            float(_g(p, 'openPrice', 'price', default=0) or 0),
-            float(_g(p, 'stopLoss', 'sl', default=0) or 0),
-            float(_g(p, 'takeProfit', 'tp', default=0) or 0),
-            _ts(_g(p, 'time', 'openTime')),
-        ))
+        with db._lock:
+            db.cursor.execute("""
+                INSERT INTO registro_operaciones
+                    (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
+                     precio_entrada, stop_loss, take_profit, tiempo_entrada)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                activo_id, ticket, tipo,
+                float(_g(p, 'volume', default=0) or 0),
+                float(_g(p, 'openPrice', 'price', default=0) or 0),
+                float(_g(p, 'stopLoss', 'sl', default=0) or 0),
+                float(_g(p, 'takeProfit', 'tp', default=0) or 0),
+                _ts(_g(p, 'time', 'openTime')),
+            ))
         count += 1
         print(f"  [+] Abierta: {symbol} {tipo} ticket={ticket}")
     return count
 
-def process_deals(cur, activos, deals):
-    # Agrupar por positionId: IN y OUT
+def process_deals(db, activos, deals):
     ins, outs = {}, {}
     for d in deals:
         entry = str(_g(d, 'entryType', 'entry', default='')).upper()
@@ -173,7 +175,7 @@ def process_deals(cur, activos, deals):
         symbol = _g(d_in, 'symbol', default='')
         ticket = to_ticket(_g(d_in, 'id', default=pid))
 
-        if ticket_exists(cur, ticket):
+        if ticket_exists(db, ticket):
             continue
 
         activo_id = match_symbol(symbol, activos)
@@ -184,23 +186,22 @@ def process_deals(cur, activos, deals):
         tipo  = 'COMP' if 'BUY' in dtype else 'VENT'
         t_in  = _ts(_g(d_in, 'time'))
 
-        d_out = outs.get(pid)
-        pnl      = float(_g(d_out, 'profit', default=0) or 0) if d_out else None
-        resultado = None
-        if d_out and pnl is not None:
-            resultado = 'WIN' if pnl >= 0 else 'LOSS'
+        d_out     = outs.get(pid)
+        pnl       = float(_g(d_out, 'profit', default=0) or 0) if d_out else None
+        resultado = ('WIN' if pnl >= 0 else 'LOSS') if d_out else None
 
-        cur.execute("""
-            INSERT INTO registro_operaciones
-                (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
-                 precio_entrada, tiempo_entrada, pnl_usd, resultado_final)
-            VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-        """, (
-            activo_id, ticket, tipo,
-            float(_g(d_in, 'volume', default=0) or 0),
-            float(_g(d_in, 'price', default=0) or 0),
-            t_in, pnl, resultado,
-        ))
+        with db._lock:
+            db.cursor.execute("""
+                INSERT INTO registro_operaciones
+                    (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
+                     precio_entrada, tiempo_entrada, pnl_usd, resultado_final)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                activo_id, ticket, tipo,
+                float(_g(d_in, 'volume', default=0) or 0),
+                float(_g(d_in, 'price', default=0) or 0),
+                t_in, pnl, resultado,
+            ))
         count += 1
 
     return count
@@ -218,16 +219,15 @@ def main():
 
     open_pos, deals = asyncio.run(fetch_metaapi(args.dias))
 
-    db  = psycopg2.connect(**DB_CONF)
-    cur = db.cursor()
-    activos = get_activos(cur)
+    db = db_connect()
+    activos = get_activos(db)
     print(f"[SYNC] Activos en BD: {list(activos.keys())}")
 
-    n_open   = process_open(cur, activos, open_pos)
-    n_closed = process_deals(cur, activos, deals)
-    db.commit()
-    cur.close()
-    db.close()
+    n_open   = process_open(db, activos, open_pos)
+    n_closed = process_deals(db, activos, deals)
+    with db._lock:
+        db.conn.commit()
+    db.desconectar()
 
     print(f"\n[SYNC] ✓ Importadas: {n_open} abiertas + {n_closed} cerradas")
 
