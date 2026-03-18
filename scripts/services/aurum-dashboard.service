@@ -1,0 +1,21 @@
+[Unit]
+Description=Aurum Prism — Dashboard Web (FastAPI)
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aurum_bot
+Group=root
+WorkingDirectory=/opt/aurum
+EnvironmentFile=/opt/aurum/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/aurum/venv/bin/python dashboard/backend/main.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-dashboard
+
+[Install]
+WantedBy=multi-user.target
