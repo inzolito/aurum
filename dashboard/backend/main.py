@@ -429,6 +429,47 @@ async def deploy(token: str = Depends(oauth2_scheme)):
         return {"status": "error", "output": str(e), "returncode": -1}
 
 
+@app.post("/api/control/restart-bot")
+async def restart_bot(token: str = Depends(oauth2_scheme)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    import asyncio
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "systemctl", "restart", "aurum-core", "aurum-hunter", "aurum-telegram",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+        output = stdout.decode(errors="replace") or "Servicios reiniciados."
+        return {"status": "ok" if proc.returncode == 0 else "error", "output": output}
+    except Exception as e:
+        return {"status": "error", "output": str(e)}
+
+
+@app.post("/api/control/test-bot")
+async def test_bot(token: str = Depends(oauth2_scheme)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    import asyncio
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "sudo", "systemctl", "is-active", "aurum-core", "aurum-hunter", "aurum-telegram",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        stdout, _ = await asyncio.wait_for(proc.communicate(), timeout=10)
+        lines = stdout.decode(errors="replace").strip().splitlines()
+        services = ["aurum-core", "aurum-hunter", "aurum-telegram"]
+        result = {s: (lines[i] if i < len(lines) else "unknown") for i, s in enumerate(services)}
+        all_ok = all(v == "active" for v in result.values())
+        return {"status": "ok" if all_ok else "degraded", "services": result}
+    except Exception as e:
+        return {"status": "error", "services": {}, "output": str(e)}
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "operational", "version": "Prism 1.0"}

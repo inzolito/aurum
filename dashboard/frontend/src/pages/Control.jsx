@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, Activity, Wallet, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, Activity, Wallet, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap, ChevronDown, ChevronRight, RotateCcw, Stethoscope } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { toChileTime } from '../utils/time';
 
@@ -73,6 +73,10 @@ const Control = ({ setAuth }) => {
     const [deployLog, setDeployLog] = useState(null);
     const [syncing, setSyncing] = useState(false);
     const [syncLog, setSyncLog] = useState(null);
+    const [restarting, setRestarting] = useState(false);
+    const [restartLog, setRestartLog] = useState(null);
+    const [testing, setTesting] = useState(false);
+    const [testLog, setTestLog] = useState(null);
     const [expandedRow, setExpandedRow] = useState(null);
 
     const token = localStorage.getItem('token');
@@ -135,6 +139,42 @@ const Control = ({ setAuth }) => {
         }
     };
 
+    const handleRestart = async () => {
+        if (!window.confirm('¿Reiniciar los servicios del bot? (aurum-core, aurum-hunter, aurum-telegram)')) return;
+        setRestarting(true);
+        setRestartLog(null);
+        try {
+            const res = await axios.post('/api/control/restart-bot', {}, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 35000,
+            });
+            setRestartLog({ status: res.data.status, output: res.data.output || 'Servicios reiniciados.' });
+            if (res.data.status === 'ok') setTimeout(fetchAll, 5000);
+        } catch (err) {
+            setRestartLog({ status: 'error', output: err.message });
+        } finally {
+            setRestarting(false);
+        }
+    };
+
+    const handleTest = async () => {
+        setTesting(true);
+        setTestLog(null);
+        try {
+            const res = await axios.post('/api/control/test-bot', {}, {
+                headers: { Authorization: `Bearer ${token}` },
+                timeout: 15000,
+            });
+            const svcs = res.data.services || {};
+            const lines = Object.entries(svcs).map(([k, v]) => `${k}: ${v}`).join('\n');
+            setTestLog({ status: res.data.status, output: lines || 'Sin datos.' });
+        } catch (err) {
+            setTestLog({ status: 'error', output: err.message });
+        } finally {
+            setTesting(false);
+        }
+    };
+
     const handleLogout = () => {
         localStorage.removeItem('token');
         setAuth(false);
@@ -163,6 +203,14 @@ const Control = ({ setAuth }) => {
                         <p className="subtitle">Estado operativo en tiempo real</p>
                     </div>
                     <div className="header-actions">
+                        <button className={`action-btn ${testing ? 'deploying' : ''}`} onClick={handleTest} disabled={testing} title="Verificar estado de los servicios del bot">
+                            <Stethoscope size={15} className={testing ? 'spin' : ''} />
+                            <span>{testing ? 'Testeando...' : 'Test Bot'}</span>
+                        </button>
+                        <button className={`action-btn ${restarting ? 'deploying' : ''}`} onClick={handleRestart} disabled={restarting} title="Reiniciar aurum-core, aurum-hunter y aurum-telegram">
+                            <RotateCcw size={15} className={restarting ? 'spin' : ''} />
+                            <span>{restarting ? 'Reiniciando...' : 'Reiniciar Bot'}</span>
+                        </button>
                         <button className={`action-btn ${syncing ? 'deploying' : ''}`} onClick={handleSync} disabled={syncing} title="Importar operaciones MT5 → BD">
                             <DatabaseZap size={15} className={syncing ? 'spin' : ''} />
                             <span>{syncing ? 'Sincronizando...' : 'Sync MT5'}</span>
@@ -179,8 +227,20 @@ const Control = ({ setAuth }) => {
                 </header>
 
                 {/* Logs inline de acciones */}
-                {(syncLog || deployLog) && (
-                    <div style={{ marginBottom: 20 }}>
+                {(syncLog || deployLog || restartLog || testLog) && (
+                    <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        {testLog && (
+                            <div className={`deploy-log ${testLog.status === 'ok' ? 'deploy-ok' : testLog.status === 'degraded' ? 'deploy-error' : 'deploy-error'}`}>
+                                <p className="deploy-log-status">{testLog.status === 'ok' ? '✓ Todos los servicios activos' : testLog.status === 'degraded' ? '⚠ Servicios degradados' : '✗ Error de test'}</p>
+                                <pre className="deploy-log-output">{testLog.output}</pre>
+                            </div>
+                        )}
+                        {restartLog && (
+                            <div className={`deploy-log ${restartLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
+                                <p className="deploy-log-status">{restartLog.status === 'ok' ? '✓ Bot reiniciado' : '✗ Error al reiniciar'}</p>
+                                <pre className="deploy-log-output">{restartLog.output}</pre>
+                            </div>
+                        )}
                         {syncLog && (
                             <div className={`deploy-log ${syncLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
                                 <p className="deploy-log-status">{syncLog.status === 'ok' ? '✓ Sync exitoso' : '✗ Error sync'}</p>
@@ -188,7 +248,7 @@ const Control = ({ setAuth }) => {
                             </div>
                         )}
                         {deployLog && (
-                            <div className={`deploy-log ${deployLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`} style={{ marginTop: syncLog ? 8 : 0 }}>
+                            <div className={`deploy-log ${deployLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
                                 <p className="deploy-log-status">{deployLog.status === 'ok' ? '✓ Deploy exitoso' : '✗ Error en deploy'}</p>
                                 <pre className="deploy-log-output">{deployLog.output}</pre>
                             </div>
