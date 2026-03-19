@@ -16,7 +16,7 @@ const SideNav = ({ onLogout, botVersion }) => {
     return (
         <nav className="side-nav">
             {/* Marca + versión — siempre arriba en desktop */}
-            <div className="nav-brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 4px 8px', gap: 3 }}>
+            <div className="nav-brand" style={{ flexDirection: 'column', alignItems: 'center', padding: '4px 4px 8px', gap: 3 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: 1 }}>AURUM</span>
                 {botVersion && (
                     <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: 0.5 }}>

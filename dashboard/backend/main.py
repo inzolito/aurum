@@ -25,7 +25,7 @@ app = FastAPI(title="Aurum Prism API")
 _mt5_cache      = {}
 _mt5_cache_ts   = 0.0
 _mt5_cache_lock = _threading.Lock()
-_MT5_TTL        = 30  # segundos
+_MT5_TTL        = 5   # segundos
 
 def _get_mt5_cuenta():
     """Lee balance/equity/pnl desde estado_bot (escrito por aurum-core cada ciclo)."""
@@ -260,20 +260,8 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
     result["equity"]   = cuenta.get("equity")
     result["currency"] = cuenta.get("currency", "USD")
 
-    # PnL flotante: suma de pnl_usd de posiciones abiertas en BD
-    # (más fiable que account_info().profit de MetaAPI que devuelve 0)
-    with db._lock:
-        try:
-            db.cursor.execute("""
-                SELECT COALESCE(SUM(pnl_usd), 0)
-                FROM registro_operaciones
-                WHERE resultado_final IS NULL AND ticket_mt5 != 999999
-                  AND pnl_usd IS NOT NULL
-            """)
-            result["pnl_flotante"] = float(db.cursor.fetchone()[0] or 0)
-        except Exception:
-            db.conn.rollback()
-            result["pnl_flotante"] = cuenta.get("pnl_flotante", 0)
+    # PnL flotante: preferir estado_bot.pnl_flotante (escrito por el bot en vivo)
+    result["pnl_flotante"] = cuenta.get("pnl_flotante", 0)
 
     return result
 

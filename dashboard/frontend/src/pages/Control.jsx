@@ -277,6 +277,7 @@ const Control = ({ setAuth, botVersion }) => {
     };
 
     return (
+        <>
         <div className="dashboard-layout">
             <SideNav onLogout={handleLogout} botVersion={botVersion} />
             <main className="main-content">
@@ -302,11 +303,6 @@ const Control = ({ setAuth, botVersion }) => {
                         <button className={`action-btn action-btn-primary desktop-only ${deploying ? 'deploying' : ''}`} onClick={handleDeploy} disabled={deploying}>
                             <RefreshCw size={15} className={deploying ? 'spin' : ''} />
                             <span>{deploying ? 'Impactando...' : 'El Meteorito'}</span>
-                        </button>
-
-                        {/* Mobile: botón único que abre panel */}
-                        <button className="action-btn mobile-only" onClick={() => setMobileMenuOpen(o => !o)}>
-                            <RefreshCw size={16} />
                         </button>
 
                         <div className="status-badge">
@@ -514,6 +510,12 @@ const Control = ({ setAuth, botVersion }) => {
                 </section>
             </main>
         </div>
+
+        {/* FAB mobile — abre panel de acciones */}
+        <button className="mobile-fab" onClick={() => setMobileMenuOpen(o => !o)}>
+            <RefreshCw size={18} />
+        </button>
+        </>
     );
 };
 

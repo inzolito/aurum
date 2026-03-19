@@ -1,6 +1,7 @@
 .desktop-only { display: flex; }
 .mobile-only  { display: none; }
 .mobile-action-sheet { display: none; }
+.mobile-fab   { display: none; }
 
 @keyframes market-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }
@@ -647,6 +648,24 @@ body {
   .nav-logout-desktop { display: none; }
   .desktop-only { display: none !important; }
   .mobile-only  { display: flex !important; }
+  .mobile-fab {
+    display: flex;
+    position: fixed;
+    bottom: 72px;
+    right: 16px;
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--accent-primary);
+    color: #fff;
+    border: none;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+    z-index: 150;
+  }
+  .nav-brand { display: none !important; }
 
   /* Main content */
   .main-content {
