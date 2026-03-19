@@ -270,12 +270,19 @@ class RiskModule:
         # Se llama desde manager.py DESPUES de que los workers voten, no aquí.
         # Esto garantiza que el dashboard siempre muestre votos reales.
 
-        # Verificación 4: Protección de Capital — DESHABILITADO en modo demo
-        # max_perdida_flotante = self.db.get_parametros().get("GERENTE.max_drawdown_usd", 1000.0)
-        # acc_info = mt5_lib.account_info()
-        # if acc_info and acc_info.profit < -max_perdida_flotante:
-        #     print(f"[RISK] BLOQUEO DE SEGURIDAD: Perdida flotante supera umbral.")
-        #     return False
+        # Verificación 4: Protección de Capital — Drawdown máximo flotante
+        params = self.db.get_parametros()
+        max_dd_pct = float(params.get("GERENTE.max_drawdown_pct", 6.7)) / 100.0
+        balance = self._obtener_balance()
+        limite_usd = balance * max_dd_pct
+        acc_info = mt5_lib.account_info()
+        if acc_info and acc_info.profit < -limite_usd:
+            print(
+                f"[RISK] BLOQUEO DRAWDOWN: Perdida flotante ${acc_info.profit:.2f} supera "
+                f"limite ${-limite_usd:.2f} ({max_dd_pct*100:.1f}% de ${balance:.0f}). "
+                f"No se abren nuevas ordenes."
+            )
+            return False
 
         print(f"[RISK] OK: {simbolo_interno} ({simbolo_broker}) despejado para operar.")
         return True

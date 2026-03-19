@@ -175,7 +175,7 @@ class DBConnector:
         "GERENTE.riesgo_trade_pct": 1.0,
         "GERENTE.ratio_tp":         2.0,
         "GERENTE.sl_atr_mult":      1.5,
-        "GERENTE.max_drawdown_usd": 1000.0,   # Umbral de equity para Kill-Switch
+        "GERENTE.max_drawdown_pct": 6.7,       # Max perdida flotante en % del balance
         "TENDENCIA.peso_voto":      0.40,
         "NLP.peso_voto":            0.30,
         "ORDER_FLOW.peso_voto":     0.15,

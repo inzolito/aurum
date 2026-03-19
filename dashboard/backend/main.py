@@ -599,7 +599,7 @@ _PARAM_RANGOS = {
     "GERENTE.riesgo_trade_pct": (0.10, 5.00),
     "GERENTE.ratio_tp":         (1.00, 5.00),
     "GERENTE.sl_atr_mult":      (0.50, 4.00),
-    "GERENTE.max_drawdown_usd": (100,  50000),
+    "GERENTE.max_drawdown_pct": (1.0,  20.0),
     "TENDENCIA.peso_voto":      (0.05, 0.80),
     "NLP.peso_voto":            (0.05, 0.80),
     "ORDER_FLOW.peso_voto":     (0.00, 0.80),
