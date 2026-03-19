@@ -93,10 +93,22 @@ class RiskModule:
         lotes = riesgo_ajustado / dollar_risk_per_lot
 
         # 8. Respetar límites del broker (volume_min, volume_max, volume_step)
+        lotes_calculados = lotes
         lotes = max(info.volume_min, min(info.volume_max, lotes))
         step  = info.volume_step if info.volume_step > 0 else 0.01
         lotes = round(round(lotes / step) * step, 10)
         lotes = max(info.volume_min, lotes)
+
+        # Guardia de sobrerriesgo: si el lote mínimo obliga a arriesgar >2.5x lo planeado, abortar.
+        # Ocurre en metales preciosos con ATR alto (ej. XAGUSD en días volátiles).
+        riesgo_real = lotes * dollar_risk_per_lot
+        if lotes_calculados < info.volume_min and riesgo_real > riesgo_ajustado * 2.5:
+            print(
+                f"[RISK] ABORTADO {simbolo_broker}: lote mínimo ({info.volume_min}) forzaría "
+                f"riesgo real ${riesgo_real:.2f} vs planeado ${riesgo_ajustado:.2f} "
+                f"({riesgo_real/riesgo_ajustado:.1f}x). Orden cancelada."
+            )
+            return None, None, None
 
         # 9. Precios finales redondeados a la precisión del símbolo
         digits = info.digits
