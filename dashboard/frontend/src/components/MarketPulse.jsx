@@ -71,7 +71,7 @@ const MarketPulse = ({ pulso }) => {
                 Activos
             </p>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {Object.keys(ASSET_SESSIONS).map(sym => {
+                {(pulso && pulso.length > 0 ? pulso.map(a => a.simbolo) : Object.keys(ASSET_SESSIONS)).map(sym => {
                     const inSession = isAssetInSession(sym);
                     const data = bySymbol[sym];
                     const dir = data ? DIR[data.decision] : null;

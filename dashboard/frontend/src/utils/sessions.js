@@ -6,17 +6,30 @@ export const SESSIONS = [
 ];
 
 export const ASSET_SESSIONS = {
-    XAUUSD: ['london', 'newyork'],
-    XAGUSD: ['london', 'newyork'],
+    // Materias primas — London + NY (Gold/Silver también Sydney)
+    XAUUSD: ['sydney', 'london', 'newyork'],
+    XAGUSD: ['sydney', 'london', 'newyork'],
     XTIUSD: ['london', 'newyork'],
     XBRUSD: ['london', 'newyork'],
+    // Índices USA — solo horario NYSE/NASDAQ
     US30:   ['newyork'],
     US500:  ['newyork'],
     USTEC:  ['newyork'],
-    EURUSD: ['tokyo', 'london', 'newyork'],
+    // Forex majors
+    EURUSD: ['london', 'newyork'],
     GBPUSD: ['london', 'newyork'],
-    USDJPY: ['tokyo', 'london'],
-    GBPJPY: ['tokyo', 'london'],
+    USDJPY: ['sydney', 'tokyo', 'london'],
+    GBPJPY: ['sydney', 'tokyo', 'london'],
+    EURGBP: ['london', 'newyork'],
+    USDCAD: ['london', 'newyork'],
+    USDCHF: ['london', 'newyork'],
+    EURCAD: ['london', 'newyork'],
+    USDMXN: ['london', 'newyork'],
+    // Pares Oceanía/Asia
+    AUDUSD: ['sydney', 'tokyo', 'london', 'newyork'],
+    NZDUSD: ['sydney', 'tokyo', 'london', 'newyork'],
+    AUDCAD: ['sydney', 'london', 'newyork'],
+    USDCNH: ['sydney', 'tokyo'],
 };
 
 export function isMarketWeekend() {
