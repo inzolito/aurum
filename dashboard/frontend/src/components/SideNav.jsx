@@ -15,7 +15,14 @@ const SideNav = ({ onLogout, botVersion }) => {
 
     return (
         <nav className="side-nav">
-            <div className="nav-brand" title={botVersion ? `Aurum ${botVersion}` : 'Aurum'}>▽</div>
+            <div className="nav-brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 4px 8px', gap: 2 }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: 1 }}>AURUM</span>
+                {botVersion && (
+                    <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: 0.5 }}>
+                        {botVersion}
+                    </span>
+                )}
+            </div>
             <div className="nav-items">
                 {navItems.map(item => (
                     <div
@@ -29,15 +36,6 @@ const SideNav = ({ onLogout, botVersion }) => {
                     </div>
                 ))}
             </div>
-            {botVersion && (
-                <div style={{
-                    fontSize: 9, color: 'var(--text-secondary)', textAlign: 'center',
-                    fontFamily: 'monospace', letterSpacing: 0.5, padding: '0 4px 8px',
-                    lineHeight: 1.3,
-                }}>
-                    {botVersion}
-                </div>
-            )}
             <button onClick={onLogout} className="logout-btn">
                 <LogOut size={20} />
             </button>
