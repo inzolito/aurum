@@ -49,9 +49,20 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
 
     return (
         <div style={{ minWidth: 150, width: '100%' }}>
+            {/* Precio de entrada encima */}
+            <div style={{ position: 'relative', height: 13, marginBottom: 2 }}>
+                <span style={{
+                    position: 'absolute', left: `${entryPct}%`,
+                    fontSize: 9, color: '#6b7280', lineHeight: 1,
+                    transform: 'translateX(-50%)', whiteSpace: 'nowrap',
+                }}>
+                    {fmt(entry)}
+                </span>
+            </div>
+
             {/* Barra uniforme */}
-            <div style={{ position: 'relative', height: 8, borderRadius: 4,
-                background: '#d1d5db', overflow: 'hidden' }}>
+            <div style={{ position: 'relative', height: 11, borderRadius: 2,
+                background: 'rgb(243 244 246)', overflow: 'hidden' }}>
 
                 {/* Fill: desde entry hasta precio actual */}
                 {needlePct != null && (
@@ -72,23 +83,6 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
                     transform: 'translateX(-50%)',
                     zIndex: 2,
                 }} />
-            </div>
-
-            {/* Precios */}
-            <div style={{ position: 'relative', height: 11, marginTop: 2 }}>
-                <span style={{ position: 'absolute', left: 0, fontSize: 9,
-                    color: '#dc2626', lineHeight: 1 }}>
-                    {fmt(isLong ? sl : tp)}
-                </span>
-                <span style={{ position: 'absolute', left: `${entryPct}%`, fontSize: 9,
-                    color: '#6b7280', lineHeight: 1,
-                    transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
-                    {fmt(entry)}
-                </span>
-                <span style={{ position: 'absolute', right: 0, fontSize: 9,
-                    color: '#16a34a', lineHeight: 1 }}>
-                    {fmt(isLong ? tp : sl)}
-                </span>
             </div>
         </div>
     );
