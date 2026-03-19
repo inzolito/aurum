@@ -301,6 +301,14 @@ class Manager:
                 veredicto = max(0.0, veredicto + ajuste_vix)
             elif veredicto < 0:
                 veredicto = min(0.0, veredicto - ajuste_vix)
+
+        # --- AJUSTE CROSS INTERMARKET (P-5) ---
+        # Cross devuelve float: negativo si contradice la dirección, positivo si la confirma.
+        # Ejemplo: DXY fuerte + BUY en plata → Cross=-1.0 → ajuste=-0.15 → veredicto reducido.
+        ajuste_cross = v_cross.get("ajuste", 0.0)
+        if isinstance(ajuste_cross, (int, float)) and ajuste_cross != 0.0:
+            veredicto = round(max(-1.0, min(1.0, veredicto + ajuste_cross)), 4)
+            print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f} → Veredicto: {veredicto:+.4f}")
         
         # --- FUERZA DOMINANTE (V12.0) ---
         pesos_votos = {
@@ -947,8 +955,8 @@ class Manager:
         (TrendWorker al maximo) y el analisis macroeconomico (NLPWorker).
         """
         # Condiciones de divergencia: precio explotando pero IA dice neutral/contrario
-        divergencia_alcista = (v_trend >= 0.90) and (v_nlp <= 0.0)
-        divergencia_bajista = (v_trend <= -0.90) and (v_nlp >= 0.0)
+        divergencia_alcista = (v_trend >= 0.70) and (v_nlp <= 0.15)
+        divergencia_bajista = (v_trend <= -0.70) and (v_nlp >= -0.15)
 
         if divergencia_alcista or divergencia_bajista:
             # notificar_divergencia(simbolo, v_trend, v_nlp)

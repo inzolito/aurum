@@ -107,7 +107,7 @@ class CrossWorker:
             "var_oil": round(var_oil, 2),
             "divergencia": divergencia,
             "black_swan": black_swan,
-            "ajuste": "Aportando Confianza" if voto > 0 else ("Restando Confianza" if voto < 0 else "Neutral")
+            "ajuste": round(voto * 0.15, 2),  # float: penaliza si contradice, bonifica si confirma
         }
 
     def _obtener_variacion(self, simbolo_broker: str) -> float:
