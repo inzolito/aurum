@@ -670,18 +670,23 @@ class Manager:
             # Solo gestionamos posiciones del bot (opcional: filtrar por magic number)
             # if pos.magic != 20250101: continue
 
-            precio_actual = mt5_api.symbol_info_tick(pos.symbol).bid if pos.type == mt5_api.POSITION_TYPE_BUY \
-                            else mt5_api.symbol_info_tick(pos.symbol).ask
+            # Usar price_current del objeto (MetaAPI lo provee directamente, más fiable que tick)
+            precio_actual = getattr(pos, 'price_current', None)
+            if not precio_actual:
+                tick = mt5_api.symbol_info_tick(pos.symbol)
+                if tick:
+                    precio_actual = tick.bid if pos.type == mt5_api.POSITION_TYPE_BUY else tick.ask
 
             # Persistir precio actual para el dashboard (siempre, antes de cualquier filtro)
-            try:
-                self.db.cursor.execute(
-                    "UPDATE registro_operaciones SET precio_actual = %s WHERE ticket_mt5 = %s",
-                    (precio_actual, pos.ticket)
-                )
-                self.db.conn.commit()
-            except Exception:
-                pass
+            if precio_actual:
+                try:
+                    self.db.cursor.execute(
+                        "UPDATE registro_operaciones SET precio_actual = %s WHERE ticket_mt5 = %s",
+                        (precio_actual, pos.ticket)
+                    )
+                    self.db.conn.commit()
+                except Exception:
+                    pass
 
             # Si el SL ya esta en el precio de entrada (o mejor), ignorar breakeven
             if (pos.type == mt5_api.POSITION_TYPE_BUY and pos.sl >= pos.price_open) or \
