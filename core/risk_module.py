@@ -20,78 +20,111 @@ class RiskModule:
         self.mt5 = mt5
 
     # ------------------------------------------------------------------
-    # Pilar 1: Cálculo Dinámico de Lotaje
+    # Pilar 1: Gestión de Riesgo Unificada por Capital
     # ------------------------------------------------------------------
 
-    def calcular_lotes_dinamicos(self, veredicto: float) -> float:
+    def calcular_riesgo_completo(
+        self, simbolo_broker: str, direccion: str, veredicto: float
+    ) -> tuple[float, float, float] | tuple[None, None, None]:
         """
-        Calcula lotaje basado en la convicción del veredicto (interpolación lineal).
-        Ajuste Optimizado:
-        THRESHOLD_ENTRY = 0.45 -> Lote 0.05
-        THRESHOLD_FULL  = 0.80 -> Lote 0.12
+        V16: Gestión de riesgo unificada basada en % de capital.
+
+        Garantiza que la pérdida real en SL sea siempre RIESGO_BASE_PCT * balance,
+        independientemente del instrumento (forex, índices, commodities).
+
+        Lotaje y SL/TP se calculan juntos porque son inseparables:
+          - dist_sl (puntos) = ATR * SL_ATR_MULT
+          - riesgo_usd       = balance * RIESGO_BASE_PCT * factor_conviccion
+          - lotes            = riesgo_usd / (dist_sl * valor_punto_por_lote)
+          - dist_tp          = dist_sl * RR_RATIO
+
+        Returns: (lotes, sl, tp) o (None, None, None) si hay error.
         """
-        THRESHOLD_ENTRY = 0.45
-        THRESHOLD_FULL  = 0.80
-        MIN_LOT = 0.05
-        MAX_LOT = 0.12
-        
-        # Obtenemos la magnitud de la señal
-        confianza = abs(veredicto)
-        
-        if confianza <= THRESHOLD_ENTRY:
-            return MIN_LOT
-            
-        if confianza >= THRESHOLD_FULL:
-            return MAX_LOT
+        RIESGO_BASE_PCT = 0.01   # 1% del balance arriesgado en SL
+        RR_RATIO        = 2.0    # TP = 2x distancia SL → R:R 2:1
+        SL_ATR_MULT     = 1.5    # SL a 1.5 ATR del precio de entrada
 
-        # Interpolación lineal entre THRESHOLD_ENTRY (0.45) y THRESHOLD_FULL (0.80)
-        lote = MIN_LOT + ((confianza - THRESHOLD_ENTRY) / (THRESHOLD_FULL - THRESHOLD_ENTRY)) * (MAX_LOT - MIN_LOT)
-
-        # D4 V14: IA-Risk — reducir lotaje si hay noticias de alto impacto recientes
-        factor_noticias = self._factor_riesgo_noticias()
-        lote = lote * factor_noticias
-
-        return max(MIN_LOT, round(lote, 2))
-
-    def obtener_sl_tp_atr(self, simbolo_broker: str, direccion: str) -> tuple[float, float] | tuple[None, None]:
-        """
-        Calcula SL y TP usando ATR(14) en H1.
-        SL = entrada +- 1.5 * ATR
-        TP = entrada +- 2.5 * ATR  (R:R 1.67 para compensar spread)
-        """
-        atr = self.mt5.obtener_atr(simbolo_broker, periodo=14, timeframe=mt5_lib.TIMEFRAME_H1)
-        if not atr:
-            return None, None
-            
+        # 1. Datos del símbolo y mercado
+        atr  = self.mt5.obtener_atr(simbolo_broker, periodo=14, timeframe=mt5_lib.TIMEFRAME_H1)
         tick = mt5_lib.symbol_info_tick(simbolo_broker)
         info = mt5_lib.symbol_info(simbolo_broker)
-        if not tick or not info:
-            return None, None
-            
+        if not atr or not tick or not info:
+            print(f"[RISK] No se pudo obtener datos de mercado para {simbolo_broker}")
+            return None, None, None
+
         precio = tick.ask if direccion == "COMPRA" else tick.bid
-        
-        dist_sl = atr * 1.5
-        dist_tp = atr * 2.5
-        
-        # Validacion Anti-Error 10016: El spread a veces devora el ATR en volatilidades bajas
-        # Safety minimum: 30 pips (pip = point * 10), para cubrir brokers con stop mínimo oculto elevado
-        pip = info.point * 10
+
+        # 2. Distancia SL basada en ATR (volatilidad real del instrumento)
+        dist_sl = atr * SL_ATR_MULT
+
+        # Anti-Error 10016: respetar nivel mínimo de stops del broker
+        pip      = info.point * 10
         min_dist = max(max(info.spread, info.trade_stops_level) * info.point, pip * 30)
-        min_sl = min_dist * 1.5
-        min_tp = min_dist * 2.0
+        if dist_sl < min_dist:
+            print(f"[RISK] ATR SL ({dist_sl:.5f}) bajo StopLevel en {simbolo_broker}. Ajustado a {min_dist:.5f}")
+            dist_sl = min_dist
 
-        if dist_sl < min_sl:
-            print(f"[RISK] ATR SL ({dist_sl:.5f}) violaba StopLevel/Spread en {simbolo_broker}. SL ajustado a {min_sl:.5f}")
-            dist_sl = min_sl
-        if dist_tp < min_tp:
-            dist_tp = min_tp
+        dist_tp = dist_sl * RR_RATIO
 
-        sl = precio - dist_sl if direccion == "COMPRA" else precio + dist_sl
-        tp = precio + dist_tp if direccion == "COMPRA" else precio - dist_tp
+        # 3. Valor monetario por punto por 1 lote (normaliza todos los instrumentos)
+        #    tick_value = ganancia en USD por 1 tick de movimiento con 1 lote
+        #    tick_size  = tamaño de 1 tick en puntos del precio
+        valor_punto_por_lote = info.trade_tick_value / info.trade_tick_size
+        if valor_punto_por_lote <= 0:
+            print(f"[RISK] Error: tick_value/tick_size inválido para {simbolo_broker}")
+            return None, None, None
 
-        # Redondear a la precision del simbolo para evitar rechazos por floating point
+        # 4. Capital y riesgo en dólares
+        balance    = self._obtener_balance()
+        riesgo_usd = balance * RIESGO_BASE_PCT
+
+        # 5. Escalar por convicción: veredicto 0.45→0.80+ mapea factor 0.50→1.00
+        #    A menor convicción, arriesgamos la mitad del capital base
+        factor_conv = 0.50 + 0.50 * min(abs(veredicto) / 0.80, 1.0)
+
+        # 6. Reducir por noticias de alto impacto (IA-Risk)
+        factor_noticias = self._factor_riesgo_noticias()
+
+        riesgo_ajustado = riesgo_usd * factor_conv * factor_noticias
+
+        # 7. Lotes: cuántos necesito para que la pérdida en SL = riesgo_ajustado
+        dollar_risk_per_lot = dist_sl * valor_punto_por_lote
+        lotes = riesgo_ajustado / dollar_risk_per_lot
+
+        # 8. Respetar límites del broker (volume_min, volume_max, volume_step)
+        lotes = max(info.volume_min, min(info.volume_max, lotes))
+        step  = info.volume_step if info.volume_step > 0 else 0.01
+        lotes = round(round(lotes / step) * step, 10)
+        lotes = max(info.volume_min, lotes)
+
+        # 9. Precios finales redondeados a la precisión del símbolo
         digits = info.digits
-        return round(sl, digits), round(tp, digits)
+        sl = round(precio - dist_sl if direccion == "COMPRA" else precio + dist_sl, digits)
+        tp = round(precio + dist_tp if direccion == "COMPRA" else precio - dist_tp, digits)
+
+        print(
+            f"[RISK] {simbolo_broker} | Balance=${balance:.0f} | "
+            f"Riesgo=${riesgo_ajustado:.2f} ({RIESGO_BASE_PCT*100*factor_conv*factor_noticias:.2f}%) | "
+            f"Lotes={lotes} | $/lot en SL=${dollar_risk_per_lot:.2f} | R:R 1:{RR_RATIO}"
+        )
+
+        return lotes, sl, tp
+
+    def _obtener_balance(self) -> float:
+        """Lee el balance de la cuenta desde estado_bot (actualizado cada ciclo por el bot)."""
+        try:
+            if self.db.cursor:
+                self.db.cursor.execute(
+                    "SELECT balance FROM estado_bot ORDER BY id DESC LIMIT 1"
+                )
+                row = self.db.cursor.fetchone()
+                if row and row[0]:
+                    return float(row[0])
+        except Exception:
+            pass
+        # Fallback: consultar MT5 directamente
+        acc = mt5_lib.account_info()
+        return float(acc.balance) if acc else 1000.0
 
     def verificar_ventana_ejecucion(self, simbolo_interno: str) -> bool:
         """

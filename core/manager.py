@@ -390,23 +390,19 @@ class Manager:
         # 6b. Calcular dirección y lotaje
         direccion = "COMPRA" if veredicto > 0 else "VENTA"
         
-        # --- NUEVA LOGICA DE RIESGO DINAMICO ---
+        # --- RIESGO UNIFICADO V16: lotes + SL + TP en un solo cálculo ---
         simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
-        
-        # 6.a Calculo de SL y TP via ATR
-        sl, tp = self.risk.obtener_sl_tp_atr(simbolo_broker, direccion)
-        if sl is None or tp is None:
-            motivo = "Error calculando SL/TP via ATR. Orden abortada."
+
+        lotes, sl, tp = self.risk.calcular_riesgo_completo(simbolo_broker, direccion, veredicto)
+        if lotes is None:
+            motivo = "Error calculando riesgo unificado (lotes/SL/TP). Orden abortada."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
                                     veredicto, "CANCELADO_RIESGO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
-        # 6.b Calculo de Lotaje Dinamico (Confianza)
-        lotes = self.risk.calcular_lotes_dinamicos(veredicto)
-        
-        print(f"[GERENTE] Riesgo Dinamico -> Conviccion: {abs(veredicto)*100:.1f}% | Lotes: {lotes} | SL: {sl:.4f} | TP: {tp:.4f}")
+        print(f"[GERENTE] Riesgo V16 -> Conviccion: {abs(veredicto)*100:.1f}% | Lotes: {lotes} | SL: {sl:.4f} | TP: {tp:.4f}")
 
         # 7. Justificación Glass Box
         motivo = (
