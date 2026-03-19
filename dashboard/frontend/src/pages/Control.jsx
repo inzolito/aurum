@@ -51,7 +51,7 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
         <div style={{ minWidth: 150, width: '100%' }}>
             {/* Barra uniforme */}
             <div style={{ position: 'relative', height: 8, borderRadius: 4,
-                background: 'rgba(255,255,255,0.15)', overflow: 'hidden' }}>
+                background: '#d1d5db', overflow: 'hidden' }}>
 
                 {/* Fill: desde entry hasta precio actual */}
                 {needlePct != null && (
@@ -59,8 +59,7 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
                         position: 'absolute', top: 0, bottom: 0,
                         left: `${Math.min(entryPct, needlePct)}%`,
                         width: `${Math.abs(needlePct - entryPct)}%`,
-                        background: isWinning ? 'var(--success)' : 'var(--danger)',
-                        opacity: 0.6,
+                        background: isWinning ? '#16a34a' : '#dc2626',
                         transition: 'left 0.5s ease, width 0.5s ease',
                     }} />
                 )}
@@ -69,7 +68,7 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
                 <div style={{
                     position: 'absolute', top: 0, bottom: 0,
                     left: `${entryPct}%`, width: 2,
-                    background: 'rgba(255,255,255,0.55)',
+                    background: '#374151',
                     transform: 'translateX(-50%)',
                     zIndex: 2,
                 }} />
@@ -78,16 +77,16 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
             {/* Precios */}
             <div style={{ position: 'relative', height: 11, marginTop: 2 }}>
                 <span style={{ position: 'absolute', left: 0, fontSize: 9,
-                    color: 'var(--danger)', opacity: 0.55, lineHeight: 1 }}>
+                    color: '#dc2626', lineHeight: 1 }}>
                     {fmt(isLong ? sl : tp)}
                 </span>
                 <span style={{ position: 'absolute', left: `${entryPct}%`, fontSize: 9,
-                    color: 'rgba(255,255,255,0.28)', lineHeight: 1,
+                    color: '#6b7280', lineHeight: 1,
                     transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
                     {fmt(entry)}
                 </span>
                 <span style={{ position: 'absolute', right: 0, fontSize: 9,
-                    color: 'var(--success)', opacity: 0.55, lineHeight: 1 }}>
+                    color: '#16a34a', lineHeight: 1 }}>
                     {fmt(isLong ? tp : sl)}
                 </span>
             </div>
