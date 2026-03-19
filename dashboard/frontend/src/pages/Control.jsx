@@ -51,7 +51,7 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
         <div style={{ minWidth: 150, width: '100%' }}>
             {/* Barra uniforme */}
             <div style={{ position: 'relative', height: 8, borderRadius: 4,
-                background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
+                background: 'rgba(255,255,255,0.15)', overflow: 'hidden' }}>
 
                 {/* Fill: desde entry hasta precio actual */}
                 {needlePct != null && (
