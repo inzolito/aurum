@@ -50,6 +50,11 @@ const TradeDetail = ({ t }) => {
     const a = t.analisis || {};
     return (
         <div style={{ background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}>
+            {t.ticket && (
+                <p style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '10px 24px 0', margin: 0 }}>
+                    Ticket MT5: <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>#{t.ticket}</span>
+                </p>
+            )}
             {/* Fila 1: misma vista que posiciones abiertas */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24, padding: '16px 24px' }}>
                 {/* Votación workers */}
@@ -115,7 +120,7 @@ const Historial = ({ setAuth, botVersion }) => {
     const [expandedRow, setExpandedRow] = useState(null);
 
     // Filtros
-    const [quickIdx, setQuickIdx] = useState(2);          // default: 7 días
+    const [quickIdx, setQuickIdx] = useState(0);          // default: hoy
     const [customDesde, setCustomDesde] = useState('');
     const [customHasta, setCustomHasta] = useState('');
     const [filterActivo, setFilterActivo] = useState('');
@@ -274,8 +279,8 @@ const Historial = ({ setAuth, botVersion }) => {
                             <thead>
                                 <tr>
                                     <th></th>
+                                    <th>Apertura</th>
                                     <th>Activo</th>
-                                    <th>Ticket</th>
                                     <th>Tipo</th>
                                     <th>Lotes</th>
                                     <th>Entrada</th>
@@ -286,14 +291,13 @@ const Historial = ({ setAuth, botVersion }) => {
                                     <th>Resultado</th>
                                     <th>P&L</th>
                                     <th>Versión</th>
-                                    <th>Apertura</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="14" className="text-center" style={{ padding: 32 }}>Cargando...</td></tr>
+                                    <tr><td colSpan="13" className="text-center" style={{ padding: 32 }}>Cargando...</td></tr>
                                 ) : trades.length === 0 ? (
-                                    <tr><td colSpan="14" className="text-center" style={{ padding: 32, color: 'var(--text-secondary)' }}>Sin trades en el período seleccionado</td></tr>
+                                    <tr><td colSpan="13" className="text-center" style={{ padding: 32, color: 'var(--text-secondary)' }}>Sin trades en el período seleccionado</td></tr>
                                 ) : trades.map((t, i) => {
                                     const hasDetail = t.tipo_fallo || t.analisis;
                                     return (
@@ -303,15 +307,15 @@ const Historial = ({ setAuth, botVersion }) => {
                                                 <td style={{ width: 24, color: 'var(--text-secondary)' }}>
                                                     {hasDetail ? (expandedRow === i ? <ChevronDown size={14}/> : <ChevronRight size={14}/>) : null}
                                                 </td>
+                                                <td className="time">{toChileTime(t.apertura, 'datetime')}</td>
                                                 <td className="symbol">{t.simbolo}</td>
-                                                <td className="time">{t.ticket}</td>
                                                 <td className={`verdict ${t.tipo === 'COMP' ? 'bullish' : 'bearish'}`}>
                                                     {t.tipo === 'COMP' ? 'BUY' : 'SELL'}
                                                 </td>
                                                 <td>{t.lotes?.toFixed(2)}</td>
-                                                <td>{t.precio_entrada?.toFixed(5)}</td>
-                                                <td>{t.sl?.toFixed(5)}</td>
-                                                <td>{t.tp?.toFixed(5)}</td>
+                                                <td>{t.precio_entrada}</td>
+                                                <td>{t.sl}</td>
+                                                <td>{t.tp}</td>
                                                 <td className={(t.veredicto ?? 0) >= 0 ? 'verdict bullish' : 'verdict bearish'}>
                                                     {t.veredicto != null ? `${t.veredicto >= 0 ? '+' : ''}${t.veredicto?.toFixed(4)}` : '---'}
                                                 </td>
@@ -327,11 +331,10 @@ const Historial = ({ setAuth, botVersion }) => {
                                                         ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, background: 'var(--bg-tertiary)', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: 600 }}>{t.version}</span>
                                                         : <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>—</span>}
                                                 </td>
-                                                <td className="time">{toChileTime(t.apertura, 'datetime')}</td>
                                             </tr>
                                             {expandedRow === i && hasDetail && (
                                                 <tr>
-                                                    <td colSpan="14" style={{ padding: 0 }}>
+                                                    <td colSpan="13" style={{ padding: 0 }}>
                                                         <TradeDetail t={t} />
                                                     </td>
                                                 </tr>
