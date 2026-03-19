@@ -1,0 +1,26 @@
+[Unit]
+Description=Aurum SHIELD — Monitor de Salud (heartbeat.py)
+Documentation=https://github.com/inzolito/aurum
+After=network-online.target postgresql.service aurum-core.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aurum_bot
+Group=root
+WorkingDirectory=/opt/aurum
+EnvironmentFile=/opt/aurum/.env
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/aurum/venv/bin/python heartbeat.py
+Restart=always
+RestartSec=30
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=aurum-shield
+
+LimitNOFILE=65536
+KillMode=mixed
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

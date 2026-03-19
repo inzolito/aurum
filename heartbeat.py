@@ -140,6 +140,7 @@ def check_heartbeat():
     alerta_core_enviada   = False
     alerta_hunter_enviada = False
     alerta_daemon_enviada = False
+    alerta_db_enviada     = False
     cooldown_reinicio = 0  # Ciclos de espera tras reiniciar el Core
 
     while True:
@@ -169,6 +170,7 @@ def check_heartbeat():
                     if not db.conn or db.conn.closed:
                         db.conectar()
 
+                    db_ok = False
                     if db.conn and not db.conn.closed:
                         db.cursor.execute("SELECT tiempo, estado_general FROM estado_bot WHERE id = 1;")
                         fila = db.cursor.fetchone()
@@ -178,11 +180,18 @@ def check_heartbeat():
                             tiempo_inactivo = (ahora - ultimo_tiempo).total_seconds()
                             if tiempo_inactivo < MAX_TIEMPO_INACTIVO_SEGUNDOS:
                                 log_vivo = True
+                        db_ok = True
                 except Exception as e:
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] ERROR DB: {e}")
                     if core_vivo:
                         log_vivo = True  # Si la DB falla, no matar el proceso
+                    if not alerta_db_enviada:
+                        _enviar_telegram(f"🔴 <b>SHIELD: Base de datos inaccesible.</b>\nEl motor sigue en Survival Mode — señales NLP desactualizadas.\nError: <code>{e}</code>")
+                        alerta_db_enviada = True
 
+                if db_ok and alerta_db_enviada:
+                    _enviar_telegram("✅ <b>SHIELD: Base de datos recuperada.</b>")
+                    alerta_db_enviada = False
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] SHIELD: Core={'OK' if core_vivo and log_vivo else 'FAIL'} | Hunter={'OK' if hunter_vivo else 'FAIL'} | Daemon={'OK' if daemon_vivo else 'FAIL'} | DB Latido={tiempo_inactivo:.0f}s")
 
             if cooldown_reinicio == 0:
