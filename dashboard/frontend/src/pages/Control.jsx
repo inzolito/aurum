@@ -25,8 +25,97 @@ const VotoBar = ({ label, voto, peso }) => {
     );
 };
 
-const TradeDetail = ({ a }) => (
+const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
+    if (!entry || !sl || !tp) return null;
+    const isLong = tipo === 'COMP';
+    const slDist  = Math.abs(entry - sl);
+    const tpDist  = Math.abs(tp - entry);
+    if (slDist <= 0 || tpDist <= 0) return null;
+
+    // Entry siempre al 50%. Izquierda = SL, derecha = TP.
+    // Needle: 50% + desplazamiento proporcional según precio actual
+    let needlePct = 50;
+    let isWinning = false;
+    if (precioActual != null) {
+        const diff = isLong ? (precioActual - entry) : (entry - precioActual);
+        if (diff >= 0) {
+            needlePct = 50 + Math.min((diff / tpDist) * 50, 52);
+            isWinning = true;
+        } else {
+            needlePct = 50 - Math.min((Math.abs(diff) / slDist) * 50, 52);
+            isWinning = false;
+        }
+    }
+
+    const activeColor   = isWinning ? 'var(--success)' : 'var(--danger)';
+    const fillLeft      = Math.min(50, needlePct);
+    const fillWidth     = Math.abs(needlePct - 50);
+
+    const fmt = (v) => {
+        if (v == null) return '—';
+        if (v >= 1000) return v.toFixed(1);
+        if (v >= 10)   return v.toFixed(3);
+        return v.toFixed(5);
+    };
+
+    return (
+        <div style={{ minWidth: 140, width: '100%' }}>
+            <div style={{ position: 'relative', height: 18, display: 'flex', alignItems: 'center' }}>
+                {/* Track */}
+                <div style={{ position: 'absolute', left: 0, right: 0, height: 5,
+                    background: 'var(--bg-primary)', borderRadius: 3,
+                    border: '1px solid var(--border-color)' }} />
+                {/* Fill desde entry (50%) hacia needle */}
+                {precioActual != null && (
+                    <div style={{
+                        position: 'absolute', height: 5,
+                        left: `${fillLeft}%`, width: `${fillWidth}%`,
+                        background: activeColor, borderRadius: 3,
+                        transition: 'left 0.6s ease, width 0.6s ease',
+                    }} />
+                )}
+                {/* Marcador SL */}
+                <div style={{ position: 'absolute', left: '0%',
+                    width: 2, height: 11, background: 'var(--danger)',
+                    borderRadius: 1, transform: 'translateX(0)' }} />
+                {/* Marcador Entry (centro) */}
+                <div style={{ position: 'absolute', left: '50%',
+                    width: 2, height: 14, background: 'var(--text-secondary)',
+                    borderRadius: 1, transform: 'translateX(-50%)' }} />
+                {/* Marcador TP */}
+                <div style={{ position: 'absolute', right: '0%',
+                    width: 2, height: 11, background: 'var(--success)',
+                    borderRadius: 1 }} />
+                {/* Needle precio actual */}
+                {precioActual != null && (
+                    <div style={{
+                        position: 'absolute', left: `${needlePct}%`,
+                        width: 3, height: 18, background: activeColor,
+                        borderRadius: 2, transform: 'translateX(-50%)',
+                        boxShadow: `0 0 5px ${activeColor}`,
+                        transition: 'left 0.6s ease',
+                        zIndex: 2,
+                    }} />
+                )}
+            </div>
+            {/* Etiquetas */}
+            <div style={{ display: 'flex', justifyContent: 'space-between',
+                fontSize: 9, marginTop: 3, color: 'var(--text-secondary)', lineHeight: 1 }}>
+                <span style={{ color: 'var(--danger)' }}>{fmt(sl)}</span>
+                <span>{fmt(entry)}</span>
+                <span style={{ color: 'var(--success)' }}>{fmt(tp)}</span>
+            </div>
+        </div>
+    );
+};
+
+const TradeDetail = ({ a, ticket }) => (
     <div style={{ background: 'var(--bg-primary)', padding: '16px 24px', borderTop: '1px solid var(--border-color)' }}>
+        {ticket != null && (
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                Ticket MT5: <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>#{ticket}</span>
+            </p>
+        )}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24 }}>
             {/* Votación */}
             <div>
@@ -314,12 +403,9 @@ const Control = ({ setAuth, botVersion }) => {
                                 <tr>
                                     <th></th>
                                     <th>Activo</th>
-                                    <th>Ticket</th>
                                     <th>Tipo</th>
                                     <th>Lotes</th>
-                                    <th>Entrada</th>
-                                    <th>SL</th>
-                                    <th>TP</th>
+                                    <th style={{ minWidth: 160 }}>SL / Entrada / TP</th>
                                     <th>Veredicto</th>
                                     <th>Prob.</th>
                                     <th>P&L</th>
@@ -328,9 +414,9 @@ const Control = ({ setAuth, botVersion }) => {
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="12" className="text-center">Cargando...</td></tr>
+                                    <tr><td colSpan="9" className="text-center">Cargando...</td></tr>
                                 ) : posiciones.length === 0 ? (
-                                    <tr><td colSpan="12" className="text-center">Sin posiciones abiertas</td></tr>
+                                    <tr><td colSpan="9" className="text-center">Sin posiciones abiertas</td></tr>
                                 ) : (
                                     posiciones.map((p, i) => (
                                         <>
@@ -340,14 +426,19 @@ const Control = ({ setAuth, botVersion }) => {
                                                 {p.analisis ? (expandedRow === i ? <ChevronDown size={14}/> : <ChevronRight size={14}/>) : null}
                                             </td>
                                             <td className="symbol">{p.simbolo}</td>
-                                            <td className="time">{p.ticket}</td>
                                             <td className={`verdict ${p.tipo === 'COMP' ? 'bullish' : 'bearish'}`}>
                                                 {p.tipo === 'COMP' ? 'BUY' : 'SELL'}
                                             </td>
                                             <td>{p.lotes?.toFixed(2)}</td>
-                                            <td>{p.precio_entrada?.toFixed(5)}</td>
-                                            <td>{p.sl?.toFixed(5)}</td>
-                                            <td>{p.tp?.toFixed(5)}</td>
+                                            <td style={{ padding: '6px 12px' }}>
+                                                <PriceBar
+                                                    tipo={p.tipo}
+                                                    entry={p.precio_entrada}
+                                                    sl={p.sl}
+                                                    tp={p.tp}
+                                                    precioActual={p.precio_actual}
+                                                />
+                                            </td>
                                             <td className={(p.veredicto ?? 0) >= 0 ? 'verdict bullish' : 'verdict bearish'}>
                                                 {p.veredicto != null ? `${p.veredicto >= 0 ? '+' : ''}${p.veredicto?.toFixed(4)}` : '---'}
                                             </td>
@@ -359,8 +450,8 @@ const Control = ({ setAuth, botVersion }) => {
                                         </tr>
                                         {expandedRow === i && p.analisis && (
                                             <tr key={`detail-${i}`}>
-                                                <td colSpan="12" style={{ padding: 0 }}>
-                                                    <TradeDetail a={p.analisis} />
+                                                <td colSpan="9" style={{ padding: 0 }}>
+                                                    <TradeDetail a={p.analisis} ticket={p.ticket} />
                                                 </td>
                                             </tr>
                                         )}
