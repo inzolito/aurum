@@ -245,6 +245,8 @@ class DBConnector:
         # --- FALLBACK HARDCODED (Modo Supervivencia V13.1) ---
         print("[DB-SECURITY] Utilizando lista de activos HARDCODED (Fallo de DB).")
         fallback_list = [
+            {"id": 1, "simbolo": "XAUUSD", "nombre": "Oro", "categoria": "COMMODITIES", "simbolo_broker": "XAUUSD_i"},
+            {"id": 2, "simbolo": "XAGUSD", "nombre": "Plata", "categoria": "COMMODITIES", "simbolo_broker": "XAGUSD_i"},
             {"id": 3, "simbolo": "US30", "nombre": "Dow Jones", "categoria": "INDICES", "simbolo_broker": "US30_i"},
             {"id": 4, "simbolo": "US500", "nombre": "S&P 500", "categoria": "INDICES", "simbolo_broker": "US500_i"},
             {"id": 5, "simbolo": "USTEC", "nombre": "Nasdaq 100", "categoria": "INDICES", "simbolo_broker": "USTEC_i"},
