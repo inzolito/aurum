@@ -677,13 +677,23 @@ class Manager:
 
             precio_actual = mt5_api.symbol_info_tick(pos.symbol).bid if pos.type == mt5_api.POSITION_TYPE_BUY \
                             else mt5_api.symbol_info_tick(pos.symbol).ask
-            
+
+            # Persistir precio actual para el dashboard
+            try:
+                self.db.cursor.execute(
+                    "UPDATE registro_operaciones SET precio_actual = %s WHERE ticket_mt5 = %s",
+                    (precio_actual, pos.ticket)
+                )
+                self.db.conn.commit()
+            except Exception:
+                pass
+
             # Calcular progreso hacia el TP
             distancia_total = abs(pos.tp - pos.price_open)
             if distancia_total == 0: continue
-            
+
             progreso = abs(precio_actual - pos.price_open) / distancia_total
-            
+
             if progreso >= 0.50:
                 print(f"[GERENTE] 🛡️ Aplicando Breakeven a #{pos.ticket} ({pos.symbol}). Progreso: {progreso*100:.1f}%")
                 if self.mt5.mover_sl(pos.ticket, pos.price_open):
