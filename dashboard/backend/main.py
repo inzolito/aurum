@@ -572,6 +572,59 @@ async def test_bot(token: str = Depends(oauth2_scheme)):
         return {"status": "error", "services": {}, "output": str(e)}
 
 
+@app.get("/api/config/parametros")
+async def get_parametros(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    try:
+        with db._lock:
+            db.cursor.execute("""
+                SELECT modulo, nombre_parametro, valor, descripcion
+                FROM parametros_sistema
+                ORDER BY modulo, nombre_parametro
+            """)
+            rows = db.cursor.fetchall()
+        return {"parametros": [
+            {"modulo": r[0], "nombre": r[1], "valor": float(r[2]), "descripcion": r[3] or ""}
+            for r in rows
+        ]}
+    except Exception as e:
+        db.conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class ParamUpdate(BaseModel):
+    nombre: str
+    valor: float
+
+@app.put("/api/config/parametros")
+async def update_parametro(body: ParamUpdate, token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    try:
+        with db._lock:
+            db.cursor.execute(
+                "UPDATE parametros_sistema SET valor = %s WHERE nombre_parametro = %s",
+                (str(body.valor), body.nombre)
+            )
+            if db.cursor.rowcount == 0:
+                # Si no existe, insertarlo (nuevo parámetro)
+                modulo = body.nombre.split(".")[0] if "." in body.nombre else "GERENTE"
+                db.cursor.execute(
+                    "INSERT INTO parametros_sistema (modulo, nombre_parametro, valor) VALUES (%s, %s, %s)",
+                    (modulo, body.nombre, str(body.valor))
+                )
+            db.conn.commit()
+        # Invalida caché del bot (próximo ciclo releerá la BD)
+        db._params_last_refresh = 0
+        return {"ok": True, "nombre": body.nombre, "valor": body.valor}
+    except Exception as e:
+        db.conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "operational", "version": "Prism 1.0"}

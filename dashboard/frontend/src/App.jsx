@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Control from './pages/Control';
 import Noticias from './pages/Noticias';
 import Historial from './pages/Historial';
+import Config from './pages/Config';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -43,6 +44,7 @@ function App() {
         <Route path="/control"   element={<PrivateRoute element={withVersion(<Control   setAuth={setIsAuthenticated} />)} />} />
         <Route path="/noticias"  element={<PrivateRoute element={withVersion(<Noticias  setAuth={setIsAuthenticated} />)} />} />
         <Route path="/historial" element={<PrivateRoute element={withVersion(<Historial setAuth={setIsAuthenticated} />)} />} />
+        <Route path="/config"    element={<PrivateRoute element={withVersion(<Config    setAuth={setIsAuthenticated} />)} />} />
         <Route path="/" element={<Navigate to="/control" />} />
       </Routes>
     </Router>

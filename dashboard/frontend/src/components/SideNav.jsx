@@ -1,15 +1,16 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutGrid, Activity, Newspaper, LogOut, History } from 'lucide-react';
+import { LayoutGrid, Activity, Newspaper, LogOut, History, Settings } from 'lucide-react';
 
 const SideNav = ({ onLogout, botVersion }) => {
     const navigate = useNavigate();
     const location = useLocation();
 
     const navItems = [
-        { path: '/control', icon: <Activity size={20} />, title: 'Control' },
+        { path: '/control',  icon: <Activity size={20} />,   title: 'Control' },
         { path: '/dashboard', icon: <LayoutGrid size={20} />, title: 'Señales' },
-        { path: '/historial', icon: <History size={20} />, title: 'Historial' },
-        { path: '/noticias', icon: <Newspaper size={20} />, title: 'Noticias' },
+        { path: '/historial', icon: <History size={20} />,    title: 'Historial' },
+        { path: '/noticias',  icon: <Newspaper size={20} />,  title: 'Noticias' },
+        { path: '/config',    icon: <Settings size={20} />,   title: 'Config' },
     ];
 
     return (
