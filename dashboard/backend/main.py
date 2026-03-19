@@ -474,10 +474,10 @@ async def get_historial(
             conditions = ["(ro.resultado_final IS NOT NULL OR ro.ticket_mt5 = 999999)"]
             params: list = []
             if desde:
-                conditions.append("ro.tiempo_entrada >= %s")
+                conditions.append("(ro.tiempo_entrada AT TIME ZONE 'America/Santiago')::date >= %s::date")
                 params.append(desde)
             if hasta:
-                conditions.append("ro.tiempo_entrada < %s::date + interval '1 day'")
+                conditions.append("(ro.tiempo_entrada AT TIME ZONE 'America/Santiago')::date <= %s::date")
                 params.append(hasta)
             if simbolo:
                 conditions.append("a.simbolo = %s")

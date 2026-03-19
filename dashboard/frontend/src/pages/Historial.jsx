@@ -19,7 +19,13 @@ const QUICK_FILTERS = [
 const ACTIVOS = ['XAUUSD','XAGUSD','XTIUSD','XBRUSD','US30','US500','USTEC','EURUSD','GBPUSD','USDJPY','GBPJPY','USDMXN'];
 const WORKER_LABELS = { trend: 'Trend', nlp: 'NLP', flow: 'Flow', sniper: 'Sniper', volume: 'Volume', cross: 'Cross' };
 
-function toDateStr(d) { return d.toISOString().slice(0, 10); }
+// Usa fecha LOCAL (no UTC) para que "Hoy" signifique hoy en Chile
+function toDateStr(d) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
 
 const VotoBar = ({ label, voto, peso }) => {
     const pct = Math.min(Math.abs(voto) * 100, 100);
