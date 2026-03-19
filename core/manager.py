@@ -669,16 +669,11 @@ class Manager:
         for pos in posiciones:
             # Solo gestionamos posiciones del bot (opcional: filtrar por magic number)
             # if pos.magic != 20250101: continue
-            
-            # Si el SL ya esta en el precio de entrada (o mejor), ignorar
-            if (pos.type == mt5_api.POSITION_TYPE_BUY and pos.sl >= pos.price_open) or \
-               (pos.type == mt5_api.POSITION_TYPE_SELL and pos.sl <= pos.price_open and pos.sl != 0):
-                continue
 
             precio_actual = mt5_api.symbol_info_tick(pos.symbol).bid if pos.type == mt5_api.POSITION_TYPE_BUY \
                             else mt5_api.symbol_info_tick(pos.symbol).ask
 
-            # Persistir precio actual para el dashboard
+            # Persistir precio actual para el dashboard (siempre, antes de cualquier filtro)
             try:
                 self.db.cursor.execute(
                     "UPDATE registro_operaciones SET precio_actual = %s WHERE ticket_mt5 = %s",
@@ -687,6 +682,11 @@ class Manager:
                 self.db.conn.commit()
             except Exception:
                 pass
+
+            # Si el SL ya esta en el precio de entrada (o mejor), ignorar breakeven
+            if (pos.type == mt5_api.POSITION_TYPE_BUY and pos.sl >= pos.price_open) or \
+               (pos.type == mt5_api.POSITION_TYPE_SELL and pos.sl <= pos.price_open and pos.sl != 0):
+                continue
 
             # Calcular progreso hacia el TP
             distancia_total = abs(pos.tp - pos.price_open)
