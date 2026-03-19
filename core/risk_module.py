@@ -40,9 +40,10 @@ class RiskModule:
 
         Returns: (lotes, sl, tp) o (None, None, None) si hay error.
         """
-        RIESGO_BASE_PCT = 0.01   # 1% del balance arriesgado en SL
-        RR_RATIO        = 2.0    # TP = 2x distancia SL → R:R 2:1
-        SL_ATR_MULT     = 1.5    # SL a 1.5 ATR del precio de entrada
+        params          = self.db.get_parametros()
+        RIESGO_BASE_PCT = float(params.get("GERENTE.riesgo_trade_pct", 1.0)) / 100.0
+        RR_RATIO        = float(params.get("GERENTE.ratio_tp",         2.0))
+        SL_ATR_MULT     = float(params.get("GERENTE.sl_atr_mult",      1.5))
 
         # 1. Datos del símbolo y mercado
         atr  = self.mt5.obtener_atr(simbolo_broker, periodo=14, timeframe=mt5_lib.TIMEFRAME_H1)

@@ -172,8 +172,9 @@ class DBConnector:
     # Parámetros por defecto para Modo Supervivencia (V13.1)
     _DEFAULT_PARAMS = {
         "GERENTE.umbral_disparo":   0.45,
-        "GERENTE.riesgo_trade_pct": 1.5,
+        "GERENTE.riesgo_trade_pct": 1.0,
         "GERENTE.ratio_tp":         2.0,
+        "GERENTE.sl_atr_mult":      1.5,
         "GERENTE.max_drawdown_usd": 1000.0,   # Umbral de equity para Kill-Switch
         "TENDENCIA.peso_voto":      0.40,
         "NLP.peso_voto":            0.30,
