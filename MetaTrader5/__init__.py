@@ -195,18 +195,23 @@ def symbol_info(symbol):
         spec = _symbol_specs_cache.get(symbol)
         if not spec:
             return None
+        point = float(_g(spec, 'points', 0) or _g(spec, 'point', 0)) or 10 ** (-int(_g(spec, 'digits', 5)))
+        tick_size = float(_g(spec, 'tickSize', 0) or _g(spec, 'tick_size', 0)) or point
+        tick_value = float(_g(spec, 'TickValue', 0) or _g(spec, 'tickValue', 0) or _g(spec, 'tick_value', 0))
         return SimpleNamespace(
             symbol=symbol,
             digits=int(_g(spec, 'digits', 5)),
             trade_mode=SYMBOL_TRADE_MODE_FULL,
             filling_mode=3,
             spread=int(_g(spec, 'Spread', 0) or _g(spec, 'spread', 0)),
-            point=float(_g(spec, 'points', 0) or _g(spec, 'point', 0)) or 10 ** (-int(_g(spec, 'digits', 5))),
+            point=point,
             contract_size=float(_g(spec, 'contractSize', 100000)),
             volume_min=float(_g(spec, 'minVolume', 0.01)),
             volume_max=float(_g(spec, 'maxVolume', 100.0)),
             trade_stops_level=int(_g(spec, 'stopsLevel', 0) or 0),
             volume_step=float(_g(spec, 'volumeStep', 0.01)),
+            trade_tick_size=tick_size,
+            trade_tick_value=tick_value,
         )
     except Exception as e:
         _set_last_error(1, str(e))
