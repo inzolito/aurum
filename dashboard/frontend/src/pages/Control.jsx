@@ -29,17 +29,16 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
     if (!entry || !sl || !tp) return null;
     const isLong = tipo === 'COMP';
 
-    // Izquierda = lado perdedor, derecha = lado ganador
+    // Izquierda = SL (lado perdedor), derecha = TP (lado ganador)
     const lo = isLong ? sl : tp;
     const hi = isLong ? tp : sl;
     const range = hi - lo;
     if (range <= 0) return null;
 
-    const toPct = (p) => Math.max(0, Math.min(100, (p - lo) / range * 100));
+    const toPct = (p) => Math.max(1, Math.min(99, (p - lo) / range * 100));
     const entryPct  = toPct(entry);
     const needlePct = precioActual != null ? toPct(precioActual) : null;
-    const isWinning = precioActual != null && (isLong ? precioActual > entry : precioActual < entry);
-    const fillColor = isWinning ? 'var(--success)' : 'var(--danger)';
+    const isWinning = precioActual != null && (isLong ? precioActual >= entry : precioActual <= entry);
 
     const fmt = (v) => {
         if (v == null) return '—';
@@ -50,59 +49,45 @@ const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
 
     return (
         <div style={{ minWidth: 150, width: '100%' }}>
-            {/* Track */}
-            <div style={{ position: 'relative', height: 16, display: 'flex', alignItems: 'center' }}>
-                <div style={{ position: 'absolute', left: 0, right: 0, height: 2,
-                    background: 'rgba(255,255,255,0.08)', borderRadius: 2 }} />
+            {/* Barra uniforme */}
+            <div style={{ position: 'relative', height: 8, borderRadius: 4,
+                background: 'rgba(255,255,255,0.07)', overflow: 'hidden' }}>
 
-                {/* Fill entry → needle */}
+                {/* Fill: desde entry hasta precio actual */}
                 {needlePct != null && (
                     <div style={{
-                        position: 'absolute', height: 2, borderRadius: 2,
+                        position: 'absolute', top: 0, bottom: 0,
                         left: `${Math.min(entryPct, needlePct)}%`,
                         width: `${Math.abs(needlePct - entryPct)}%`,
-                        background: fillColor, opacity: 0.75,
+                        background: isWinning ? 'var(--success)' : 'var(--danger)',
+                        opacity: 0.6,
                         transition: 'left 0.5s ease, width 0.5s ease',
                     }} />
                 )}
 
-                {/* Tick SL */}
-                <div style={{ position: 'absolute', left: 0,
-                    width: 1, height: 8, background: 'var(--danger)', opacity: 0.6 }} />
-                {/* Tick Entry */}
-                <div style={{ position: 'absolute', left: `${entryPct}%`,
-                    width: 1, height: 10, background: 'rgba(255,255,255,0.45)',
-                    transform: 'translateX(-50%)' }} />
-                {/* Tick TP */}
-                <div style={{ position: 'absolute', right: 0,
-                    width: 1, height: 8, background: 'var(--success)', opacity: 0.6 }} />
-
-                {/* Needle */}
-                {needlePct != null && (
-                    <div style={{
-                        position: 'absolute', left: `${needlePct}%`,
-                        width: 2, height: 14, borderRadius: 1,
-                        background: fillColor,
-                        transform: 'translateX(-50%)',
-                        transition: 'left 0.5s ease',
-                        zIndex: 2,
-                    }} />
-                )}
+                {/* Marcador de entrada */}
+                <div style={{
+                    position: 'absolute', top: 0, bottom: 0,
+                    left: `${entryPct}%`, width: 2,
+                    background: 'rgba(255,255,255,0.55)',
+                    transform: 'translateX(-50%)',
+                    zIndex: 2,
+                }} />
             </div>
 
-            {/* Labels */}
-            <div style={{ position: 'relative', height: 12, marginTop: 1 }}>
-                <span style={{ position: 'absolute', left: 0,
-                    fontSize: 9, color: 'var(--danger)', opacity: 0.7, lineHeight: 1 }}>
+            {/* Precios */}
+            <div style={{ position: 'relative', height: 11, marginTop: 2 }}>
+                <span style={{ position: 'absolute', left: 0, fontSize: 9,
+                    color: 'var(--danger)', opacity: 0.55, lineHeight: 1 }}>
                     {fmt(isLong ? sl : tp)}
                 </span>
-                <span style={{ position: 'absolute', left: `${entryPct}%`,
-                    fontSize: 9, color: 'rgba(255,255,255,0.35)', lineHeight: 1,
+                <span style={{ position: 'absolute', left: `${entryPct}%`, fontSize: 9,
+                    color: 'rgba(255,255,255,0.28)', lineHeight: 1,
                     transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
                     {fmt(entry)}
                 </span>
-                <span style={{ position: 'absolute', right: 0,
-                    fontSize: 9, color: 'var(--success)', opacity: 0.7, lineHeight: 1 }}>
+                <span style={{ position: 'absolute', right: 0, fontSize: 9,
+                    color: 'var(--success)', opacity: 0.55, lineHeight: 1 }}>
                     {fmt(isLong ? tp : sl)}
                 </span>
             </div>
