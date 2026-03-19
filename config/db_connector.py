@@ -253,6 +253,9 @@ class DBConnector:
             {"id": 8, "simbolo": "USDJPY", "nombre": "Dolar/Yen", "categoria": "FOREX", "simbolo_broker": "USDJPY_i"},
             {"id": 9, "simbolo": "GBPJPY", "nombre": "Libra/Yen", "categoria": "FOREX", "simbolo_broker": "GBPJPY_i"},
             {"id": 10, "simbolo": "XTIUSD", "nombre": "Petroleo WTI", "categoria": "COMMODITIES", "simbolo_broker": "XTIUSD_i"},
+            {"id": 11, "simbolo": "AUDUSD", "nombre": "Dolar Australiano/Dolar", "categoria": "FOREX", "simbolo_broker": "AUDUSD_i"},
+            {"id": 12, "simbolo": "USDCAD", "nombre": "Dolar/Dolar Canadiense", "categoria": "FOREX", "simbolo_broker": "USDCAD_i"},
+            {"id": 13, "simbolo": "GEREUR", "nombre": "DAX 40 (GER40)", "categoria": "INDICES", "simbolo_broker": "GEREUR"},
         ]
         return fallback_list
 
