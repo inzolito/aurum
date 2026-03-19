@@ -196,8 +196,12 @@ def symbol_info(symbol):
         if not spec:
             return None
         point = float(_g(spec, 'points', 0) or _g(spec, 'point', 0)) or 10 ** (-int(_g(spec, 'digits', 5)))
+        contract_size_raw = float(_g(spec, 'contractSize', 100000))
         tick_size = float(_g(spec, 'tickSize', 0) or _g(spec, 'tick_size', 0)) or point
         tick_value = float(_g(spec, 'TickValue', 0) or _g(spec, 'tickValue', 0) or _g(spec, 'tick_value', 0))
+        if tick_value == 0:
+            # Fallback para instrumentos cotizados en USD (forex directo, metales, índices)
+            tick_value = tick_size * contract_size_raw
         return SimpleNamespace(
             symbol=symbol,
             digits=int(_g(spec, 'digits', 5)),
