@@ -1,3 +1,8 @@
+@keyframes market-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.4; transform: scale(0.75); }
+}
+
 :root {
   --bg-primary: #f3f4f6;
   --bg-secondary: #ffffff;

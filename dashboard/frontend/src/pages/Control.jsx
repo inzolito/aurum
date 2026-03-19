@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Clock, Activity, Wallet, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap, ChevronDown, ChevronRight, RotateCcw, Stethoscope } from 'lucide-react';
 import SideNav from '../components/SideNav';
+import MarketPulse from '../components/MarketPulse';
 import { toChileTime } from '../utils/time';
+import { isAssetInSession } from '../utils/sessions';
 
 const WORKER_LABELS = { trend: 'Trend', nlp: 'NLP', flow: 'Flow', sniper: 'Sniper', volume: 'Volume', cross: 'Cross' };
 
@@ -146,20 +148,23 @@ const Control = ({ setAuth, botVersion }) => {
     const [testing, setTesting] = useState(false);
     const [testLog, setTestLog] = useState(null);
     const [expandedRow, setExpandedRow] = useState(null);
+    const [pulso, setPulso] = useState([]);
 
     const token = localStorage.getItem('token');
 
     const fetchAll = async () => {
         try {
             const headers = { Authorization: `Bearer ${token}` };
-            const [resEstado, resPosiciones, resLogs] = await Promise.all([
+            const [resEstado, resPosiciones, resLogs, resPulso] = await Promise.all([
                 axios.get('/api/control/estado', { headers }),
                 axios.get('/api/control/posiciones', { headers }),
                 axios.get('/api/control/logs', { headers }),
+                axios.get('/api/mercado/pulso', { headers }),
             ]);
             setEstado(resEstado.data);
             setPosiciones(resPosiciones.data.posiciones || []);
             setLogs(resLogs.data.logs || []);
+            setPulso(resPulso.data.activos || []);
         } catch (err) {
             if (err.response?.status === 401) handleLogout();
         } finally {
@@ -364,14 +369,8 @@ const Control = ({ setAuth, botVersion }) => {
                     </div>
                 </div>
 
-                {/* Pensamiento actual */}
-                {estado?.estado?.pensamiento_actual && (
-                    <div className="thought-card">
-                        <p className="thought-label">Pensamiento Actual</p>
-                        <p className="thought-text">{estado.estado.pensamiento_actual}</p>
-                        <p className="thought-time">{toChileTime(estado.estado.tiempo)}</p>
-                    </div>
-                )}
+                {/* Market Pulse */}
+                <MarketPulse pulso={pulso} />
 
                 {/* Posiciones Abiertas */}
                 <section className="section">
@@ -397,9 +396,15 @@ const Control = ({ setAuth, botVersion }) => {
                                 ) : posiciones.length === 0 ? (
                                     <tr><td colSpan="9" className="text-center">Sin posiciones abiertas</td></tr>
                                 ) : (
-                                    posiciones.map((p, i) => (
-                                        <>
-                                        <tr key={i} style={{ cursor: p.analisis ? 'pointer' : 'default' }}
+                                    posiciones.map((p, i) => {
+                                        const inSession = isAssetInSession(p.simbolo);
+                                        return (<>
+                                        <tr key={i} style={{
+                                                cursor: p.analisis ? 'pointer' : 'default',
+                                                opacity: inSession ? 1 : 0.35,
+                                                filter: inSession ? 'none' : 'grayscale(0.6)',
+                                                transition: 'opacity 0.3s ease',
+                                            }}
                                             onClick={() => p.analisis && setExpandedRow(expandedRow === i ? null : i)}>
                                             <td style={{ width: 24, color: 'var(--text-secondary)' }}>
                                                 {p.analisis ? (expandedRow === i ? <ChevronDown size={14}/> : <ChevronRight size={14}/>) : null}
@@ -435,7 +440,8 @@ const Control = ({ setAuth, botVersion }) => {
                                             </tr>
                                         )}
                                         </>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>

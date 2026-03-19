@@ -458,6 +458,34 @@ async def deploy(token: str = Depends(oauth2_scheme)):
         return {"status": "error", "output": str(e), "returncode": -1}
 
 
+@app.get("/api/mercado/pulso")
+async def mercado_pulso(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    try:
+        db.cursor.execute("""
+            SELECT DISTINCT ON (a.id)
+                a.simbolo_broker            AS simbolo,
+                rs.voto_final_ponderado     AS veredicto,
+                rs.decision_gerente         AS decision,
+                rs.tiempo                   AS tiempo
+            FROM activos a
+            LEFT JOIN registro_senales rs ON rs.activo_id = a.id
+            WHERE a.estado_operativo = 'ACTIVO'
+            ORDER BY a.id, rs.tiempo DESC NULLS LAST
+        """)
+        rows = db.cursor.fetchall()
+        result = []
+        for r in rows:
+            result.append({
+                "simbolo":   r[0],
+                "veredicto": float(r[1]) if r[1] is not None else None,
+                "decision":  r[2],
+                "tiempo":    r[3].isoformat() if r[3] else None,
+            })
+        return {"activos": result}
+    except Exception as e:
+        return {"activos": [], "error": str(e)}
+
+
 @app.get("/api/historial")
 async def get_historial(
     token: str = Depends(oauth2_scheme),
