@@ -6,7 +6,7 @@ const SideNav = ({ onLogout, botVersion }) => {
     const location = useLocation();
 
     const navItems = [
-        { path: '/control',  icon: <Activity size={20} />,   title: 'Control' },
+        { path: '/control',   icon: <Activity size={20} />,   title: 'Control' },
         { path: '/dashboard', icon: <LayoutGrid size={20} />, title: 'Señales' },
         { path: '/historial', icon: <History size={20} />,    title: 'Historial' },
         { path: '/noticias',  icon: <Newspaper size={20} />,  title: 'Noticias' },
@@ -15,14 +15,16 @@ const SideNav = ({ onLogout, botVersion }) => {
 
     return (
         <nav className="side-nav">
-            <div className="nav-brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 4px 8px', gap: 2 }}>
+            {/* Marca + versión — siempre arriba en desktop */}
+            <div className="nav-brand" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '4px 4px 8px', gap: 3 }}>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: 1 }}>AURUM</span>
                 {botVersion && (
-                    <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: 0.5 }}>
+                    <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: 0.5 }}>
                         {botVersion}
                     </span>
                 )}
             </div>
+
             <div className="nav-items">
                 {navItems.map(item => (
                     <div
@@ -36,7 +38,9 @@ const SideNav = ({ onLogout, botVersion }) => {
                     </div>
                 ))}
             </div>
-            <button onClick={onLogout} className="logout-btn">
+
+            {/* Logout — solo visible en desktop */}
+            <button onClick={onLogout} className="logout-btn nav-logout-desktop">
                 <LogOut size={20} />
             </button>
         </nav>

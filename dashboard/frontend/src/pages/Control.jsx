@@ -149,6 +149,7 @@ const Control = ({ setAuth, botVersion }) => {
     const [testLog, setTestLog] = useState(null);
     const [expandedRow, setExpandedRow] = useState(null);
     const [pulso, setPulso] = useState([]);
+    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const token = localStorage.getItem('token');
 
@@ -172,11 +173,20 @@ const Control = ({ setAuth, botVersion }) => {
         }
     };
 
+    const fetchEstado = async () => {
+        try {
+            const headers = { Authorization: `Bearer ${token}` };
+            const res = await axios.get('/api/control/estado', { headers });
+            setEstado(res.data);
+        } catch { /* silencioso */ }
+    };
+
     useEffect(() => {
         fetchAll();
-        const dataInterval = setInterval(fetchAll, 15000);
+        const dataInterval  = setInterval(fetchAll, 15000);
+        const fastInterval  = setInterval(fetchEstado, 4000);
         const clockInterval = setInterval(() => setTick(new Date()), 1000);
-        return () => { clearInterval(dataInterval); clearInterval(clockInterval); };
+        return () => { clearInterval(dataInterval); clearInterval(fastInterval); clearInterval(clockInterval); };
     }, []);
 
     const handleSync = async () => {
@@ -276,27 +286,63 @@ const Control = ({ setAuth, botVersion }) => {
                         <p className="subtitle">Estado operativo en tiempo real</p>
                     </div>
                     <div className="header-actions">
-                        <button className={`action-btn ${testing ? 'deploying' : ''}`} onClick={handleTest} disabled={testing} title="Verificar estado de los servicios del bot">
+                        {/* Desktop: botones normales */}
+                        <button className={`action-btn desktop-only ${testing ? 'deploying' : ''}`} onClick={handleTest} disabled={testing}>
                             <Stethoscope size={15} className={testing ? 'spin' : ''} />
                             <span>{testing ? 'Testeando...' : 'Test Bot'}</span>
                         </button>
-                        <button className={`action-btn ${restarting ? 'deploying' : ''}`} onClick={handleRestart} disabled={restarting} title="Reiniciar aurum-core, aurum-hunter y aurum-telegram">
+                        <button className={`action-btn desktop-only ${restarting ? 'deploying' : ''}`} onClick={handleRestart} disabled={restarting}>
                             <RotateCcw size={15} className={restarting ? 'spin' : ''} />
                             <span>{restarting ? 'Reiniciando...' : 'Reiniciar Bot'}</span>
                         </button>
-                        <button className={`action-btn ${syncing ? 'deploying' : ''}`} onClick={handleSync} disabled={syncing} title="Importar operaciones MT5 → BD">
+                        <button className={`action-btn desktop-only ${syncing ? 'deploying' : ''}`} onClick={handleSync} disabled={syncing}>
                             <DatabaseZap size={15} className={syncing ? 'spin' : ''} />
                             <span>{syncing ? 'Sincronizando...' : 'Sync MT5'}</span>
                         </button>
-                        <button className={`action-btn action-btn-primary ${deploying ? 'deploying' : ''}`} onClick={handleDeploy} disabled={deploying} title="Git pull + build + restart">
+                        <button className={`action-btn action-btn-primary desktop-only ${deploying ? 'deploying' : ''}`} onClick={handleDeploy} disabled={deploying}>
                             <RefreshCw size={15} className={deploying ? 'spin' : ''} />
                             <span>{deploying ? 'Impactando...' : 'El Meteorito'}</span>
                         </button>
+
+                        {/* Mobile: botón único que abre panel */}
+                        <button className="action-btn mobile-only" onClick={() => setMobileMenuOpen(o => !o)}>
+                            <RefreshCw size={16} />
+                        </button>
+
                         <div className="status-badge">
                             <Clock size={14} />
                             <span>{tick.toLocaleTimeString()}</span>
                         </div>
                     </div>
+
+                    {/* Panel mobile con todas las acciones */}
+                    {mobileMenuOpen && (
+                        <div className="mobile-action-sheet" onClick={() => setMobileMenuOpen(false)}>
+                        <div onClick={e => e.stopPropagation()}>
+                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600 }}>
+                                AURUM {estadoGeneral && <span style={{ marginLeft: 8, color: 'var(--accent-primary)' }}>{estadoGeneral}</span>}
+                            </div>
+                            {[
+                                { label: 'Test Bot',       icon: <Stethoscope size={15}/>, fn: handleTest,    busy: testing,    busyLabel: 'Testeando...'    },
+                                { label: 'Reiniciar Bot',  icon: <RotateCcw size={15}/>,   fn: handleRestart, busy: restarting, busyLabel: 'Reiniciando...'  },
+                                { label: 'Sync MT5',       icon: <DatabaseZap size={15}/>, fn: handleSync,    busy: syncing,    busyLabel: 'Sincronizando...' },
+                                { label: 'El Meteorito',   icon: <RefreshCw size={15}/>,   fn: handleDeploy,  busy: deploying,  busyLabel: 'Impactando...',  primary: true },
+                            ].map(({ label, icon, fn, busy, busyLabel, primary }) => (
+                                <button key={label}
+                                    className={`action-btn${primary ? ' action-btn-primary' : ''} ${busy ? 'deploying' : ''}`}
+                                    style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 8 }}
+                                    onClick={() => { fn(); setMobileMenuOpen(false); }}
+                                    disabled={busy}>
+                                    {React.cloneElement(icon, { className: busy ? 'spin' : '' })}
+                                    <span>{busy ? busyLabel : label}</span>
+                                </button>
+                            ))}
+                            <button className="action-btn" style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--danger)' }} onClick={handleLogout}>
+                                <span>Cerrar sesión</span>
+                            </button>
+                        </div>
+                        </div>
+                    )}
                 </header>
 
                 {/* Logs inline de acciones */}

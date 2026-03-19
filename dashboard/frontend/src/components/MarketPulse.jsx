@@ -7,9 +7,13 @@ const DIR = {
 };
 
 const MarketPulse = ({ pulso }) => {
+    const [assetsOpen, setAssetsOpen] = React.useState(false);
     const weekend = isMarketWeekend();
     const bySymbol = {};
     (pulso || []).forEach(a => { bySymbol[a.simbolo] = a; });
+
+    const symbols = pulso && pulso.length > 0 ? pulso.map(a => a.simbolo) : Object.keys(ASSET_SESSIONS);
+    const inSessionCount = symbols.filter(s => isAssetInSession(s)).length;
 
     return (
         <div style={{
@@ -66,12 +70,21 @@ const MarketPulse = ({ pulso }) => {
                 })}
             </div>
 
-            {/* ── Activos ── */}
-            <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'var(--text-secondary)', textTransform: 'uppercase', marginBottom: 8 }}>
-                Activos
-            </p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                {(pulso && pulso.length > 0 ? pulso.map(a => a.simbolo) : Object.keys(ASSET_SESSIONS)).map(sym => {
+            {/* ── Activos (colapsable) ── */}
+            <div
+                onClick={() => setAssetsOpen(o => !o)}
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', marginBottom: assetsOpen ? 8 : 0 }}
+            >
+                <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>
+                    Activos
+                    <span style={{ marginLeft: 8, fontWeight: 400, color: inSessionCount > 0 ? '#16a34a' : '#9ca3af' }}>
+                        · {inSessionCount} en sesión
+                    </span>
+                </p>
+                <span style={{ fontSize: 10, color: 'var(--text-secondary)', transition: 'transform 0.2s', display: 'inline-block', transform: assetsOpen ? 'rotate(180deg)' : 'rotate(0deg)' }}>▼</span>
+            </div>
+            <div style={{ display: assetsOpen ? 'flex' : 'none', flexWrap: 'wrap', gap: 6 }}>
+                {symbols.map(sym => {
                     const inSession = isAssetInSession(sym);
                     const data = bySymbol[sym];
                     const dir = data ? DIR[data.decision] : null;
