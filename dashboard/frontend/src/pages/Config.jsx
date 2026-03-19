@@ -15,6 +15,29 @@ const DESCRIPCIONES = {
     'SNIPER.peso_voto':         'Peso del StructureWorker (SMC) en el veredicto ensemble',
 };
 
+// Rangos válidos por parámetro: [min, max]
+const RANGOS = {
+    'GERENTE.umbral_disparo':   [0.10, 0.90],
+    'GERENTE.riesgo_trade_pct': [0.10, 5.00],
+    'GERENTE.ratio_tp':         [1.00, 5.00],
+    'GERENTE.sl_atr_mult':      [0.50, 4.00],
+    'GERENTE.max_drawdown_usd': [100,  50000],
+    'TENDENCIA.peso_voto':      [0.05, 0.80],
+    'NLP.peso_voto':            [0.05, 0.80],
+    'ORDER_FLOW.peso_voto':     [0.00, 0.80],
+    'SNIPER.peso_voto':         [0.00, 0.80],
+};
+
+const validar = (nombre, valor) => {
+    const rango = RANGOS[nombre];
+    if (!rango) return null;
+    const v = parseFloat(valor);
+    if (isNaN(v)) return 'Valor inválido';
+    if (v < rango[0]) return `Mínimo: ${rango[0]}`;
+    if (v > rango[1]) return `Máximo: ${rango[1]}`;
+    return null;
+};
+
 const GRUPOS_ORDEN = ['GERENTE', 'TENDENCIA', 'NLP', 'ORDER_FLOW', 'SNIPER'];
 
 const Config = ({ setAuth, botVersion }) => {
@@ -53,14 +76,16 @@ const Config = ({ setAuth, botVersion }) => {
     useEffect(() => { fetchParametros(); }, []);
 
     const handleSave = async (nombre) => {
+        const err = validar(nombre, editValues[nombre]);
+        if (err) { setFeedback(f => ({ ...f, [nombre]: { type: 'validation', msg: err } })); return; }
         setSaving(s => ({ ...s, [nombre]: true }));
         setFeedback(f => ({ ...f, [nombre]: null }));
         try {
             await axios.put('/api/config/parametros', { nombre, valor: parseFloat(editValues[nombre]) }, { headers });
-            setFeedback(f => ({ ...f, [nombre]: 'ok' }));
+            setFeedback(f => ({ ...f, [nombre]: { type: 'ok' } }));
             setTimeout(() => setFeedback(f => ({ ...f, [nombre]: null })), 2500);
         } catch (err) {
-            setFeedback(f => ({ ...f, [nombre]: 'error' }));
+            setFeedback(f => ({ ...f, [nombre]: { type: 'error' } }));
         } finally {
             setSaving(s => ({ ...s, [nombre]: false }));
         }
@@ -112,23 +137,40 @@ const Config = ({ setAuth, botVersion }) => {
                                                 {DESCRIPCIONES[p.nombre] || p.descripcion || '—'}
                                             </td>
                                             <td>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    value={editValues[p.nombre] ?? p.valor}
-                                                    onChange={e => setEditValues(v => ({ ...v, [p.nombre]: e.target.value }))}
-                                                    style={{
-                                                        width: '100%', background: 'var(--bg-primary)',
-                                                        border: '1px solid var(--border-color)', borderRadius: 4,
-                                                        color: 'var(--text-primary)', padding: '4px 8px',
-                                                        fontSize: 13, fontFamily: 'monospace',
-                                                    }}
-                                                />
+                                                {(() => {
+                                                    const fb = feedback[p.nombre];
+                                                    const valErr = fb?.type === 'validation';
+                                                    return (
+                                                        <div>
+                                                            <input
+                                                                type="number"
+                                                                step="0.01"
+                                                                value={editValues[p.nombre] ?? p.valor}
+                                                                onChange={e => {
+                                                                    setEditValues(v => ({ ...v, [p.nombre]: e.target.value }));
+                                                                    if (feedback[p.nombre]?.type === 'validation')
+                                                                        setFeedback(f => ({ ...f, [p.nombre]: null }));
+                                                                }}
+                                                                style={{
+                                                                    width: '100%', background: 'var(--bg-primary)',
+                                                                    border: `1px solid ${valErr ? 'var(--danger)' : 'var(--border-color)'}`,
+                                                                    borderRadius: 4, color: 'var(--text-primary)',
+                                                                    padding: '4px 8px', fontSize: 13, fontFamily: 'monospace',
+                                                                }}
+                                                            />
+                                                            {valErr && (
+                                                                <span style={{ fontSize: 10, color: 'var(--danger)' }}>
+                                                                    {fb.msg}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })()}
                                             </td>
                                             <td style={{ textAlign: 'center' }}>
-                                                {feedback[p.nombre] === 'ok' ? (
+                                                {feedback[p.nombre]?.type === 'ok' ? (
                                                     <CheckCircle size={16} color="var(--success)" />
-                                                ) : feedback[p.nombre] === 'error' ? (
+                                                ) : feedback[p.nombre]?.type === 'error' ? (
                                                     <AlertCircle size={16} color="var(--danger)" />
                                                 ) : (
                                                     <button

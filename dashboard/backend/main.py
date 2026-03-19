@@ -594,6 +594,18 @@ async def get_parametros(token: str = Depends(oauth2_scheme), db: DBConnector = 
         raise HTTPException(status_code=500, detail=str(e))
 
 
+_PARAM_RANGOS = {
+    "GERENTE.umbral_disparo":   (0.10, 0.90),
+    "GERENTE.riesgo_trade_pct": (0.10, 5.00),
+    "GERENTE.ratio_tp":         (1.00, 5.00),
+    "GERENTE.sl_atr_mult":      (0.50, 4.00),
+    "GERENTE.max_drawdown_usd": (100,  50000),
+    "TENDENCIA.peso_voto":      (0.05, 0.80),
+    "NLP.peso_voto":            (0.05, 0.80),
+    "ORDER_FLOW.peso_voto":     (0.00, 0.80),
+    "SNIPER.peso_voto":         (0.00, 0.80),
+}
+
 class ParamUpdate(BaseModel):
     nombre: str
     valor: float
@@ -603,6 +615,10 @@ async def update_parametro(body: ParamUpdate, token: str = Depends(oauth2_scheme
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    if body.nombre in _PARAM_RANGOS:
+        min_v, max_v = _PARAM_RANGOS[body.nombre]
+        if not (min_v <= body.valor <= max_v):
+            raise HTTPException(status_code=422, detail=f"{body.nombre} debe estar entre {min_v} y {max_v}")
     try:
         with db._lock:
             db.cursor.execute(
