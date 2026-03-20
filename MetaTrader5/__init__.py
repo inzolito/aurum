@@ -85,19 +85,48 @@ threading.Thread(target=_loop.run_forever, daemon=True, name="MetaAPILoop").star
 
 def _run(coro, timeout=30):
     """Ejecuta una coroutine async de forma síncrona."""
+    global _consecutive_failures
     future = asyncio.run_coroutine_threadsafe(coro, _loop)
     try:
-        return future.result(timeout=timeout)
+        result = future.result(timeout=timeout)
+        _consecutive_failures = 0  # reset al tener éxito
+        return result
     except (concurrent.futures.TimeoutError, asyncio.TimeoutError):
         future.cancel()
         _set_last_error(1, "MetaAPI timeout")
+        _consecutive_failures += 1
+        _maybe_reconnect()
         return None
     except Exception as e:
         future.cancel()
         detail = getattr(e, 'details', None)
         msg = str(e) + " | details: " + str(detail) if detail else str(e)
         _set_last_error(1, msg)
+        _consecutive_failures += 1
+        _maybe_reconnect()
         return None
+
+
+def _maybe_reconnect():
+    """Reconecta a MetaAPI si hay demasiados fallos consecutivos."""
+    global _consecutive_failures, _connected
+    if _consecutive_failures < _MAX_FAILURES:
+        return
+    if not _reconnect_lock.acquire(blocking=False):
+        return  # ya hay un reconnect en curso
+    try:
+        print(f"[MetaAPI-Shim] ⚠️ {_consecutive_failures} fallos consecutivos. Reconectando...", flush=True)
+        _connected = False
+        _consecutive_failures = 0
+        _run(_conectar_async(), timeout=90)
+        if _connected:
+            print("[MetaAPI-Shim] ✅ Reconexión exitosa.", flush=True)
+        else:
+            print("[MetaAPI-Shim] ❌ Reconexión fallida. Reintentará en el próximo ciclo.", flush=True)
+    except Exception as e:
+        print(f"[MetaAPI-Shim] ❌ Error en reconexión: {e}", flush=True)
+    finally:
+        _reconnect_lock.release()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -114,6 +143,11 @@ _last_error = (0, "Success")
 
 _TOKEN      = os.getenv("METAAPI_TOKEN", "")
 _ACCOUNT_ID = os.getenv("METAAPI_ACCOUNT_ID", "")
+
+# Reconexión automática
+_consecutive_failures = 0
+_MAX_FAILURES         = 5    # fallos consecutivos antes de reconectar
+_reconnect_lock       = threading.Lock()
 
 
 def _set_last_error(code, msg):
