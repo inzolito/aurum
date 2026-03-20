@@ -681,7 +681,7 @@ class Manager:
             if precio_actual:
                 try:
                     self.db.cursor.execute(
-                        "UPDATE registro_operaciones SET precio_actual = %s, sl = %s, tp = %s WHERE ticket_mt5 = %s",
+                        "UPDATE registro_operaciones SET precio_actual = %s, stop_loss = %s, take_profit = %s WHERE ticket_mt5 = %s",
                         (precio_actual, pos.sl, pos.tp, pos.ticket)
                     )
                     self.db.conn.commit()
