@@ -699,6 +699,9 @@ async def get_activos(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
                     ROUND(COALESCE(SUM(ro.pnl_usd) FILTER (WHERE ro.resultado_final IS NOT NULL), 0)::numeric, 2) as pnl_total
                 FROM activos a
                 LEFT JOIN registro_operaciones ro ON ro.activo_id = a.id
+                LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
+                WHERE ro.id IS NULL
+                   OR vs.numero_version IN ('V17.0', '17.2')
                 GROUP BY a.id, a.simbolo, a.nombre, a.categoria, a.estado_operativo
                 ORDER BY a.estado_operativo, a.simbolo
             """)
