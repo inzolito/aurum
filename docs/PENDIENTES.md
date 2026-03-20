@@ -5,7 +5,119 @@
 
 > **Propósito:** Hoja de Ruta Inmediata. Registro de tareas activas, planes detallados de implementación y mejoras próximas. Es el documento de trabajo diario para coordinar los siguientes pasos del desarrollo.
 
-**Última actualización:** 2026-03-15
+**Última actualización:** 2026-03-20
+
+---
+
+## 🔴 MEJORAS ESTRATÉGICAS — CALIDAD DE SEÑAL (2026-03-20)
+
+> **Contexto:** Análisis post-mortem tras 87 trades en producción. Win rate del 27.5%, Profit Factor de 0.20, sesgo COMP del 94%. Los problemas identificados son estratégicos (calidad de señal) no técnicos. Requieren diseño cuidadoso antes de implementar.
+
+---
+
+### MEJORA-01 — Filtro de Correlación entre Activos
+
+**Problema observado:** El bot abrió 5 posiciones en 2 minutos el 20-Mar-2026 (08:08–08:10):
+- US30 + US500 + USTEC → los 3 son el mismo mercado USA (correlación >95%)
+- EURUSD + GBPUSD → ambos son USD-dependientes (correlación ~85%)
+
+Si el mercado cae en ese momento, los 3 índices caen juntos y las pérdidas se triplican. Es equivalente a operar con 3x el tamaño de posición en un solo activo.
+
+**Solución propuesta:**
+Definir grupos de correlación en `parametros_sistema` o en el código. Máximo 1 posición abierta por grupo simultáneamente.
+
+```
+Grupo USA_INDICES:  US30, US500, USTEC
+Grupo FOREX_USD:    EURUSD, GBPUSD, AUDUSD, NZDUSD, USDCAD, USDCHF
+Grupo METALES:      XAUUSD, XAGUSD
+Grupo PETROLEO:     XTIUSD, XBRUSD
+Grupo JPY:          USDJPY, GBPJPY, EURJPY, AUDJPY
+```
+
+Implementar en `risk_module.py`: antes de abrir una posición, verificar si ya hay una posición abierta en el mismo grupo de correlación. Si la hay → CANCELADO_RIESGO.
+
+**Prioridad:** Alta. Impacto directo en drawdown.
+
+---
+
+### MEJORA-02 — Corrección del Sesgo COMP (Long Bias)
+
+**Problema observado:** De 87 trades totales, **82 son COMP y solo 5 son VENT (94% long)**. El bot casi nunca vende. Si el mercado tiene una tendencia bajista sostenida, el bot pierde sistemáticamente.
+
+**Causas probables a investigar:**
+1. `TrendWorker`: las EMAs cortas (EMA9/EMA21) en timeframes M1-M5 en mercados con tendencia macro alcista siempre apuntan arriba aunque haya correcciones.
+2. `NLPWorker`: si el feed de noticias tiene sesgo positivo (más noticias bullish que bearish), los scores NLP serán consistentemente positivos.
+3. `CrossWorker`: si DXY y SPX están en tendencia alcista, el ajuste Cross puede ser siempre positivo.
+
+**Solución propuesta:**
+- Agregar log diario del ratio COMP/VENT en `estado_bot` o en un reporte semanal.
+- Revisar si `TrendWorker` puede generar votos negativos con la misma frecuencia que positivos. Analizar distribución histórica de `veredicto_apertura` en `registro_senales`.
+- Considerar un umbral de balance: si >70% de los últimos 20 trades son COMP, exigir veredicto más alto (>0.60) para nuevas compras.
+
+**Prioridad:** Alta. Es el factor que más contribuye al win rate bajo.
+
+---
+
+### MEJORA-03 — Ajuste de Risk/Reward (R:R)
+
+**Problema observado:** Estadísticas actuales:
+- Ganancia promedio: **+$14.50**
+- Pérdida promedio: **-$27.17**
+- Ratio R:R implícito: **0.53** (necesitarías 65%+ win rate para break-even; el bot está en 27.5%)
+
+Con R:R < 1, el sistema es matemáticamente negativo salvo que el win rate sea muy alto.
+
+**Causas:** El TP está a ~2× la distancia del SL en la mayoría de trades (correcto), pero el precio no llega al TP antes de regresar al SL. Esto sugiere que las entradas son en momentos de agotamiento de impulso, no de inicio de tendencia.
+
+**Solución propuesta (V18):**
+- Entrar en pullbacks a soporte (EMA21, FVG) en lugar de en el punto de máximo impulso. Ya está planificado en `memory/project_v18_plan.md`.
+- Evaluar relación TP/SL por activo: si XAUUSD históricamente alcanza el TP antes que el SL el 40% del tiempo, el TP actual está demasiado lejos o el SL demasiado cerca.
+- Considerar salida parcial al 50% del recorrido TP (take profit escalonado).
+
+**Prioridad:** Media. Requiere datos históricos para calibrar por activo.
+
+---
+
+### MEJORA-04 — Corrección de Autopsia: FlowWorker Culpable Falso
+
+**Problema observado:** `autopsias_perdidas` acusa a `FlowWorker` en **71% de todos los fallos** (44 de 62). Sin embargo, FlowWorker tiene `peso_voto = 0%` en la fórmula del veredicto — es imposible que sea el responsable de las entradas.
+
+**Causa:** El algoritmo de autopsia en `manager.py` probablemente busca "el worker que más contradice el resultado" o usa algún criterio que no filtra por peso. Está produciendo diagnósticos incorrectos que ocultan los verdaderos responsables (TrendWorker y NLPWorker).
+
+**Solución propuesta:**
+- Revisar `auditar_precision_cierres()` en `manager.py`: la lógica de `worker_culpable` debe excluir workers con `peso_voto = 0`.
+- El culpable real debería ser el worker con mayor peso que votó en la dirección perdedora.
+- Agregar log del voto individual de cada worker al momento del fallo para diagnóstico real.
+
+**Prioridad:** Media. No afecta trading directo pero hace inútil el diagnóstico de fallos.
+
+---
+
+### MEJORA-05 — Ventana de Enfriamiento por Sesión
+
+**Problema observado:** 5 posiciones abiertas en 2 minutos el 20-Mar-2026. Aunque MEJORA-01 limita la correlación, sigue siendo posible abrir muchas posiciones no correlacionadas en un período muy corto ante un evento de mercado.
+
+**Solución propuesta:**
+Agregar en `risk_module.py` un límite de máximo N trades por ventana de tiempo:
+- Máx. 2 nuevas posiciones por hora (configurable en BD: `GERENTE.max_trades_por_hora`)
+- Si se supera → CANCELADO_RIESGO hasta que pase la ventana
+
+**Prioridad:** Baja. La correlación (MEJORA-01) ya mitiga el caso más grave.
+
+---
+
+### MEJORA-06 — FlowWorker: Reemplazar Fallback por Indicador Útil
+
+**Problema observado:** MetaAPI no provee datos de Level 2 (order book). FlowWorker **siempre** usa el fallback de "presión de velas M1 en 4h". Este fallback mide momentum pasado con tick volume (no volumen real), es un indicador rezagado y poco fiable con MetaAPI.
+
+Con peso=0% en el veredicto, FlowWorker actualmente no aporta ni perjudica las entradas, pero contamina el diagnóstico de autopsias y consume recursos en cada ciclo.
+
+**Opciones:**
+1. **Desactivar FlowWorker** hasta que tengamos un broker con Level 2 real (OANDA sí lo provee).
+2. **Reemplazar el fallback** por un indicador más útil que sí funcione con MetaAPI: CVD (Cumulative Volume Delta) en M5, o simplemente el spread bid/ask como proxy de liquidez.
+3. **Subir su peso** solo si se migra a OANDA (que sí provee order book real).
+
+**Prioridad:** Baja. No afecta resultados actuales (peso=0%), pero limpia el código y el diagnóstico.
 
 ---
 
