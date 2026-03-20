@@ -376,7 +376,7 @@ async def get_noticias(token: str = Depends(oauth2_scheme), db: DBConnector = De
                         url = partes[-1].strip()
                     if "Impacto:" in summary:
                         try:
-                            impacto = int(partes[0].replace("Impacto:", "").strip())
+                            impacto = int(partes[0].replace("Impacto:", "").strip().split("/")[0])
                             tipo = "relevante"
                         except Exception:
                             pass
