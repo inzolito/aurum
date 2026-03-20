@@ -348,35 +348,53 @@ async def get_noticias(token: str = Depends(oauth2_scheme), db: DBConnector = De
             db.cursor.execute("""
                 SELECT title, source, content_summary, timestamp, published_at
                 FROM raw_news_feed
-                ORDER BY timestamp DESC
-                LIMIT 100
+                ORDER BY published_at DESC NULLS LAST
+                LIMIT 150
             """)
             rows = db.cursor.fetchall()
+
+            # Cargar razonamientos recientes de Gemini por activo
+            db.cursor.execute("""
+                SELECT DISTINCT ON (activo_id)
+                    a.simbolo, sn.razonamiento_ia, sn.impacto_nlp, sn.tiempo
+                FROM sentimiento_noticias sn
+                JOIN activos a ON a.id = sn.activo_id
+                ORDER BY activo_id, sn.tiempo DESC
+            """)
+            razonamientos = {r[0]: {"razonamiento": r[1], "nlp": float(r[2]), "tiempo": r[3].isoformat() if r[3] else None}
+                             for r in db.cursor.fetchall()}
+
             noticias = []
             for r in rows:
                 title, source, summary, ts, pub_at = r
                 impacto = None
                 tipo = "filtrada"
-                if summary and "Impacto:" in summary:
-                    try:
-                        impacto = int(summary.split("|")[0].replace("Impacto:", "").strip())
-                        tipo = "relevante"
-                    except Exception:
-                        pass
-                elif summary and "Descargada" in summary:
-                    tipo = "descartada"
+                url = None
+                if summary:
+                    partes = summary.split("|")
+                    if len(partes) >= 2:
+                        url = partes[-1].strip()
+                    if "Impacto:" in summary:
+                        try:
+                            impacto = int(partes[0].replace("Impacto:", "").strip())
+                            tipo = "relevante"
+                        except Exception:
+                            pass
+                    elif "Descargada" in summary:
+                        tipo = "descartada"
                 noticias.append({
                     "titulo": title,
                     "fuente": source,
                     "impacto": impacto,
                     "tipo": tipo,
+                    "url": url,
                     "timestamp": ts.isoformat() if ts else None,
                     "published_at": pub_at.isoformat() if pub_at else None,
                 })
-            return {"noticias": noticias, "total": len(noticias)}
+            return {"noticias": noticias, "total": len(noticias), "razonamientos": razonamientos}
         except Exception:
             db.conn.rollback()
-            return {"noticias": [], "total": 0}
+            return {"noticias": [], "total": 0, "razonamientos": {}}
 
 
 @app.post("/api/control/sync-mt5")
