@@ -933,13 +933,14 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
                            "trend": round(float(r[5] or 0), 2), "nlp": round(float(r[6] or 0), 2),
                            "sniper": round(float(r[7] or 0), 2)} for r in rows]
 
-    # ── 6. Último voto por activo activo ──────────────────────────────────────
+    # ── 6. Último voto por activo activo + umbral ─────────────────────────────
     with db._lock:
         try:
             db.cursor.execute("""
                 SELECT DISTINCT ON (a.simbolo)
                     a.simbolo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper,
-                    rs.voto_volume, rs.voto_cross, rs.decision_gerente, rs.tiempo
+                    rs.voto_volume, rs.voto_cross, rs.decision_gerente, rs.tiempo,
+                    rs.voto_final_ponderado
                 FROM registro_senales rs
                 JOIN activos a ON a.id = rs.activo_id
                 WHERE a.estado_operativo = 'ACTIVO'
@@ -949,10 +950,24 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
         except Exception:
             db.conn.rollback()
             rows = []
+
+    # Leer umbral de disparo desde BD
+    umbral = 0.45
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT valor FROM parametros_sistema WHERE nombre_parametro = 'GERENTE.umbral_disparo'")
+            r = db.cursor.fetchone()
+            if r:
+                umbral = round(float(r[0]), 3)
+        except Exception:
+            db.conn.rollback()
+
+    result["umbral_disparo"] = umbral
     result["votos_workers"] = [{"simbolo": r[0], "trend": round(float(r[1] or 0), 2),
                                   "nlp": round(float(r[2] or 0), 2), "sniper": round(float(r[3] or 0), 2),
                                   "volumen": round(float(r[4] or 0), 2), "cross": round(float(r[5] or 0), 2),
-                                  "decision": r[6], "tiempo": r[7].isoformat()} for r in rows]
+                                  "decision": r[6], "tiempo": r[7].isoformat(),
+                                  "veredicto": round(float(r[8] or 0), 3)} for r in rows]
 
     # ── 7. Rendimiento hoy (hora Chile) ───────────────────────────────────────
     with db._lock:

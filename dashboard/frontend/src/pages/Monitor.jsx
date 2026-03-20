@@ -148,7 +148,8 @@ const Monitor = ({ setAuth, botVersion }) => {
         </div>
     );
 
-    const { sistema, procesos, reinicios, bot, senales, votos_workers, hoy, activos_problema } = data || {};
+    const { sistema, procesos, reinicios, bot, senales, votos_workers, hoy, activos_problema, umbral_disparo } = data || {};
+    const umbral = umbral_disparo || 0.45;
 
     // Cálculos de estado
     const latidoOk   = bot && bot.segundos_inactivo < 90;
@@ -426,26 +427,61 @@ const Monitor = ({ setAuth, botVersion }) => {
                                         <thead>
                                             <tr style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
                                                 <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>Activo</th>
-                                                {['Trend', 'NLP', 'Sniper', 'Volumen', 'Cross'].map(h => (
+                                                {['Trend', 'NLP', 'Sniper', 'Vol', 'Cross'].map(h => (
                                                     <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
                                                 ))}
-                                                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>Última señal</th>
-                                                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)' }}>Decisión</th>
+                                                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)' }}>Veredicto</th>
+                                                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', minWidth: 130 }}>
+                                                    Falta para orden <span style={{ color: 'var(--accent-primary)' }}>(umbral {umbral})</span>
+                                                </th>
+                                                <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>Señal</th>
                                             </tr>
                                         </thead>
                                         <tbody>
-                                            {votos_workers.map((w, i) => (
-                                                <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{w.simbolo}</td>
-                                                    <CeldaVoto voto={w.trend} />
-                                                    <CeldaVoto voto={w.nlp} />
-                                                    <CeldaVoto voto={w.sniper} />
-                                                    <CeldaVoto voto={w.volumen} />
-                                                    <CeldaVoto voto={w.cross} />
-                                                    <td style={{ padding: '5px 8px', color: 'var(--text-secondary)', fontSize: 10 }}>{tiempoRelativo(w.tiempo)}</td>
-                                                    <td style={{ padding: '5px 8px', textAlign: 'center' }}><ChipDecision decision={w.decision} /></td>
-                                                </tr>
-                                            ))}
+                                            {votos_workers.map((w, i) => {
+                                                const v = parseFloat(w.veredicto) || 0;
+                                                const absV = Math.abs(v);
+                                                const falta = umbral - absV;
+                                                const pct = Math.min((absV / umbral) * 100, 100);
+                                                const dispara = falta <= 0;
+                                                const cerca = !dispara && falta <= 0.10;
+                                                const barColor = dispara ? '#22c55e' : cerca ? '#f59e0b' : '#3b82f6';
+                                                const dir = v > 0 ? '▲' : v < 0 ? '▼' : '—';
+                                                return (
+                                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', background: dispara ? '#14532d11' : 'transparent' }}>
+                                                        <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{w.simbolo}</td>
+                                                        <CeldaVoto voto={w.trend} />
+                                                        <CeldaVoto voto={w.nlp} />
+                                                        <CeldaVoto voto={w.sniper} />
+                                                        <CeldaVoto voto={w.volumen} />
+                                                        <CeldaVoto voto={w.cross} />
+                                                        {/* Veredicto */}
+                                                        <td style={{ textAlign: 'center', padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700,
+                                                            color: dispara ? '#22c55e' : cerca ? '#f59e0b' : 'var(--text-secondary)' }}>
+                                                            {dir} {v > 0 ? '+' : ''}{v.toFixed(3)}
+                                                        </td>
+                                                        {/* Barra de proximidad + falta */}
+                                                        <td style={{ padding: '5px 12px', minWidth: 130 }}>
+                                                            {dispara ? (
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                    <div style={{ flex: 1, height: 6, background: '#22c55e', borderRadius: 3 }} />
+                                                                    <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>✓ DISPARA</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                                    <div style={{ height: 5, background: 'var(--bg-primary)', borderRadius: 3, overflow: 'hidden' }}>
+                                                                        <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s' }} />
+                                                                    </div>
+                                                                    <span style={{ fontSize: 10, color: barColor, fontFamily: 'monospace', fontWeight: 700 }}>
+                                                                        −{falta.toFixed(3)} {cerca ? '⚡' : ''}
+                                                                    </span>
+                                                                </div>
+                                                            )}
+                                                        </td>
+                                                        <td style={{ padding: '5px 8px', color: 'var(--text-secondary)', fontSize: 10 }}>{tiempoRelativo(w.tiempo)}</td>
+                                                    </tr>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 </div>
