@@ -12,7 +12,6 @@ from config.mt5_connector import MT5Connector
 from core.risk_module import RiskModule
 from workers.worker_trend import TrendWorker
 from workers.worker_nlp import NLPWorker
-from workers.worker_flow import OrderFlowWorker
 from workers.worker_hurst import HurstWorker
 from workers.worker_volume import VolumeWorker
 from workers.worker_cross import CrossWorker
@@ -60,7 +59,6 @@ class Manager:
         self.risk  = RiskModule(db, mt5)
         self.trend = TrendWorker(db, mt5)
         self.nlp   = NLPWorker(db)
-        self.flow   = OrderFlowWorker(db, mt5)
         self.hurst  = HurstWorker(db, mt5)
         self.volume = VolumeWorker(db, mt5)
         self.cross  = CrossWorker(db, mt5)
@@ -185,7 +183,6 @@ class Manager:
         # 4. Consultar Obreros Técnicos primero (V10.1 Priority)
         print("\n[GERENTE] Consultando Obreros Técnicos...")
         v_trend  = self.trend.analizar(simbolo_interno)
-        v_flow   = self.flow.analizar(simbolo_interno)
         v_volume = self.volume.analizar(simbolo_interno)
         v_cross  = self.cross.analizar(simbolo_interno)
         v_struct = self.structure.analizar(simbolo_interno)
@@ -198,12 +195,10 @@ class Manager:
         h_estado = res_hurst['estado']
 
         # Calcular Veredicto Técnico preliminar para decidir el motor NLP
-        # Pesos técnicos: Trend(30%), Volume(15%), Cross(15%), Flow(10%), Structure(10%) -> Total 80% (o normalizar a 1.0)
-        # Para simplificar, usamos el veredicto normalizado sin el 20% de NLP.
+        # Pesos técnicos: Trend(35%), Volume(15%), Cross(15%), Structure(10%) -> Total 75%
         tecnico_veredicto = round(
-            (v_trend * 0.30) + 
-            (v_volume['voto'] * 0.15) + 
-            (v_flow * 0.10) + 
+            (v_trend * 0.35) +
+            (v_volume['voto'] * 0.15) +
             (v_cross['voto'] * 0.15) +
             (v_struct['voto'] * 0.10),
             4
@@ -241,37 +236,27 @@ class Manager:
         # 5. Reflejo de Combate: Alerta de Divergencia
         if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
             motivo = f"Bloqueado por DIVERGENCIA extrema entre Trend e IA."
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     0.0, "CANCELADO_RIESGO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
-        # --- V12.0: WEIGHTED VOTING & NO-FLOW PROTOCOL ---
+        # --- V17.2: WEIGHTED VOTING (sin FlowWorker) ---
         # Pesos leídos desde parametros_sistema en BD (fallback a defaults si no hay dato).
-        p_trend  = float(params.get("TENDENCIA.peso_voto",   0.40))
+        # Flow eliminado: MetaAPI no provee order book real. Peso redistribuido.
+        p_trend  = float(params.get("TENDENCIA.peso_voto",   0.50))
         p_nlp    = float(params.get("NLP.peso_voto",          0.30))
-        p_flow   = float(params.get("ORDER_FLOW.peso_voto",   0.15))
-        p_sniper = float(params.get("SNIPER.peso_voto",       0.15))
-        
-        # Protocolo No-Flow: Si Flow es None o 0.0 (neutral), redistribuimos.
-        # En V12.0, si el obrero Flow retorna 0.0 (neutral por falta de datos o error), 
-        # redistribuimos su 15% como: +10% a Trend y +5% a Sniper.
-        if v_flow == 0.0:
-            print(f"[GERENTE] 🛠 Protocolo No-Flow activado para {simbolo_interno}. Redistribuyendo pesos...")
-            p_trend += 0.10 # 40% -> 50%
-            p_sniper += 0.05 # 15% -> 20%
-            p_flow = 0.0
-            
+        p_sniper = float(params.get("SNIPER.peso_voto",       0.20))
+
         try:
             v_struct_voto = float(v_struct.get('voto', 0))
         except (ValueError, TypeError):
             v_struct_voto = 0.0
-        
+
         veredicto = round(
-            (v_trend * p_trend) + 
-            (v_nlp * p_nlp) + 
-            (v_flow * p_flow) + 
+            (v_trend * p_trend) +
+            (v_nlp * p_nlp) +
             (v_struct_voto * p_sniper),
             4
         )
@@ -310,11 +295,10 @@ class Manager:
             veredicto = round(max(-1.0, min(1.0, veredicto + ajuste_cross)), 4)
             print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f} → Veredicto: {veredicto:+.4f}")
         
-        # --- FUERZA DOMINANTE (V12.0) ---
+        # --- FUERZA DOMINANTE (V17.2) ---
         pesos_votos = {
             "Trend": abs(v_trend * p_trend),
             "NLP": abs(v_nlp * p_nlp),
-            "Flow": abs(v_flow * p_flow),
             "Sniper": abs(v_struct_voto * p_sniper)
         }
         fuerza_dominante = max(pesos_votos, key=lambda k: pesos_votos[k])
@@ -351,7 +335,7 @@ class Manager:
             "black_swan": v_cross['black_swan']
         }
 
-        print(f"\n[GERENTE] Pesos V12.0 Dynamic: Trend({p_trend*100:.0f}%) NLP({p_nlp*100:.0f}%) Flow({p_flow*100:.0f}%) Sniper({p_sniper*100:.0f}%)")
+        print(f"\n[GERENTE] Pesos V17.2: Trend({p_trend*100:.0f}%) NLP({p_nlp*100:.0f}%) Sniper({p_sniper*100:.0f}%)")
         print(f"[GERENTE] Veredicto: {veredicto:+.4f} | Sniper: {v_struct['sniper_veredicto']} | Fuerza: {fuerza_dominante}")
         print(f"[GERENTE] Hurst: {h_val:.4f} ({h_estado}) | Status: {'MODO EMERGENCIA' if v_cross['black_swan'] else 'Normal'}")
         
@@ -362,7 +346,7 @@ class Manager:
                 # Generar Telemetría Gráfica (V7.5)
                 df_viz = self.mt5.obtener_velas(simbolo_broker, 100)
                 votos_map = {
-                    "Trend": v_trend, "NLP": v_nlp, "Flow": v_flow,
+                    "Trend": v_trend, "NLP": v_nlp, "Flow": 0.0,
                     "Volume": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']
                 }
                 img_path = self.visualizer.generar_reporte_grafico(simbolo_interno, df_viz, votos_map, v_struct['ob_precio'], v_volume['poc'])
@@ -379,7 +363,7 @@ class Manager:
             else:
                 motivo = f"Veredicto {veredicto:+.4f} insufficiente (Umbral: {umbral})"
             
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "IGNORADO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
@@ -389,7 +373,7 @@ class Manager:
         # Los workers ya votaron. Este check solo bloquea la ORDEN, no el análisis.
         if not self.risk.verificar_ventana_ejecucion(simbolo_interno):
             motivo = f"Veredicto {veredicto:+.4f} aprobado pero ejecucion bloqueada (horario/arranque de sesion)."
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "BLOQUEADO_HORARIO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
@@ -404,7 +388,7 @@ class Manager:
         lotes, sl, tp = self.risk.calcular_riesgo_completo(simbolo_broker, direccion, veredicto)
         if lotes is None:
             motivo = "Error calculando riesgo unificado (lotes/SL/TP). Orden abortada."
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "CANCELADO_RIESGO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
@@ -416,9 +400,9 @@ class Manager:
         motivo = (
             f"Veredicto Ensemble: {veredicto:+.4f} supera umbral {umbral}. "
             f"Señal de {direccion}. "
-            f"Votos: Trend={v_trend:+.2f} (0.30), "
-            f"NLP={v_nlp:+.2f} (0.20), "
-            f"Flow={v_flow:+.2f} (0.10). "
+            f"Votos: Trend={v_trend:+.2f} ({p_trend:.0%}), "
+            f"NLP={v_nlp:+.2f} ({p_nlp:.0%}), "
+            f"Sniper={v_struct_voto:+.2f} ({p_sniper:.0%}). "
             f"SL={sl:.2f}  TP={tp:.2f}  Lotes={lotes}."
         )
 
@@ -457,7 +441,7 @@ class Manager:
                 smc_estado=v_struct['estado_smc'],
                 smc_veredicto=v_struct['sniper_veredicto'],
                 smc_voto_raw=v_struct_voto,
-                v_flow=v_flow,
+                v_flow=0.0,
                 v_vol=v_volume['voto'],
                 v_cross=v_cross['voto'],
                 v_hurst=h_val,
@@ -465,11 +449,11 @@ class Manager:
                 fuerza_dominante=fuerza_dominante,
                 image_path=self.visualizer.generar_reporte_grafico(
                     simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
-                    {"Trend": v_trend, "NLP": v_nlp, "Flow": v_flow, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
+                    {"Trend": v_trend, "NLP": v_nlp, "Flow": 0.0, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
                     v_struct['ob_precio'], v_volume['poc']
                 )
             )
-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "EJECUTADO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
@@ -513,7 +497,7 @@ class Manager:
 
                 notificar_rechazo_broker(simbolo_interno, retcode, causa)
                 
-                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                         veredicto, "ERROR_BROKER", err_msg,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                         v_hurst=h_val, v_sniper=v_struct['voto'])
@@ -529,7 +513,7 @@ class Manager:
                     err_msg = f"Discrepancia MT5: Ticket {ticket} reportado como DONE pero no aparece en posiciones abiertas."
                     print(f"[GERENTE] 🚨 {err_msg}")
                     notificar_error_critico("DISCREPANCIA_BROKER", err_msg)
-                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow, veredicto, "ERROR_BROKER", err_msg,
+                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0, veredicto, "ERROR_BROKER", err_msg,
                                             v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                             v_hurst=h_val, v_sniper=v_struct['voto'])
                     return {"decision": "ERROR_BROKER", "motivo": err_msg}
@@ -555,12 +539,12 @@ class Manager:
                     "votos": {
                         "trend":   round(v_trend, 4),
                         "nlp":     round(v_nlp, 4),
-                        "flow":    round(v_flow, 4),
+                        "flow":    round(0.0, 4),
                         "sniper":  round(v_struct_voto, 4),
                         "volume":  round(v_volume['voto'], 4),
                         "cross":   round(v_cross['voto'], 4),
                     },
-                    "pesos": {"trend": p_trend, "nlp": p_nlp, "flow": p_flow, "sniper": p_sniper},
+                    "pesos": {"trend": p_trend, "nlp": p_nlp, "sniper": p_sniper},
                     "hurst": {"valor": round(h_val, 4), "estado": h_estado},
                     "estructura": {
                         "estado": v_struct['estado_smc'],
@@ -622,7 +606,7 @@ class Manager:
                     smc_estado=v_struct['estado_smc'],
                     smc_veredicto=v_struct['sniper_veredicto'],
                     smc_voto_raw=v_struct_voto,
-                    v_flow=v_flow,
+                    v_flow=0.0,
                     v_vol=v_volume['voto'],
                     v_cross=v_cross['voto'],
                     v_hurst=h_val,
@@ -630,7 +614,7 @@ class Manager:
                     fuerza_dominante=fuerza_dominante,
                     image_path=self.visualizer.generar_reporte_grafico(
                         simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
-                        {"Trend": v_trend, "NLP": v_nlp, "Flow": v_flow, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
+                        {"Trend": v_trend, "NLP": v_nlp, "Flow": 0.0, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
                         v_struct['ob_precio'], v_volume['poc']
                     )
                 )
@@ -646,7 +630,7 @@ class Manager:
                 except Exception as e_reg:
                     print(f"[GERENTE] Error actualizando precision inicial: {e_reg}")
 
-                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, v_flow,
+                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                         veredicto, "EJECUTADO", motivo,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                         v_hurst=h_val, v_sniper=v_struct['voto'])
@@ -1028,7 +1012,7 @@ class Manager:
                 f"3. Sugiere UNA correccion concreta al sistema.\n\n"
                 f"Responde SOLO en JSON (sin markdown):\n"
                 f"{{\"tipo_fallo\": \"TECNICO|MACRO|TIMING|RIESGO\", "
-                f"\"worker_culpable\": \"TrendWorker|NLPWorker|FlowWorker|StructureWorker|Otro\", "
+                f"\"worker_culpable\": \"TrendWorker|NLPWorker|StructureWorker|Otro\", "
                 f"\"descripcion\": \"...\", \"correccion_sugerida\": \"...\"}}"
             )
             texto = _llamar_gemini_api(prompt, model=GEMINI_MODEL_LITE)
@@ -1100,7 +1084,6 @@ class Manager:
             accs = {
                 "TENDENCIA.peso_voto":   _tasa_acierto([r[0] for r in rows], resultados),
                 "NLP.peso_voto":         _tasa_acierto([r[1] for r in rows], resultados),
-                "ORDER_FLOW.peso_voto":  _tasa_acierto([r[2] for r in rows], resultados),
                 "SNIPER.peso_voto":      _tasa_acierto([r[3] for r in rows], resultados),
             }
 
