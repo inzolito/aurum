@@ -207,8 +207,14 @@ class AurumEngine:
 
         # --- 1. PID FILE — Prevenir instancias duplicadas ---
         if _verificar_instancia_duplicada():
-            print("[MAIN] 🚨 Ya hay una instancia de Aurum Core corriendo. Abortando para evitar duplicados.")
-            return
+            msg = "[MAIN] 🚨 Ya hay una instancia de Aurum Core corriendo. Abortando para evitar duplicados."
+            print(msg)
+            try:
+                from config.notifier import _enviar_telegram
+                _enviar_telegram(f"🚨 <b>AURUM CORE — INSTANCIA DUPLICADA DETECTADA</b>\n\nEl bot intentó arrancar pero ya hay un proceso corriendo.\nRevisa el servidor inmediatamente.")
+            except Exception:
+                pass
+            sys.exit(1)
 
         _escribir_pid()
         pid = os.getpid()
