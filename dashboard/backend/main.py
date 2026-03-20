@@ -693,8 +693,9 @@ async def get_activos(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
         try:
             db.cursor.execute("""
                 SELECT a.id, a.simbolo, a.nombre, a.categoria, a.estado_operativo,
-                    COUNT(ro.id) as trades,
+                    COUNT(ro.id) FILTER (WHERE ro.resultado_final IS NOT NULL) as trades,
                     COUNT(ro.id) FILTER (WHERE ro.resultado_final = 'GANADO') as ganados,
+                    COUNT(ro.id) FILTER (WHERE ro.resultado_final = 'PERDIDO') as perdidos,
                     ROUND(COALESCE(SUM(ro.pnl_usd) FILTER (WHERE ro.resultado_final IS NOT NULL), 0)::numeric, 2) as pnl_total
                 FROM activos a
                 LEFT JOIN registro_operaciones ro ON ro.activo_id = a.id
@@ -707,7 +708,7 @@ async def get_activos(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
             raise HTTPException(status_code=500, detail=str(e))
     return {"activos": [
         {"id": r[0], "simbolo": r[1], "nombre": r[2], "categoria": r[3],
-         "estado": r[4], "trades": int(r[5]), "ganados": int(r[6]), "pnl_total": float(r[7])}
+         "estado": r[4], "trades": int(r[5]), "ganados": int(r[6]), "perdidos": int(r[7]), "pnl_total": float(r[8])}
         for r in rows
     ]}
 
@@ -757,7 +758,7 @@ async def get_rendimiento_activo(simbolo: str, token: str = Depends(oauth2_schem
                 JOIN activos a ON a.id = ro.activo_id
                 LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
                 WHERE a.simbolo = %s AND ro.resultado_final IS NOT NULL
-                GROUP BY vs.nombre
+                GROUP BY COALESCE(vs.nombre, 'Sin versión')
                 ORDER BY pnl DESC
             """, (simbolo.upper(),))
             por_version = db.cursor.fetchall()

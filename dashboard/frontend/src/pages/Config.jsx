@@ -377,52 +377,66 @@ const Config = ({ setAuth, botVersion }) => {
                                 <tr>
                                     <th>Símbolo</th>
                                     <th>Nombre</th>
-                                    <th style={{ textAlign: 'center' }}>Trades</th>
+                                    <th style={{ textAlign: 'center' }}>Ganados</th>
+                                    <th style={{ textAlign: 'center' }}>Perdidos</th>
+                                    <th style={{ textAlign: 'center' }}>Win %</th>
                                     <th style={{ textAlign: 'right' }}>PnL Total</th>
                                     <th style={{ textAlign: 'center' }}>Estado</th>
                                     <th style={{ width: 110, textAlign: 'center' }}>Encender / Apagar</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {activos.map(a => (
-                                    <tr key={a.simbolo}>
-                                        <td>
-                                            <button onClick={() => setModalActivo(a.simbolo)}
-                                                style={{ background: 'none', border: 'none', cursor: 'pointer',
-                                                    fontFamily: 'monospace', fontSize: 13, fontWeight: 700,
-                                                    color: 'var(--accent-primary)', textDecoration: 'underline', padding: 0 }}>
-                                                {a.simbolo}
-                                            </button>
-                                        </td>
-                                        <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.nombre}</td>
-                                        <td style={{ textAlign: 'center', fontSize: 12 }}>{a.trades}</td>
-                                        <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
-                                            color: a.pnl_total >= 0 ? '#22c55e' : '#ef4444' }}>
-                                            {a.pnl_total >= 0 ? '+' : ''}${a.pnl_total.toFixed(2)}
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            <EstadoChip estado={a.estado} />
-                                        </td>
-                                        <td style={{ textAlign: 'center' }}>
-                                            {(a.estado === 'ACTIVO' || a.estado === 'PAUSADO') && (
-                                                <button
-                                                    onClick={() => handleToggleActivo(a.simbolo, a.estado)}
-                                                    disabled={togglingActivo[a.simbolo]}
-                                                    style={{
-                                                        background: a.estado === 'ACTIVO' ? '#14532d33' : '#78350f33',
-                                                        border: `1px solid ${a.estado === 'ACTIVO' ? '#22c55e44' : '#f59e0b44'}`,
-                                                        borderRadius: 6, padding: '4px 12px', cursor: 'pointer',
-                                                        color: a.estado === 'ACTIVO' ? '#22c55e' : '#f59e0b',
-                                                        fontSize: 11, fontWeight: 700, display: 'flex',
-                                                        alignItems: 'center', gap: 5, margin: '0 auto',
-                                                    }}>
-                                                    <Power size={11} />
-                                                    {togglingActivo[a.simbolo] ? '...' : a.estado === 'ACTIVO' ? 'Pausar' : 'Activar'}
+                                {activos.map(a => {
+                                    const wr = a.trades > 0 ? Math.round((a.ganados / a.trades) * 100) : null;
+                                    return (
+                                        <tr key={a.simbolo}>
+                                            <td>
+                                                <button onClick={() => setModalActivo(a.simbolo)}
+                                                    style={{ background: 'none', border: 'none', cursor: 'pointer',
+                                                        fontFamily: 'monospace', fontSize: 13, fontWeight: 700,
+                                                        color: 'var(--accent-primary)', textDecoration: 'underline', padding: 0 }}>
+                                                    {a.simbolo}
                                                 </button>
-                                            )}
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+                                            <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{a.nombre}</td>
+                                            <td style={{ textAlign: 'center', fontSize: 12, color: '#22c55e', fontWeight: 700 }}>
+                                                {a.trades > 0 ? a.ganados : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontSize: 12, color: '#ef4444', fontWeight: 700 }}>
+                                                {a.trades > 0 ? a.perdidos : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'center', fontSize: 12, fontWeight: 700,
+                                                color: wr === null ? 'var(--text-secondary)' : wr >= 50 ? '#22c55e' : wr >= 30 ? '#f59e0b' : '#ef4444' }}>
+                                                {wr !== null ? `${wr}%` : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'right', fontFamily: 'monospace', fontSize: 12, fontWeight: 700,
+                                                color: a.pnl_total > 0 ? '#22c55e' : a.pnl_total < 0 ? '#ef4444' : 'var(--text-secondary)' }}>
+                                                {a.trades > 0 ? `${a.pnl_total >= 0 ? '+' : ''}$${a.pnl_total.toFixed(2)}` : '—'}
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                <EstadoChip estado={a.estado} />
+                                            </td>
+                                            <td style={{ textAlign: 'center' }}>
+                                                {(a.estado === 'ACTIVO' || a.estado === 'PAUSADO') && (
+                                                    <button
+                                                        onClick={() => handleToggleActivo(a.simbolo, a.estado)}
+                                                        disabled={togglingActivo[a.simbolo]}
+                                                        style={{
+                                                            background: a.estado === 'ACTIVO' ? '#14532d33' : '#78350f33',
+                                                            border: `1px solid ${a.estado === 'ACTIVO' ? '#22c55e44' : '#f59e0b44'}`,
+                                                            borderRadius: 6, padding: '4px 12px', cursor: 'pointer',
+                                                            color: a.estado === 'ACTIVO' ? '#22c55e' : '#f59e0b',
+                                                            fontSize: 11, fontWeight: 700, display: 'flex',
+                                                            alignItems: 'center', gap: 5, margin: '0 auto',
+                                                        }}>
+                                                        <Power size={11} />
+                                                        {togglingActivo[a.simbolo] ? '...' : a.estado === 'ACTIVO' ? 'Pausar' : 'Activar'}
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
