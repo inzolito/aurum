@@ -716,6 +716,12 @@ class Manager:
         import MetaTrader5 as mt5_api
         from datetime import datetime, timedelta
 
+        # Limpiar cualquier transacción abortada antes de empezar
+        try:
+            self.db.conn.rollback()
+        except Exception:
+            pass
+
         # 1. Obtener trades cerrados sin resultado en la BD (D3 V14: incluir simbolo)
         try:
             self.db.cursor.execute("""
@@ -737,11 +743,6 @@ class Manager:
         if history is None:
             return
 
-        try:
-            self.db.conn.rollback()
-        except Exception:
-            pass
-
         for ticket, veredicto, prob, p_ent, tp, sl, simbolo in pendientes:
             # Buscar el deal de salida para este ticket de orden
             deals = [d for d in history if d.order == ticket and d.entry == mt5_api.DEAL_ENTRY_OUT]
@@ -756,6 +757,7 @@ class Manager:
 
                 print(f"[GERENTE] Auditoria de Cierre #{ticket}: Result={resultado} | Prob={prob}% | Div={divergencia:.1f}")
 
+                update_ok = False
                 try:
                     self.db.cursor.execute("""
                         UPDATE registro_operaciones
@@ -763,12 +765,17 @@ class Manager:
                         WHERE ticket_mt5 = %s
                     """, (resultado, divergencia, ganancia, ticket))
                     self.db.conn.commit()
+                    update_ok = True
                 except Exception as e:
                     print(f"[GERENTE] Error actualizando precision de cierre #{ticket}: {e}")
                     try:
                         self.db.conn.rollback()
                     except Exception:
                         pass
+
+                # Solo notificar si el UPDATE se grabó correctamente
+                if not update_ok:
+                    continue
 
                 # FASE 4 V15: Consultar cuenta para notificaciones de cierre
                 try:
