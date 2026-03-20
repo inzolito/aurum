@@ -677,12 +677,12 @@ class Manager:
                 if tick:
                     precio_actual = tick.bid if pos.type == mt5_api.POSITION_TYPE_BUY else tick.ask
 
-            # Persistir precio actual para el dashboard (siempre, antes de cualquier filtro)
+            # Persistir precio actual + SL/TP live para el dashboard (siempre, antes de cualquier filtro)
             if precio_actual:
                 try:
                     self.db.cursor.execute(
-                        "UPDATE registro_operaciones SET precio_actual = %s WHERE ticket_mt5 = %s",
-                        (precio_actual, pos.ticket)
+                        "UPDATE registro_operaciones SET precio_actual = %s, sl = %s, tp = %s WHERE ticket_mt5 = %s",
+                        (precio_actual, pos.sl, pos.tp, pos.ticket)
                     )
                     self.db.conn.commit()
                 except Exception:
