@@ -6,11 +6,18 @@ Lista técnica de bugs y problemas identificados. Ordenados por criticidad.
 
 ## 🔴 CRÍTICOS
 
-### ISS-001 — Instancia duplicada silenciosa (RESUELTO parcialmente)
-**Síntoma:** El bot muere en loop 786 veces sin que nadie se entere.
-**Causa:** `_verificar_instancia_duplicada()` hacía `return` (exit code 0) en vez de `sys.exit(1)`. systemd no lo marcaba como failed. Sin alerta Telegram.
-**Fix aplicado:** sys.exit(1) + notificación Telegram al detectar duplicado.
-**Pendiente:** Si el proceso zombie no libera el PID file, el nuevo nunca arranca. Falta auto-cleanup del PID file stale en el SHIELD o en el propio systemd unit (PIDFile= directive).
+### ISS-001 — Loop de instancias duplicadas infinito (RESUELTO)
+**Síntoma:** El bot entraba en loop de restarts enviando cientos de alertas "instancia duplicada" a Telegram. Reiniciar el servicio no lo cortaba.
+**Causa raíz (3 bugs encadenados):**
+1. `heartbeat.py` usaba `aurum_core.pid` para detectar si el core estaba vivo. `main.py` ya no escribía ese archivo (migrado a fcntl.flock), así que heartbeat siempre creía que el core estaba muerto y lo relanzaba — mientras systemd también lo relanzaba. Ambos competían.
+2. `open(_LOCK_FILE, 'w')` en `main.py` truncaba el archivo de lock **antes** de intentar adquirir el flock. Cada proceso nuevo borraba el PID del anterior antes de fallar, dejando el archivo vacío.
+3. `cleanup_ghost_processes()` en heartbeat clasificaba `dashboard/backend/main.py` como proceso "core" (contiene "main.py" en el cmdline) → veía 2 instancias → mataba la real cada 2 minutos (ciclo del SHIELD).
+**Fix aplicado:**
+- `heartbeat.py`: `get_core_pid_from_file()` reemplazado por `_core_tiene_lock()` (intenta adquirir fcntl.flock en modo no-bloqueante — si falla, el core está vivo).
+- `core_vivo = len(procesos["core"]) > 0 or _core_tiene_lock()` — psutil Y flock deben coincidir en "muerto" antes de reiniciar.
+- Guard extra antes del Popen: `if not core_vivo and not _core_tiene_lock()`.
+- `main.py`: `open(_LOCK_FILE, 'a')` en vez de `'w'` — no trunca el archivo en la carrera.
+- Detección de core excluye paths con `"dashboard"`: `and "dashboard" not in cmd_str`.
 
 ### ISS-002 — Kill-switch hardcodeado en $1,000
 **Síntoma:** Si el balance cae a $1,000 el bot se detiene, sin importar configuración.
@@ -71,11 +78,10 @@ Lista técnica de bugs y problemas identificados. Ordenados por criticidad.
 **Causa:** La función hace `pkill python` o similar sin filtrar por nombre/PID específico.
 **Impacto:** Puede matar procesos del sistema operativo o de otras apps.
 
-### ISS-012 — PID file zombie bloquea reinicios limpios
-**Síntoma:** Si el proceso muere abruptamente (SIGKILL), el PID file queda. El siguiente arranque detecta el PID como "proceso existente" aunque no lo sea.
+### ISS-012 — PID file zombie bloquea reinicios limpios (RESUELTO)
+**Síntoma:** Si el proceso moría abruptamente (SIGKILL), el PID file quedaba y bloqueaba el siguiente arranque.
 **Causa:** `psutil.pid_exists()` puede retornar True para PIDs reutilizados por el OS.
-**Fix parcial:** Se limpia manualmente con `rm aurum_core.pid`.
-**Pendiente:** Usar `fcntl.flock()` (file lock) en vez de PID file para detección atómica en Linux.
+**Fix aplicado:** `main.py` usa `fcntl.flock(LOCK_EX|LOCK_NB)` — el OS libera el lock automáticamente al morir el proceso, incluso con SIGKILL. Se eliminaron `_escribir_pid()`, `_borrar_pid()` y `_verificar_instancia_duplicada()`. Ver también ISS-001.
 
 ---
 
@@ -97,4 +103,4 @@ Lista técnica de bugs y problemas identificados. Ordenados por criticidad.
 ---
 
 *Última actualización: 2026-03-20*
-*Para atacar: empezar por ISS-001 (PID lock robusto), ISS-002 (kill-switch a BD) e ISS-003 (null pointer).*
+*Para atacar: ISS-002 (kill-switch a BD), ISS-003 (null pointer en tick['ask']).*
