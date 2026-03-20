@@ -696,12 +696,26 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
     result = {}
     ahora = datetime.now(timezone.utc)
 
-    # ── 1. RAM y Swap ─────────────────────────────────────────────────────────
-    mem  = psutil.virtual_memory()
-    swap = psutil.swap_memory()
+    # ── 1. RAM, Swap, CPU, Disco ──────────────────────────────────────────────
+    mem   = psutil.virtual_memory()
+    swap  = psutil.swap_memory()
+    disk  = psutil.disk_usage('/')
+    cpu_pct = psutil.cpu_percent(interval=0.5)
+    # Tamaño BD desde PostgreSQL
+    db_size_mb = 0
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT pg_database_size(current_database())")
+            r = db.cursor.fetchone()
+            db_size_mb = round(r[0] / 1024**2, 1) if r else 0
+        except Exception:
+            db.conn.rollback()
     result["sistema"] = {
         "ram":  {"total_mb": round(mem.total  / 1024**2), "usado_mb": round(mem.used      / 1024**2), "libre_mb": round(mem.available / 1024**2), "pct": round(mem.percent,  1)},
         "swap": {"total_mb": round(swap.total / 1024**2), "usado_mb": round(swap.used     / 1024**2), "libre_mb": round((swap.total - swap.used) / 1024**2), "pct": round(swap.percent, 1)},
+        "cpu":  {"pct": round(cpu_pct, 1)},
+        "disco": {"total_gb": round(disk.total / 1024**3, 1), "usado_gb": round(disk.used / 1024**3, 1), "libre_gb": round(disk.free / 1024**3, 1), "pct": round(disk.percent, 1)},
+        "db_size_mb": db_size_mb,
     }
 
     # ── 2. Procesos ───────────────────────────────────────────────────────────

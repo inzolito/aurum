@@ -36,16 +36,17 @@ const Badge = ({ status, children }) => {
 };
 
 // ── Barra de uso (RAM/Swap) ───────────────────────────────────────────────────
-const BarraUso = ({ pct, label, usado, total }) => {
+const BarraUso = ({ pct, label, usado, total, unidad = 'MB' }) => {
     const status = pct > 85 ? 'fail' : pct > 65 ? 'warn' : 'ok';
     const colors = { ok: '#22c55e', warn: '#f59e0b', fail: '#ef4444' };
+    const detalle = unidad === '%' ? `${pct}%` : `${usado} / ${total} ${unidad}`;
     return (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{label}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontSize: 11, color: colors[status], fontWeight: 700 }}>{pct}%</span>
-                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{usado} / {total} MB</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>{detalle}</span>
                 </div>
             </div>
             <div style={{ height: 6, background: 'var(--bg-primary)', borderRadius: 3, overflow: 'hidden' }}>
@@ -153,7 +154,9 @@ const Monitor = ({ setAuth, botVersion }) => {
     const latidoOk   = bot && bot.segundos_inactivo < 90;
     const latidoWarn  = bot && bot.segundos_inactivo >= 90 && bot.segundos_inactivo < 300;
     const todosVivos  = procesos && Object.values(procesos).every(p => p.vivo);
-    const ramStatus   = sistema?.ram?.pct > 85 ? 'fail' : sistema?.ram?.pct > 65 ? 'warn' : 'ok';
+    const ramStatus   = sistema?.ram?.pct  > 85 ? 'fail' : sistema?.ram?.pct  > 65 ? 'warn' : 'ok';
+    const discoStatus = sistema?.disco?.pct > 90 ? 'fail' : sistema?.disco?.pct > 80 ? 'warn' : 'ok';
+    const cpuStatus   = sistema?.cpu?.pct   > 90 ? 'fail' : sistema?.cpu?.pct   > 70 ? 'warn' : 'ok';
     const winRateHoy  = hoy?.total > 0 ? Math.round((hoy.ganados / hoy.total) * 100) : null;
     const winRateStatus = winRateHoy === null ? 'info' : winRateHoy >= 50 ? 'ok' : winRateHoy >= 30 ? 'warn' : 'fail';
 
@@ -179,13 +182,14 @@ const Monitor = ({ setAuth, botVersion }) => {
                 </header>
 
                 {/* Banner de alertas críticas */}
-                {(!todosVivos || erroresRecientes > 0 || ramStatus === 'fail') && (
+                {(!todosVivos || erroresRecientes > 0 || ramStatus === 'fail' || discoStatus === 'fail') && (
                     <div style={{ background: '#7f1d1d33', border: '1px solid #ef444455', borderRadius: 8, padding: '10px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center' }}>
                         <AlertTriangle size={16} color="#ef4444" />
                         <span style={{ fontSize: 12, color: '#ef4444' }}>
                             {!todosVivos && 'Hay procesos caídos. '}
                             {erroresRecientes > 0 && `${erroresRecientes} errores de broker recientes. `}
-                            {ramStatus === 'fail' && 'RAM crítica — riesgo de OOM killer.'}
+                            {ramStatus === 'fail' && 'RAM crítica — riesgo de OOM killer. '}
+                            {discoStatus === 'fail' && 'Disco crítico — riesgo de escritura fallida.'}
                         </span>
                     </div>
                 )}
@@ -206,25 +210,31 @@ const Monitor = ({ setAuth, botVersion }) => {
                         </div>
                     </Card>
 
-                    {/* ── RAM y Swap ───────────────────────────────────────── */}
-                    <Card title="Memoria del Servidor" icon={<Cpu size={15} />} alerta={ramStatus === 'fail'}>
+                    {/* ── Salud del Servidor ───────────────────────────────── */}
+                    <Card title="Salud del Servidor" icon={<Cpu size={15} />} alerta={ramStatus === 'fail' || discoStatus === 'fail'}>
                         {sistema ? (
                             <>
-                                <BarraUso
-                                    label="RAM"
-                                    pct={sistema.ram.pct}
-                                    usado={sistema.ram.usado_mb}
-                                    total={sistema.ram.total_mb}
-                                />
-                                <BarraUso
-                                    label="Swap"
-                                    pct={sistema.swap.pct}
-                                    usado={sistema.swap.usado_mb}
-                                    total={sistema.swap.total_mb}
-                                />
-                                <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: 0 }}>
-                                    {sistema.ram.libre_mb} MB disponibles · Swap libre {sistema.swap.libre_mb} MB
-                                </p>
+                                <BarraUso label="CPU" pct={sistema.cpu?.pct ?? 0}
+                                    usado={sistema.cpu?.pct ?? 0} total={100} unidad="%" />
+                                <BarraUso label="RAM"
+                                    pct={sistema.ram.pct} usado={sistema.ram.usado_mb} total={sistema.ram.total_mb} />
+                                <BarraUso label="Swap"
+                                    pct={sistema.swap.pct} usado={sistema.swap.usado_mb} total={sistema.swap.total_mb} />
+                                <BarraUso label="Disco (/)"
+                                    pct={sistema.disco?.pct ?? 0}
+                                    usado={sistema.disco?.usado_gb ?? 0}
+                                    total={sistema.disco?.total_gb ?? 0}
+                                    unidad="GB" />
+                                <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 2 }}>
+                                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                                        Disco libre: <b style={{ color: discoStatus === 'fail' ? '#ef4444' : discoStatus === 'warn' ? '#f59e0b' : '#22c55e' }}>
+                                            {sistema.disco?.libre_gb} GB
+                                        </b>
+                                    </span>
+                                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
+                                        BD: <b style={{ color: 'var(--text-primary)' }}>{sistema.db_size_mb} MB</b>
+                                    </span>
+                                </div>
                             </>
                         ) : <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Sin datos</p>}
                     </Card>
