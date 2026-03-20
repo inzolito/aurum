@@ -50,7 +50,7 @@ def _adquirir_lock() -> bool:
     else:
         # Linux/Mac: fcntl.flock — atómico y auto-liberado por el OS
         try:
-            _lock_fh = open(_LOCK_FILE, 'w')
+            _lock_fh = open(_LOCK_FILE, 'a')  # 'a' no trunca el archivo antes de adquirir el lock
             fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
             _lock_fh.write(str(os.getpid()))
             _lock_fh.flush()

@@ -18,8 +18,8 @@ logger = get_logger("heartbeat")
 VERIFICAR_CADA_SEGUNDOS = 120  # 2 minutos
 MAX_TIEMPO_INACTIVO_SEGUNDOS = 600  # 10 minutos
 
-# PID file del motor Core — compartido con main.py
-_PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aurum_core.pid")
+# Lock file del motor Core (fcntl.flock) — reemplaza el viejo PID file
+_LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aurum_core.lock")
 
 # Ciclos de espera tras reiniciar el Core antes de volver a evaluar su salud
 # Evita el loop "DB offline → matar → reiniciar → DB offline → matar..."
@@ -38,23 +38,30 @@ def _get_venv_python() -> str:
             return candidato
     return sys.executable
 
-def get_core_pid_from_file() -> int | None:
+def _core_tiene_lock() -> bool:
     """
-    Lee el PID del motor Core desde aurum_core.pid.
-    Retorna el PID si el proceso sigue vivo, None si el archivo no existe
-    o el proceso ya terminó (PID obsoleto).
+    Intenta adquirir el lock exclusivo de aurum_core.lock de forma no-bloqueante.
+    - Retorna True  → lock OCUPADO → core está corriendo.
+    - Retorna False → lock LIBRE   → core no está corriendo.
+    Usa el mismo mecanismo fcntl.flock que main.py.
     """
+    if os.name == 'nt':
+        # Windows: comprobar por psutil (Named Mutex no es fácil de verificar desde fuera)
+        return False  # fallback: depender solo de psutil en Windows
+    import fcntl
+    fh = None
     try:
-        if os.path.exists(_PID_FILE):
-            with open(_PID_FILE, 'r') as f:
-                pid = int(f.read().strip())
-            if psutil.pid_exists(pid):
-                return pid
-            # PID obsoleto — limpiar
-            os.remove(_PID_FILE)
-    except (ValueError, OSError):
-        pass
-    return None
+        fh = open(_LOCK_FILE, 'a')
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        # Pudimos adquirir → nadie tiene el lock → core muerto
+        fcntl.flock(fh, fcntl.LOCK_UN)
+        return False
+    except OSError:
+        return True  # Lock tomado → core vivo
+    finally:
+        if fh:
+            try: fh.close()
+            except OSError: pass
 
 
 def get_aurum_processes():
@@ -150,9 +157,9 @@ def check_heartbeat():
 
             # 1. Verificar Procesos
             procesos = get_aurum_processes()
-            # Usar PID file como fuente de verdad primaria para el Core
-            core_pid = get_core_pid_from_file()
-            core_vivo   = core_pid is not None
+            # Fuente de verdad: psutil (proceso existe) OR flock ocupado (fcntl.flock)
+            # Ambas deben coincidir en "muerto" antes de intentar reinicio.
+            core_vivo   = len(procesos["core"]) > 0 or _core_tiene_lock()
             hunter_vivo = len(procesos["hunter"]) > 0
             daemon_vivo = len(procesos["daemon"]) > 0
 
@@ -204,7 +211,8 @@ def check_heartbeat():
                     _borrar_pid_shield()
                     core_vivo = False
 
-                if not core_vivo:
+                if not core_vivo and not _core_tiene_lock():
+                    # Doble verificación: ni psutil lo ve ni el lock está ocupado
                     print("[!] Motor Core caido. Intentando reinicio silencioso...")
                     try:
                         _base = os.path.dirname(os.path.abspath(__file__))
@@ -263,12 +271,8 @@ def check_heartbeat():
 
 
 def _borrar_pid_shield():
-    """Elimina el PID file del Core cuando el SHIELD fuerza un reinicio."""
-    try:
-        if os.path.exists(_PID_FILE):
-            os.remove(_PID_FILE)
-    except OSError:
-        pass
+    """Ya no hay PID file — el lock (fcntl.flock) se libera automáticamente al morir el proceso."""
+    pass
 
 if __name__ == "__main__":
     check_heartbeat()
