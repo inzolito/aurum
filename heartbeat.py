@@ -87,7 +87,7 @@ def get_aurum_processes():
                 continue
             cmd_str = " ".join(cmdline).lower()
             key = None
-            if "main.py" in cmd_str or "manager.py" in cmd_str:
+            if ("main.py" in cmd_str or "manager.py" in cmd_str) and "dashboard" not in cmd_str:
                 key = "core"
             elif "news_hunter.py" in cmd_str:
                 key = "hunter"
