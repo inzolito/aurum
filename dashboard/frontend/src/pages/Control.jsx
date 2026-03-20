@@ -396,6 +396,11 @@ const Control = ({ setAuth, botVersion }) => {
                                     ? `${estado.currency ?? '$'}${estado.equity.toLocaleString('es-CL', { minimumFractionDigits: 2 })}`
                                     : '---'}
                             </p>
+                            {estado?.estado_bot_tiempo && (
+                                <p style={{ fontSize: 9, color: 'var(--text-secondary)', marginTop: 2 }}>
+                                    hace {Math.round((Date.now() - new Date(estado.estado_bot_tiempo)) / 1000)}s
+                                </p>
+                            )}
                         </div>
                     </div>
                     <div className="stat-card">

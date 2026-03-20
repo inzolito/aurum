@@ -222,6 +222,7 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
                     "pensamiento_actual": row[1],
                     "tiempo": row[2].isoformat() if row[2] else None,
                 }
+                result["estado_bot_tiempo"] = row[2].isoformat() if row[2] else None
         except Exception:
             db.conn.rollback()
 
@@ -260,8 +261,10 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
     result["equity"]   = cuenta.get("equity")
     result["currency"] = cuenta.get("currency", "USD")
 
-    # PnL flotante: preferir estado_bot.pnl_flotante (escrito por el bot en vivo)
-    result["pnl_flotante"] = cuenta.get("pnl_flotante", 0)
+    # PnL flotante = equity - balance (más fiable: pnl_flotante en BD siempre viene 0)
+    equity  = cuenta.get("equity",  0) or 0
+    balance = cuenta.get("balance", 0) or 0
+    result["pnl_flotante"] = round(equity - balance, 2)
 
     return result
 

@@ -193,9 +193,12 @@ body {
 }
 
 .nav-brand {
-  font-size: 24px;
-  color: var(--accent-primary);
-  margin-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 4px 8px;
+  overflow: hidden;
 }
 
 .nav-items {
