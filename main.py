@@ -8,6 +8,7 @@ import sys
 import os
 import subprocess
 import psutil
+import fcntl
 from datetime import datetime
 
 from config.db_connector import DBConnector
@@ -24,59 +25,42 @@ logger = get_logger("main")
 # Intervalo entre ciclos en segundos (coincide con el cierre de una vela M1)
 CICLO_SEGUNDOS = 60
 
-# Archivo PID para prevenir instancias duplicadas y permitir detección fiable
-_PID_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aurum_core.pid")
+# Lock file para prevenir instancias duplicadas (fcntl.flock — atómico, auto-liberado por el OS)
+_LOCK_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "aurum_core.lock")
+_lock_fh   = None  # file handle global — debe mantenerse abierto durante toda la ejecución
 
 
-def _escribir_pid():
-    """Registra el PID actual en disco al iniciar."""
-    try:
-        with open(_PID_FILE, 'w') as f:
-            f.write(str(os.getpid()))
-    except OSError as e:
-        print(f"[MAIN] Advertencia: no se pudo escribir PID file: {e}")
-
-
-def _borrar_pid():
-    """Elimina el PID file al apagar limpiamente."""
-    try:
-        if os.path.exists(_PID_FILE):
-            os.remove(_PID_FILE)
-    except OSError:
-        pass
-
-
-def _verificar_instancia_duplicada() -> bool:
+def _adquirir_lock() -> bool:
     """
-    Retorna True si ya hay una instancia de Aurum Core corriendo.
-    Usa Named Mutex de Windows (atómico) como mecanismo principal para evitar
-    race conditions, con PID file como respaldo en plataformas no-Windows.
+    Intenta adquirir un lock exclusivo sobre aurum_core.lock.
+    Retorna True si lo logra (única instancia), False si ya hay otra corriendo.
+    El OS libera el lock automáticamente al morir el proceso (incluso con SIGKILL).
+    Funciona en Linux/Mac. En Windows cae al PID file como fallback.
     """
+    global _lock_fh
     if os.name == 'nt':
-        # Named Mutex — operación atómica, sin race condition
+        # Windows: Named Mutex
         import ctypes
-        _MUTEX_NAME = "Global\\AurumCoreMutex"
-        handle = ctypes.windll.kernel32.CreateMutexW(None, True, _MUTEX_NAME)
-        ERROR_ALREADY_EXISTS = 183
-        if ctypes.windll.kernel32.GetLastError() == ERROR_ALREADY_EXISTS:
+        handle = ctypes.windll.kernel32.CreateMutexW(None, True, "Global\\AurumCoreMutex")
+        if ctypes.windll.kernel32.GetLastError() == 183:
             ctypes.windll.kernel32.CloseHandle(handle)
-            return True
-        # Guardamos el handle en un módulo global para que no sea liberado por GC
-        _verificar_instancia_duplicada._mutex_handle = handle
-        return False
-    else:
-        # Fallback Unix: PID file
-        if not os.path.exists(_PID_FILE):
             return False
+        _adquirir_lock._mutex_handle = handle
+        return True
+    else:
+        # Linux/Mac: fcntl.flock — atómico y auto-liberado por el OS
         try:
-            with open(_PID_FILE, 'r') as f:
-                pid_existente = int(f.read().strip())
-            if psutil.pid_exists(pid_existente) and pid_existente != os.getpid():
-                return True
-            os.remove(_PID_FILE)
-        except (ValueError, OSError):
-            pass
-        return False
+            _lock_fh = open(_LOCK_FILE, 'w')
+            fcntl.flock(_lock_fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            _lock_fh.write(str(os.getpid()))
+            _lock_fh.flush()
+            return True
+        except OSError:
+            # Otro proceso ya tiene el lock
+            if _lock_fh:
+                _lock_fh.close()
+                _lock_fh = None
+            return False
 
 
 def _get_venv_python() -> str:
@@ -205,18 +189,16 @@ class AurumEngine:
         except Exception as e:
             print(f"[MAIN] Error verificando esquema de BD: {e}")
 
-        # --- 1. PID FILE — Prevenir instancias duplicadas ---
-        if _verificar_instancia_duplicada():
-            msg = "[MAIN] 🚨 Ya hay una instancia de Aurum Core corriendo. Abortando para evitar duplicados."
-            print(msg)
+        # --- 1. LOCK EXCLUSIVO — Prevenir instancias duplicadas (fcntl.flock) ---
+        if not _adquirir_lock():
+            print("[MAIN] 🚨 Ya hay una instancia de Aurum Core corriendo. Abortando.")
             try:
                 from config.notifier import _enviar_telegram
-                _enviar_telegram(f"🚨 <b>AURUM CORE — INSTANCIA DUPLICADA DETECTADA</b>\n\nEl bot intentó arrancar pero ya hay un proceso corriendo.\nRevisa el servidor inmediatamente.")
+                _enviar_telegram("🚨 <b>AURUM CORE — INSTANCIA DUPLICADA DETECTADA</b>\n\nEl bot intentó arrancar pero ya hay un proceso corriendo.\nRevisa el servidor inmediatamente.")
             except Exception:
                 pass
             sys.exit(1)
 
-        _escribir_pid()
         pid = os.getpid()
         
         # --- 2. VALIDACION HARDCODEADA DE CUENTA MT5 ---
@@ -359,7 +341,6 @@ class AurumEngine:
     def stop(self):
         print("\n\n--- Apagando Aurum de forma segura ---")
         self.running = False
-        _borrar_pid()
         if self.db:
             self.db.update_estado_bot("APAGADO", "Cierre manual o por sistema.")
         if self.programador:
