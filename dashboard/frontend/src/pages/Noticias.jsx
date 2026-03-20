@@ -4,6 +4,40 @@ import { Clock, ExternalLink, ChevronDown } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { toChileTime, tiempoRelativo } from '../utils/time';
 
+// ── Icono temático por keywords del título ────────────────────────────────────
+const getNewsIcon = (titulo = '') => {
+    const t = titulo.toLowerCase();
+    if (/oro|gold|xau/.test(t))                                          return '🥇';
+    if (/plata|silver|xag/.test(t))                                      return '🪙';
+    if (/petróleo|petroleo|oil|wti|brent|diesel|gasolina|gas natural/.test(t)) return '🛢️';
+    if (/iran|ormuz|misil|ataque|guerra|conflict|militar|bomb/.test(t))  return '💥';
+    if (/fed|reserva federal|powell|tasas|interés|interes|rate|fomc/.test(t)) return '🏦';
+    if (/inflaci|cpi|pce|ipc/.test(t))                                   return '📊';
+    if (/empleo|desempleo|nfp|jobs|paro|laboral/.test(t))                return '👷';
+    if (/bitcoin|crypto|cripto|btc|eth/.test(t))                         return '₿';
+    if (/china|yuan|cnh|cny/.test(t))                                    return '🇨🇳';
+    if (/euro|bce|ecb/.test(t))                                          return '🇪🇺';
+    if (/dólar|dollar|usd/.test(t))                                      return '🇺🇸';
+    if (/libra|sterling|gbp|bank of england|boe/.test(t))               return '🇬🇧';
+    if (/yen|boj|japón|japon/.test(t))                                   return '🇯🇵';
+    if (/bolsa|stock|acciones|nasdaq|dow|s&p|wall street/.test(t))       return '📈';
+    if (/banco|bank|deuda|bond|treasury/.test(t))                        return '🏛️';
+    if (/trump|biden|sancion|arancel|tariff/.test(t))                    return '🏛️';
+    return '📰';
+};
+
+// ── Banderas por símbolo ──────────────────────────────────────────────────────
+const PAIR_FLAGS = {
+    EURUSD: '🇪🇺🇺🇸', GBPUSD: '🇬🇧🇺🇸', USDJPY: '🇺🇸🇯🇵', AUDUSD: '🇦🇺🇺🇸',
+    NZDUSD: '🇳🇿🇺🇸', USDCAD: '🇺🇸🇨🇦', USDCHF: '🇺🇸🇨🇭', USDMXN: '🇺🇸🇲🇽',
+    GBPJPY: '🇬🇧🇯🇵', EURJPY: '🇪🇺🇯🇵', AUDJPY: '🇦🇺🇯🇵', AUDCAD: '🇦🇺🇨🇦',
+    AUDNZD: '🇦🇺🇳🇿', EURGBP: '🇪🇺🇬🇧', EURCAD: '🇪🇺🇨🇦', USDCNH: '🇺🇸🇨🇳',
+    US30:   '🇺🇸📊',   US500:  '🇺🇸📊',   USTEC:  '🇺🇸💻',
+    XTIUSD: '🛢️🇺🇸',  XBRUSD: '🛢️🇺🇸',
+    XAUUSD: '🥇',      XAGUSD: '🪙',
+};
+
+// ── Badge de impacto ──────────────────────────────────────────────────────────
 const ImpactoBadge = ({ impacto, tipo }) => {
     if (tipo === 'filtrada')   return <span className="badge badge-gray">Ignorada</span>;
     if (tipo === 'descartada') return <span className="badge badge-gray">Descartada</span>;
@@ -13,9 +47,11 @@ const ImpactoBadge = ({ impacto, tipo }) => {
     return <span className="badge badge-green">IMPACTO {impacto}/10</span>;
 };
 
+// ── Card de noticia ───────────────────────────────────────────────────────────
 const NewsCard = ({ n, razonamientos }) => {
     const [open, setOpen] = useState(false);
     const isRelevante = n.tipo === 'relevante';
+    const icon = getNewsIcon(n.titulo);
 
     return (
         <div
@@ -23,18 +59,16 @@ const NewsCard = ({ n, razonamientos }) => {
             style={{ cursor: isRelevante ? 'pointer' : 'default' }}
             onClick={() => isRelevante && setOpen(o => !o)}
         >
-            {/* Fila principal */}
+            {/* Fila meta */}
             <div className="news-meta">
                 <span className="news-fuente">{n.fuente}</span>
-
-                {/* Tiempo relativo en local — lo más importante */}
-                <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}
-                    title={toChileTime(n.published_at)}>
+                <span
+                    style={{ fontSize: 11, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}
+                    title={toChileTime(n.published_at)}
+                >
                     {tiempoRelativo(n.published_at)}
                 </span>
-
                 <ImpactoBadge impacto={n.impacto} tipo={n.tipo} />
-
                 {n.url && (
                     <a
                         href={n.url}
@@ -47,7 +81,6 @@ const NewsCard = ({ n, razonamientos }) => {
                         <ExternalLink size={12} />
                     </a>
                 )}
-
                 {isRelevante && (
                     <ChevronDown
                         size={13}
@@ -62,9 +95,13 @@ const NewsCard = ({ n, razonamientos }) => {
                 )}
             </div>
 
-            <p className="news-titulo">{n.titulo}</p>
+            {/* Título con icono temático */}
+            <p className="news-titulo">
+                <span style={{ marginRight: 6 }}>{icon}</span>
+                {n.titulo}
+            </p>
 
-            {/* Panel expandido — análisis Gemini por activo */}
+            {/* Panel expandido */}
             {open && (
                 <div style={{
                     marginTop: 10,
@@ -75,7 +112,7 @@ const NewsCard = ({ n, razonamientos }) => {
                     gap: 8,
                 }}>
                     <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1, color: 'var(--text-secondary)', textTransform: 'uppercase', margin: 0 }}>
-                        Análisis Gemini por activo
+                        Análisis por par
                     </p>
                     {Object.keys(razonamientos).length === 0 ? (
                         <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Sin análisis disponible.</p>
@@ -86,20 +123,27 @@ const NewsCard = ({ n, razonamientos }) => {
                                 borderRadius: 6,
                                 padding: '8px 10px',
                                 display: 'flex',
-                                gap: 10,
+                                gap: 8,
                                 alignItems: 'flex-start',
                             }}>
-                                <span style={{
-                                    fontSize: 10, fontWeight: 700, fontFamily: 'monospace',
-                                    color: 'var(--accent-primary)', minWidth: 54, paddingTop: 1,
-                                }}>
-                                    {simbolo}
-                                </span>
-                                <span style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.5 }}>
+                                {/* Bandera + símbolo */}
+                                <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 48, paddingTop: 1, gap: 2 }}>
+                                    <span style={{ fontSize: 16, lineHeight: 1 }}>
+                                        {PAIR_FLAGS[simbolo] || '🌐'}
+                                    </span>
+                                    <span style={{ fontSize: 9, fontWeight: 700, fontFamily: 'monospace', color: 'var(--accent-primary)' }}>
+                                        {simbolo}
+                                    </span>
+                                </div>
+
+                                {/* Razonamiento */}
+                                <span style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.5, flex: 1 }}>
                                     {r.razonamiento?.replace(/\[SCORE:.*?\]/g, '').trim()}
                                 </span>
+
+                                {/* Score */}
                                 <span style={{
-                                    fontSize: 10, fontWeight: 700, marginLeft: 'auto', flexShrink: 0,
+                                    fontSize: 11, fontWeight: 700, flexShrink: 0,
                                     color: r.nlp >= 0.6 ? '#dc2626' : r.nlp >= 0.4 ? '#d97706' : '#6b7280',
                                 }}>
                                     {(r.nlp * 10).toFixed(1)}/10
@@ -113,12 +157,13 @@ const NewsCard = ({ n, razonamientos }) => {
     );
 };
 
+// ── Página principal ──────────────────────────────────────────────────────────
 const Noticias = ({ setAuth, botVersion }) => {
-    const [noticias, setNoticias]         = useState([]);
+    const [noticias, setNoticias]           = useState([]);
     const [razonamientos, setRazonamientos] = useState({});
-    const [filtro, setFiltro]             = useState('todas');
-    const [loading, setLoading]           = useState(true);
-    const [timestamp, setTimestamp]       = useState('');
+    const [filtro, setFiltro]               = useState('todas');
+    const [loading, setLoading]             = useState(true);
+    const [timestamp, setTimestamp]         = useState('');
 
     const token = localStorage.getItem('token');
 
