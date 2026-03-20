@@ -674,6 +674,10 @@ if os.path.exists(_dist):
     if os.path.exists(_assets):
         app.mount("/assets", StaticFiles(directory=_assets), name="assets")
 
+    @app.get("/favicon.svg")
+    async def favicon():
+        return FileResponse(os.path.join(_dist, "favicon.svg"), media_type="image/svg+xml")
+
     @app.get("/{full_path:path}")
     async def spa_handler(full_path: str):
         return FileResponse(os.path.join(_dist, "index.html"))
