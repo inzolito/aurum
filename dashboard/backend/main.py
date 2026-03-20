@@ -684,6 +684,119 @@ async def update_parametro(body: ParamUpdate, token: str = Depends(oauth2_scheme
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/config/activos")
+async def get_activos(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT a.id, a.simbolo, a.nombre, a.categoria, a.estado_operativo,
+                    COUNT(ro.id) as trades,
+                    COUNT(ro.id) FILTER (WHERE ro.resultado_final = 'GANADO') as ganados,
+                    ROUND(COALESCE(SUM(ro.pnl_usd) FILTER (WHERE ro.resultado_final IS NOT NULL), 0)::numeric, 2) as pnl_total
+                FROM activos a
+                LEFT JOIN registro_operaciones ro ON ro.activo_id = a.id
+                GROUP BY a.id, a.simbolo, a.nombre, a.categoria, a.estado_operativo
+                ORDER BY a.estado_operativo, a.simbolo
+            """)
+            rows = db.cursor.fetchall()
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"activos": [
+        {"id": r[0], "simbolo": r[1], "nombre": r[2], "categoria": r[3],
+         "estado": r[4], "trades": int(r[5]), "ganados": int(r[6]), "pnl_total": float(r[7])}
+        for r in rows
+    ]}
+
+
+class ActivoUpdate(BaseModel):
+    estado: str
+
+@app.put("/api/config/activos/{simbolo}")
+async def update_activo(simbolo: str, body: ActivoUpdate, token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    estados_validos = ("ACTIVO", "PAUSADO", "INACTIVO", "SOLO_LECTURA")
+    if body.estado not in estados_validos:
+        raise HTTPException(status_code=422, detail=f"Estado inválido. Opciones: {estados_validos}")
+    with db._lock:
+        try:
+            db.cursor.execute(
+                "UPDATE activos SET estado_operativo = %s WHERE simbolo = %s",
+                (body.estado, simbolo.upper())
+            )
+            db.conn.commit()
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "simbolo": simbolo.upper(), "estado": body.estado}
+
+
+@app.get("/api/config/activos/{simbolo}/rendimiento")
+async def get_rendimiento_activo(simbolo: str, token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            # Resumen por versión del bot
+            db.cursor.execute("""
+                SELECT
+                    COALESCE(vs.nombre, 'Sin versión') as version,
+                    COUNT(ro.id) as trades,
+                    COUNT(ro.id) FILTER (WHERE ro.resultado_final = 'GANADO') as ganados,
+                    COUNT(ro.id) FILTER (WHERE ro.resultado_final = 'PERDIDO') as perdidos,
+                    ROUND(COALESCE(SUM(ro.pnl_usd) FILTER (WHERE ro.resultado_final IS NOT NULL), 0)::numeric, 2) as pnl,
+                    ROUND(COALESCE(AVG(ro.pnl_usd) FILTER (WHERE ro.resultado_final = 'GANADO'), 0)::numeric, 2) as avg_win,
+                    ROUND(COALESCE(AVG(ro.pnl_usd) FILTER (WHERE ro.resultado_final = 'PERDIDO'), 0)::numeric, 2) as avg_loss
+                FROM registro_operaciones ro
+                JOIN activos a ON a.id = ro.activo_id
+                LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
+                WHERE a.simbolo = %s AND ro.resultado_final IS NOT NULL
+                GROUP BY vs.nombre
+                ORDER BY pnl DESC
+            """, (simbolo.upper(),))
+            por_version = db.cursor.fetchall()
+
+            # Últimos 10 trades
+            db.cursor.execute("""
+                SELECT ro.tiempo_entrada, ro.tiempo_cierre, ro.direccion,
+                       ro.precio_entrada, ro.precio_cierre, ro.pnl_usd, ro.resultado_final,
+                       COALESCE(vs.nombre, '—') as version
+                FROM registro_operaciones ro
+                JOIN activos a ON a.id = ro.activo_id
+                LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
+                WHERE a.simbolo = %s
+                ORDER BY ro.tiempo_entrada DESC LIMIT 10
+            """, (simbolo.upper(),))
+            ultimos = db.cursor.fetchall()
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    return {
+        "simbolo": simbolo.upper(),
+        "por_version": [
+            {"version": r[0], "trades": int(r[1]), "ganados": int(r[2]), "perdidos": int(r[3]),
+             "pnl": float(r[4]), "avg_win": float(r[5]), "avg_loss": float(r[6])}
+            for r in por_version
+        ],
+        "ultimos_trades": [
+            {"entrada": r[0].isoformat() if r[0] else None,
+             "cierre": r[1].isoformat() if r[1] else None,
+             "direccion": r[2], "precio_entrada": float(r[3] or 0),
+             "precio_cierre": float(r[4] or 0) if r[4] else None,
+             "pnl": float(r[5] or 0) if r[5] else None,
+             "resultado": r[6], "version": r[7]}
+            for r in ultimos
+        ],
+    }
+
+
 @app.get("/api/monitor")
 async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
     payload = decode_access_token(token)
