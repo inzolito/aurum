@@ -214,29 +214,80 @@ const Monitor = ({ setAuth, botVersion }) => {
                     <Card title="Salud del Servidor" icon={<Cpu size={15} />} alerta={ramStatus === 'fail' || discoStatus === 'fail'}>
                         {sistema ? (
                             <>
-                                <BarraUso label="CPU" pct={sistema.cpu?.pct ?? 0}
-                                    usado={sistema.cpu?.pct ?? 0} total={100} unidad="%" />
-                                <BarraUso label="RAM"
-                                    pct={sistema.ram.pct} usado={sistema.ram.usado_mb} total={sistema.ram.total_mb} />
-                                <BarraUso label="Swap"
-                                    pct={sistema.swap.pct} usado={sistema.swap.usado_mb} total={sistema.swap.total_mb} />
-                                <BarraUso label="Disco (/)"
-                                    pct={sistema.disco?.pct ?? 0}
-                                    usado={sistema.disco?.usado_gb ?? 0}
-                                    total={sistema.disco?.total_gb ?? 0}
-                                    unidad="GB" />
+                                <BarraUso label="CPU"     pct={sistema.cpu?.pct ?? 0}  usado={sistema.cpu?.pct ?? 0}       total={100}                        unidad="%" />
+                                <BarraUso label="RAM"     pct={sistema.ram.pct}         usado={sistema.ram.usado_mb}        total={sistema.ram.total_mb} />
+                                <BarraUso label="Swap"    pct={sistema.swap.pct}        usado={sistema.swap.usado_mb}       total={sistema.swap.total_mb} />
+                                <BarraUso label="Disco (/)" pct={sistema.disco?.pct ?? 0} usado={sistema.disco?.usado_gb ?? 0} total={sistema.disco?.total_gb ?? 0} unidad="GB" />
                                 <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: 2 }}>
                                     <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                                        Disco libre: <b style={{ color: discoStatus === 'fail' ? '#ef4444' : discoStatus === 'warn' ? '#f59e0b' : '#22c55e' }}>
-                                            {sistema.disco?.libre_gb} GB
-                                        </b>
+                                        Libre: <b style={{ color: discoStatus === 'fail' ? '#ef4444' : discoStatus === 'warn' ? '#f59e0b' : '#22c55e' }}>{sistema.disco?.libre_gb} GB</b>
                                     </span>
                                     <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>
-                                        BD: <b style={{ color: 'var(--text-primary)' }}>{sistema.db_size_mb} MB</b>
+                                        BD aurum_db: <b style={{ color: 'var(--text-primary)' }}>{sistema.db_size_mb} MB</b>
                                     </span>
+                                </div>
+
+                                {/* Nota upgrade disco */}
+                                <div style={{ background: '#1e3a5f33', border: '1px solid #3b82f644', borderRadius: 6, padding: '8px 12px', fontSize: 11, color: '#93c5fd', lineHeight: 1.5 }}>
+                                    💡 <b>Ampliar disco 10 GB → 30 GB en GCP cuesta ~$2 USD/mes</b> y no requiere apagar el servidor. Recomendado cuando el disco supere el 85%.
                                 </div>
                             </>
                         ) : <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Sin datos</p>}
+                    </Card>
+
+                    {/* ── Desglose de disco ────────────────────────────────── */}
+                    <Card title="Desglose de Disco" icon={<Server size={15} />} alerta={discoStatus !== 'ok'}>
+                        {sistema?.disco_desglose ? (() => {
+                            const ahorro_total = sistema.disco_desglose.reduce((s, r) => s + (r.ahorro_mb || 0), 0);
+                            return (
+                                <>
+                                    {ahorro_total > 100 && (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#f59e0b', fontSize: 11, paddingBottom: 4 }}>
+                                            <AlertTriangle size={13} />
+                                            Se pueden liberar <b style={{ marginLeft: 3 }}>{ahorro_total.toFixed(0)} MB</b> ahora mismo
+                                        </div>
+                                    )}
+                                    <div style={{ overflowX: 'auto' }}>
+                                        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                                            <thead>
+                                                <tr style={{ color: 'var(--text-secondary)' }}>
+                                                    {['Componente', 'Tamaño', 'Liberable', 'Acción'].map(h => (
+                                                        <th key={h} style={{ padding: '5px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'left', fontWeight: 600 }}>{h}</th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {sistema.disco_desglose.map((row, i) => {
+                                                    const urgente = !row.fijo && row.ahorro_mb > 200;
+                                                    const aviso   = !row.fijo && row.ahorro_mb > 50;
+                                                    const estado  = urgente ? 'fail' : aviso ? 'warn' : 'ok';
+                                                    return (
+                                                        <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                                            <td style={{ padding: '5px 8px', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                                                <Dot status={row.fijo ? 'info' : estado} size={8} />
+                                                                {row.item}
+                                                            </td>
+                                                            <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700 }}>
+                                                                {row.mb} MB
+                                                            </td>
+                                                            <td style={{ padding: '5px 8px' }}>
+                                                                {row.ahorro_mb > 0
+                                                                    ? <span style={{ color: urgente ? '#ef4444' : aviso ? '#f59e0b' : '#22c55e', fontWeight: 700 }}>−{row.ahorro_mb} MB</span>
+                                                                    : <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                                                                }
+                                                            </td>
+                                                            <td style={{ padding: '5px 8px', color: 'var(--text-secondary)', fontFamily: 'monospace', fontSize: 10 }}>
+                                                                {row.accion || '—'}
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </>
+                            );
+                        })() : <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Sin datos</p>}
                     </Card>
 
                     {/* ── Ciclo del Bot ────────────────────────────────────── */}

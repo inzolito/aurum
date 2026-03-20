@@ -710,12 +710,49 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
             db_size_mb = round(r[0] / 1024**2, 1) if r else 0
         except Exception:
             db.conn.rollback()
+    # Desglose de disco por directorio/log
+    def _du_mb(path):
+        try:
+            r = subprocess.run(["du", "-sb", path], capture_output=True, text=True, timeout=5)
+            return round(int(r.stdout.split()[0]) / 1024**2, 1) if r.returncode == 0 else 0
+        except Exception:
+            return 0
+
+    def _count_files(path, ext):
+        try:
+            import glob as _glob
+            return len(_glob.glob(f"{path}/**/*{ext}", recursive=True))
+        except Exception:
+            return 0
+
+    journal_mb    = _du_mb("/var/log/journal")
+    syslog_mb     = _du_mb("/var/log/syslog")
+    telemetria_mb = _du_mb("/opt/aurum/temp/telemetry")
+    telemetria_n  = _count_files("/opt/aurum/temp/telemetry", ".png")
+    venv_mb       = _du_mb("/opt/aurum/venv")
+    git_mb        = _du_mb("/opt/aurum/.git")
+    frontend_mb   = _du_mb("/opt/aurum/dashboard/frontend")
+
+    # Cuánto se podría liberar (journals >50MB son archivados y borrables, syslog casi todo)
+    journal_ahorro  = max(0, round(journal_mb - 50, 1))   # mantener 50 MB activos
+    syslog_ahorro   = max(0, round(syslog_mb  - 5,  1))   # mantener 5 MB
+    telemetria_ahorro = telemetria_mb                      # todos son borrables
+
     result["sistema"] = {
         "ram":  {"total_mb": round(mem.total  / 1024**2), "usado_mb": round(mem.used      / 1024**2), "libre_mb": round(mem.available / 1024**2), "pct": round(mem.percent,  1)},
         "swap": {"total_mb": round(swap.total / 1024**2), "usado_mb": round(swap.used     / 1024**2), "libre_mb": round((swap.total - swap.used) / 1024**2), "pct": round(swap.percent, 1)},
         "cpu":  {"pct": round(cpu_pct, 1)},
         "disco": {"total_gb": round(disk.total / 1024**3, 1), "usado_gb": round(disk.used / 1024**3, 1), "libre_gb": round(disk.free / 1024**3, 1), "pct": round(disk.percent, 1)},
         "db_size_mb": db_size_mb,
+        "disco_desglose": [
+            {"item": "Logs systemd (journal)", "mb": journal_mb,    "ahorro_mb": journal_ahorro,   "accion": "Limpiar journals",          "fijo": False},
+            {"item": "Syslog",                 "mb": syslog_mb,     "ahorro_mb": syslog_ahorro,    "accion": "Truncar syslog",            "fijo": False},
+            {"item": "Telemetría (PNGs)",      "mb": telemetria_mb, "ahorro_mb": telemetria_ahorro,"accion": f"Borrar {telemetria_n} PNGs","fijo": False},
+            {"item": "Base de datos",          "mb": db_size_mb,    "ahorro_mb": 0,                "accion": "Archivar señales viejas",   "fijo": False},
+            {"item": "Entorno Python (venv)",  "mb": venv_mb,       "ahorro_mb": 0,                "accion": None,                        "fijo": True},
+            {"item": "Frontend compilado",     "mb": frontend_mb,   "ahorro_mb": 0,                "accion": None,                        "fijo": True},
+            {"item": "Git history (.git)",     "mb": git_mb,        "ahorro_mb": 0,                "accion": "git gc --aggressive",       "fijo": False},
+        ],
     }
 
     # ── 2. Procesos ───────────────────────────────────────────────────────────
