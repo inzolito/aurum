@@ -895,7 +895,7 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
     # ── 4. Estado bot (heartbeat + balance) ───────────────────────────────────
     with db._lock:
         try:
-            db.cursor.execute("SELECT tiempo, estado_general, balance, equity, pnl_flotante, mensaje FROM estado_bot WHERE id = 1")
+            db.cursor.execute("SELECT tiempo, estado_general, balance, equity, pnl_flotante, pensamiento_actual FROM estado_bot WHERE id = 1")
             row = db.cursor.fetchone()
         except Exception:
             db.conn.rollback()
