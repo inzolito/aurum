@@ -7,8 +7,8 @@ import { toChileTime, tiempoRelativo } from '../utils/time';
 // ── Icono temático por keywords del título ────────────────────────────────────
 const getNewsIcon = (titulo = '') => {
     const t = titulo.toLowerCase();
-    if (/oro|gold|xau/.test(t))                                          return '🥇';
-    if (/plata|silver|xag/.test(t))                                      return '🪙';
+    if (/oro|gold|xau/.test(t))                                          return '🟡';
+    if (/plata|silver|xag/.test(t))                                      return '🩶';
     if (/petróleo|petroleo|oil|wti|brent|diesel|gasolina|gas natural/.test(t)) return '🛢️';
     if (/iran|ormuz|misil|ataque|guerra|conflict|militar|bomb/.test(t))  return '💥';
     if (/fed|reserva federal|powell|tasas|interés|interes|rate|fomc/.test(t)) return '🏦';
@@ -28,13 +28,28 @@ const getNewsIcon = (titulo = '') => {
 
 // ── Banderas por símbolo ──────────────────────────────────────────────────────
 const PAIR_FLAGS = {
+    // Forex majors
     EURUSD: '🇪🇺🇺🇸', GBPUSD: '🇬🇧🇺🇸', USDJPY: '🇺🇸🇯🇵', AUDUSD: '🇦🇺🇺🇸',
     NZDUSD: '🇳🇿🇺🇸', USDCAD: '🇺🇸🇨🇦', USDCHF: '🇺🇸🇨🇭', USDMXN: '🇺🇸🇲🇽',
-    GBPJPY: '🇬🇧🇯🇵', EURJPY: '🇪🇺🇯🇵', AUDJPY: '🇦🇺🇯🇵', AUDCAD: '🇦🇺🇨🇦',
-    AUDNZD: '🇦🇺🇳🇿', EURGBP: '🇪🇺🇬🇧', EURCAD: '🇪🇺🇨🇦', USDCNH: '🇺🇸🇨🇳',
-    US30:   '🇺🇸📊',   US500:  '🇺🇸📊',   USTEC:  '🇺🇸💻',
-    XTIUSD: '🛢️🇺🇸',  XBRUSD: '🛢️🇺🇸',
-    XAUUSD: '🥇',      XAGUSD: '🪙',
+    // Cruces JPY
+    GBPJPY: '🇬🇧🇯🇵', EURJPY: '🇪🇺🇯🇵', AUDJPY: '🇦🇺🇯🇵', CADJPY: '🇨🇦🇯🇵',
+    CHFJPY: '🇨🇭🇯🇵', NZDJPY: '🇳🇿🇯🇵',
+    // Cruces AUD/NZD
+    AUDCAD: '🇦🇺🇨🇦', AUDNZD: '🇦🇺🇳🇿', AUDCHF: '🇦🇺🇨🇭',
+    // Cruces EUR/GBP
+    EURGBP: '🇪🇺🇬🇧', EURCAD: '🇪🇺🇨🇦', EURCHF: '🇪🇺🇨🇭', EURNZD: '🇪🇺🇳🇿',
+    GBPCAD: '🇬🇧🇨🇦', GBPCHF: '🇬🇧🇨🇭', GBPNZD: '🇬🇧🇳🇿',
+    // Asia
+    USDCNH: '🇺🇸🇨🇳', USDSGD: '🇺🇸🇸🇬', USDHKD: '🇺🇸🇭🇰',
+    // Índices USA
+    US30:   '🇺🇸📊', US500: '🇺🇸📊', USTEC: '🇺🇸💻',
+    // Índices globales
+    AUS200: '🇦🇺📊', JP225: '🇯🇵📊', GER40: '🇩🇪📊', UK100: '🇬🇧📊', FRA40: '🇫🇷📊',
+    // Materias primas
+    XTIUSD: '🛢️🇺🇸', XBRUSD: '🛢️🇺🇸',
+    XAUUSD: '🟡',     XAGUSD: '🩶',
+    // Volatilidad
+    VIX: '📉',
 };
 
 // ── Badge de impacto ──────────────────────────────────────────────────────────
