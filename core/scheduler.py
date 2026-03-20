@@ -32,6 +32,9 @@ class AurumScheduler:
         # V11.1: Reporte Horario de Noticias (Pedido por Usuario)
         schedule.every().hour.at(":00").do(self.reporte_noticias_horario)
 
+        # V18: Limpieza nocturna a las 03:00 UTC (lab_senales + regímenes macro expirados)
+        schedule.every().day.at("03:00").do(self.limpieza_nocturna)
+
         # D2 V14: Recalibración semanal de pesos — DESACTIVADA (ajuste manual preferido)
         # Llamar manualmente: engine.gerente._recalibrar_pesos() desde aurum_admin.py
         # schedule.every().sunday.at("17:00").do(self.recalibrar_pesos_semanal)
@@ -144,6 +147,18 @@ class AurumScheduler:
             _enviar_telegram(resumen)
         except Exception as e:
             print(f"[SCHEDULER] Error en reporte cierre: {e}")
+
+    def limpieza_nocturna(self):
+        """V18: Limpieza nocturna a las 03:00 UTC — lab_senales y regímenes macro expirados."""
+        print("[SCHEDULER] Ejecutando limpieza nocturna (lab_senales + regimenes_macro)...")
+        try:
+            self.manager.db.cleanup_lab_senales()
+        except Exception as e:
+            print(f"[SCHEDULER] Error en cleanup_lab_senales: {e}")
+        try:
+            self.manager.db.expirar_regimenes_macro()
+        except Exception as e:
+            print(f"[SCHEDULER] Error en expirar_regimenes_macro: {e}")
 
     def recalibrar_pesos_semanal(self):
         """D2 V14: Recalibración automática de pesos cada domingo a las 17:00 UTC."""

@@ -367,7 +367,19 @@ class Manager:
                                     veredicto, "IGNORADO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
-            return {"decision": "IGNORADO", "veredicto": veredicto, "motivo": motivo}
+            return {
+                "decision": "IGNORADO",
+                "veredicto": veredicto,
+                "motivo": motivo,
+                "votos": {
+                    "trend":  round(float(v_trend), 4),
+                    "nlp":    round(float(v_nlp), 4),
+                    "sniper": round(float(v_struct_voto), 4),
+                    "hurst":  round(float(h_val), 4),
+                    "volume": round(float(v_volume['voto']), 4),
+                    "cross":  round(float(v_cross['voto']), 4),
+                },
+            }
 
         # 6. Aprobado — verificar ventana de ejecución (D1 V14)
         # Los workers ya votaron. Este check solo bloquea la ORDEN, no el análisis.
@@ -377,7 +389,19 @@ class Manager:
                                     veredicto, "BLOQUEADO_HORARIO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
-            return {"decision": "BLOQUEADO_HORARIO", "veredicto": veredicto, "motivo": motivo}
+            return {
+                "decision": "BLOQUEADO_HORARIO",
+                "veredicto": veredicto,
+                "motivo": motivo,
+                "votos": {
+                    "trend":  round(float(v_trend), 4),
+                    "nlp":    round(float(v_nlp), 4),
+                    "sniper": round(float(v_struct_voto), 4),
+                    "hurst":  round(float(h_val), 4),
+                    "volume": round(float(v_volume['voto']), 4),
+                    "cross":  round(float(v_cross['voto']), 4),
+                },
+            }
 
         # 6b. Calcular dirección y lotaje
         direccion = "COMPRA" if veredicto > 0 else "VENTA"
@@ -457,7 +481,20 @@ class Manager:
                                     veredicto, "EJECUTADO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'])
-            return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
+            return {
+                "decision": direccion,
+                "lotes": lotes,
+                "veredicto": veredicto,
+                "motivo": motivo,
+                "votos": {
+                    "trend":  round(float(v_trend), 4),
+                    "nlp":    round(float(v_nlp), 4),
+                    "sniper": round(float(v_struct_voto), 4),
+                    "hurst":  round(float(h_val), 4),
+                    "volume": round(float(v_volume['voto']), 4),
+                    "cross":  round(float(v_cross['voto']), 4),
+                },
+            }
         else:
             # 8.a Validación de seguridad (Cuenta MT5)
             import MetaTrader5 as mt5_api
@@ -634,7 +671,20 @@ class Manager:
                                         veredicto, "EJECUTADO", motivo,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                         v_hurst=h_val, v_sniper=v_struct['voto'])
-                return {"decision": direccion, "lotes": lotes, "veredicto": veredicto, "motivo": motivo}
+                return {
+                    "decision": direccion,
+                    "lotes": lotes,
+                    "veredicto": veredicto,
+                    "motivo": motivo,
+                    "votos": {
+                        "trend":  round(float(v_trend), 4),
+                        "nlp":    round(float(v_nlp), 4),
+                        "sniper": round(float(v_struct_voto), 4),
+                        "hurst":  round(float(h_val), 4),
+                        "volume": round(float(v_volume['voto']), 4),
+                        "cross":  round(float(v_cross['voto']), 4),
+                    },
+                }
 
     # ------------------------------------------------------------------
     # Gestión de Posiciones Abiertas (Breakeven)

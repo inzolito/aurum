@@ -181,6 +181,8 @@ class NewsHunter:
                 )
                 if impacto >= 8:
                     self._inyectar_regimen(titulo, impacto, dt_pub)
+                # V18 MacroSensor: evaluar régimen macro para noticias con impacto >= 6
+                self._evaluar_regimen_macro(titulo, impacto, dt_pub)
                 # FASE 2 V15: Notificar noticias de impacto medio-alto por Telegram
                 if impacto >= 5:
                     notificar_noticia_procesada(
@@ -244,6 +246,128 @@ class NewsHunter:
                 self.db.conn.rollback()
             except Exception:
                 pass
+
+    def _evaluar_regimen_macro(self, titulo: str, impacto: int, dt_pub: datetime):
+        """
+        MacroSensor V18: evalúa si la noticia genera, actualiza o disipa un régimen macro.
+        Solo actúa si impacto >= 6. Llama a Gemini con contexto de regímenes activos.
+        """
+        if not self.client or impacto < 6:
+            return
+
+        try:
+            regimenes_activos = self.db.get_regimenes_macro_activos()
+        except Exception:
+            regimenes_activos = []
+
+        # Serializar lista de regímenes para el prompt
+        if regimenes_activos:
+            lista_regimenes = "\n".join(
+                f"  ID={r['id']} | tipo={r['tipo']} | nombre={r['nombre']} | "
+                f"fase={r['fase']} | dir={r['direccion']} | peso={r['peso']}"
+                for r in regimenes_activos
+            )
+        else:
+            lista_regimenes = "  (ninguno activo actualmente)"
+
+        prompt = (
+            f"Eres el MacroSensor del sistema de trading Aurum. Analiza si este titular "
+            f"crea, modifica o disipa un régimen macro de mercado.\n\n"
+            f"TITULAR: {titulo}\n"
+            f"IMPACTO EVALUADO: {impacto}/10\n\n"
+            f"REGÍMENES MACRO ACTIVOS AHORA:\n{lista_regimenes}\n\n"
+            f"INSTRUCCIONES:\n"
+            f"- Solo crear régimen si impacto >= 6 (ya verificado).\n"
+            f"- Nunca duplicar conceptos — si ya existe uno similar, ACTUALIZAR ese ID.\n"
+            f"- Si la noticia confirma / intensifica un régimen existente → ACTUALIZAR.\n"
+            f"- Si la noticia revierte o anula un régimen existente → DISIPAR.\n"
+            f"- Si no aplica a ningún régimen conocido → NUEVO o IGNORAR.\n"
+            f"- Tipos válidos: MONETARIO, GEOPOLITICO, CORPORATIVO, ECONOMICO, MERCADO.\n"
+            f"- Fases válidas: RUMOR, ACTIVO, DATOS, POST_CLIMAX.\n"
+            f"- Direcciones válidas: RISK_ON, RISK_OFF, VOLATIL.\n"
+            f"- peso: float entre 0.1 y 1.0 (intensidad del régimen).\n"
+            f"- activos_afectados: JSON string. Ejemplo: "
+            f'[{{"simbolo":"XAUUSD","dir":"UP"}},{{"simbolo":"USTEC","dir":"DOWN"}}]\n'
+            f"- expira_horas: número entero de horas hasta que expira (null si indefinido).\n"
+            f"- nombre: conciso y único como concepto (ej: 'FOMC Marzo 2026').\n\n"
+            f"Responde SOLO en JSON (sin markdown):\n"
+            f'{{"accion": "NUEVO|ACTUALIZAR|DISIPAR|IGNORAR", '
+            f'"id_existente": null_o_int, '
+            f'"tipo": "MONETARIO|GEOPOLITICO|CORPORATIVO|ECONOMICO|MERCADO", '
+            f'"nombre": "...", '
+            f'"fase": "RUMOR|ACTIVO|DATOS|POST_CLIMAX", '
+            f'"direccion": "RISK_ON|RISK_OFF|VOLATIL", '
+            f'"peso": 0.0_a_1.0, '
+            f'"activos_afectados": "[...]", '
+            f'"razonamiento": "...", '
+            f'"expira_horas": null_o_int}}'
+        )
+
+        try:
+            resp = self.client.models.generate_content(
+                model="gemini-flash-latest",
+                contents=prompt,
+                config={'response_mime_type': 'application/json'}
+            )
+            data = json.loads(resp.text)
+        except (json.JSONDecodeError, KeyError) as e_parse:
+            print(f"[HUNTER-MACRO] Error parseando respuesta Gemini: {e_parse}")
+            return
+        except Exception as e_gemini:
+            print(f"[HUNTER-MACRO] Error llamando a Gemini: {e_gemini}")
+            return
+
+        accion = data.get("accion", "IGNORAR").upper()
+
+        if accion == "IGNORAR":
+            print(f"[HUNTER-MACRO] Noticia ignorada por MacroSensor: '{titulo[:60]}'")
+            return
+
+        if accion == "NUEVO":
+            expira_horas = data.get("expira_horas")
+            expira_en = None
+            if expira_horas:
+                from datetime import timedelta
+                expira_en = dt_pub + timedelta(hours=int(expira_horas))
+
+            new_id = self.db.guardar_regimen_macro(
+                tipo=data.get("tipo", "MERCADO"),
+                nombre=data.get("nombre", titulo[:100]),
+                fase=data.get("fase", "ACTIVO"),
+                direccion=data.get("direccion", "VOLATIL"),
+                peso=float(data.get("peso", 0.5)),
+                activos_afectados=data.get("activos_afectados", "[]"),
+                razonamiento=data.get("razonamiento", ""),
+                expira_en=expira_en,
+                fuente_noticia=titulo[:200],
+            )
+            if new_id:
+                print(f"[HUNTER-MACRO] NUEVO régimen macro #{new_id}: '{data.get('nombre')}'")
+
+        elif accion == "ACTUALIZAR":
+            id_existente = data.get("id_existente")
+            if not id_existente:
+                print(f"[HUNTER-MACRO] ACTUALIZAR sin id_existente — ignorando.")
+                return
+            self.db.actualizar_regimen_macro(
+                regimen_id=int(id_existente),
+                fase=data.get("fase"),
+                peso=float(data.get("peso")) if data.get("peso") is not None else None,
+                razonamiento=data.get("razonamiento"),
+            )
+            print(f"[HUNTER-MACRO] ACTUALIZADO régimen macro #{id_existente}.")
+
+        elif accion == "DISIPAR":
+            id_existente = data.get("id_existente")
+            if not id_existente:
+                print(f"[HUNTER-MACRO] DISIPAR sin id_existente — ignorando.")
+                return
+            self.db.actualizar_regimen_macro(
+                regimen_id=int(id_existente),
+                fase="POST_CLIMAX",
+                activo=False,
+            )
+            print(f"[HUNTER-MACRO] DISIPADO régimen macro #{id_existente}.")
 
 if __name__ == "__main__":
     # Prevenir instancias duplicadas via Named Mutex en Windows

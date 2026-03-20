@@ -990,6 +990,72 @@ class DBConnector:
                     pass
                 return []
 
+    def guardar_regimen_macro(self, tipo: str, nombre: str, fase: str, direccion: str,
+                              peso: float, activos_afectados: str, razonamiento: str,
+                              expira_en=None, fuente_noticia: str = None) -> int | None:
+        """INSERT en regimenes_macro. Retorna el id del nuevo registro o None si falla."""
+        if not self.cursor:
+            return None
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    INSERT INTO regimenes_macro
+                        (tipo, nombre, fase, direccion, peso, activos_afectados,
+                         razonamiento, expira_en, fuente_noticia, creado_por)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'AUTO')
+                    RETURNING id
+                """, (tipo, nombre, fase, direccion, peso, activos_afectados,
+                      razonamiento, expira_en, fuente_noticia))
+                new_id = self.cursor.fetchone()[0]
+                self.conn.commit()
+                print(f"[DB-LAB] guardar_regimen_macro: nuevo régimen #{new_id} '{nombre}'.")
+                return new_id
+            except Exception as e:
+                print(f"[DB-LAB] Error en guardar_regimen_macro: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return None
+
+    def actualizar_regimen_macro(self, regimen_id: int, fase: str = None,
+                                 peso: float = None, razonamiento: str = None,
+                                 activo: bool = None):
+        """UPDATE parcial de un régimen macro existente."""
+        if not self.cursor:
+            return
+        campos = []
+        valores = []
+        if fase is not None:
+            campos.append("fase = %s")
+            valores.append(fase)
+        if peso is not None:
+            campos.append("peso = %s")
+            valores.append(peso)
+        if razonamiento is not None:
+            campos.append("razonamiento = %s")
+            valores.append(razonamiento)
+        if activo is not None:
+            campos.append("activo = %s")
+            valores.append(activo)
+        if not campos:
+            return
+        valores.append(regimen_id)
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    f"UPDATE regimenes_macro SET {', '.join(campos)} WHERE id = %s",
+                    valores
+                )
+                self.conn.commit()
+                print(f"[DB-LAB] actualizar_regimen_macro: #{regimen_id} actualizado.")
+            except Exception as e:
+                print(f"[DB-LAB] Error en actualizar_regimen_macro: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+
     def cleanup_lab_senales(self):
         """DELETE lab_senales WHERE tiempo < NOW() - 30 días (job nocturno)."""
         if not self.cursor:
