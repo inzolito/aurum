@@ -536,7 +536,11 @@ async def get_historial(
                        vs.numero_version
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
-                LEFT JOIN autopsias_perdidas ap ON ap.ticket_mt5 = ro.ticket_mt5
+                LEFT JOIN (
+                    SELECT DISTINCT ON (ticket_mt5) *
+                    FROM autopsias_perdidas
+                    ORDER BY ticket_mt5, id DESC
+                ) ap ON ap.ticket_mt5 = ro.ticket_mt5
                 LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
                 WHERE {where}
                 ORDER BY ro.tiempo_entrada DESC
