@@ -684,6 +684,142 @@ async def update_parametro(body: ParamUpdate, token: str = Depends(oauth2_scheme
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/monitor")
+async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    import psutil, subprocess
+    from datetime import datetime, timezone
+
+    result = {}
+    ahora = datetime.now(timezone.utc)
+
+    # ── 1. RAM y Swap ─────────────────────────────────────────────────────────
+    mem  = psutil.virtual_memory()
+    swap = psutil.swap_memory()
+    result["sistema"] = {
+        "ram":  {"total_mb": round(mem.total  / 1024**2), "usado_mb": round(mem.used      / 1024**2), "libre_mb": round(mem.available / 1024**2), "pct": round(mem.percent,  1)},
+        "swap": {"total_mb": round(swap.total / 1024**2), "usado_mb": round(swap.used     / 1024**2), "libre_mb": round((swap.total - swap.used) / 1024**2), "pct": round(swap.percent, 1)},
+    }
+
+    # ── 2. Procesos ───────────────────────────────────────────────────────────
+    _scripts = {"core": "main.py", "shield": "heartbeat.py", "hunter": "news_hunter.py", "telegram": "telegram_daemon.py"}
+    procesos = {k: {"pid": None, "vivo": False, "uptime_s": 0} for k in _scripts}
+    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+        try:
+            cmd = " ".join(proc.info.get('cmdline') or [])
+            if "python" not in proc.info.get('name', '').lower():
+                continue
+            for key, script in _scripts.items():
+                if script in cmd and "dashboard" not in cmd:
+                    if not procesos[key]["vivo"]:
+                        procesos[key] = {"pid": proc.info['pid'], "vivo": True, "uptime_s": int(_time.time() - proc.info['create_time'])}
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            continue
+    result["procesos"] = procesos
+
+    # ── 3. Reinicios del servicio aurum-core ──────────────────────────────────
+    try:
+        p = subprocess.run(["systemctl", "show", "aurum-core", "--property=NRestarts"], capture_output=True, text=True, timeout=5)
+        result["reinicios"] = int(p.stdout.strip().split("=")[-1])
+    except Exception:
+        result["reinicios"] = -1
+
+    # ── 4. Estado bot (heartbeat + balance) ───────────────────────────────────
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT tiempo, estado_general, balance, equity, pnl_flotante, mensaje FROM estado_bot WHERE id = 1")
+            row = db.cursor.fetchone()
+        except Exception:
+            db.conn.rollback()
+            row = None
+    if row:
+        result["bot"] = {
+            "ultimo_latido": row[0].isoformat(),
+            "segundos_inactivo": int((ahora - row[0]).total_seconds()),
+            "estado": row[1], "balance": float(row[2] or 0),
+            "equity": float(row[3] or 0), "pnl_flotante": float(row[4] or 0),
+            "mensaje": row[5],
+        }
+    else:
+        result["bot"] = None
+
+    # ── 5. Últimas 25 señales ─────────────────────────────────────────────────
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT rs.tiempo, a.simbolo, rs.decision_gerente, rs.voto_final_ponderado,
+                       rs.motivo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper
+                FROM registro_senales rs
+                JOIN activos a ON a.id = rs.activo_id
+                ORDER BY rs.tiempo DESC LIMIT 25
+            """)
+            rows = db.cursor.fetchall()
+        except Exception:
+            db.conn.rollback()
+            rows = []
+    result["senales"] = [{"tiempo": r[0].isoformat(), "simbolo": r[1], "decision": r[2],
+                           "veredicto": round(float(r[3] or 0), 3), "motivo": r[4],
+                           "trend": round(float(r[5] or 0), 2), "nlp": round(float(r[6] or 0), 2),
+                           "sniper": round(float(r[7] or 0), 2)} for r in rows]
+
+    # ── 6. Último voto por activo activo ──────────────────────────────────────
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT DISTINCT ON (a.simbolo)
+                    a.simbolo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper,
+                    rs.voto_volume, rs.voto_cross, rs.decision_gerente, rs.tiempo
+                FROM registro_senales rs
+                JOIN activos a ON a.id = rs.activo_id
+                WHERE a.estado_operativo = 'ACTIVO'
+                ORDER BY a.simbolo, rs.tiempo DESC
+            """)
+            rows = db.cursor.fetchall()
+        except Exception:
+            db.conn.rollback()
+            rows = []
+    result["votos_workers"] = [{"simbolo": r[0], "trend": round(float(r[1] or 0), 2),
+                                  "nlp": round(float(r[2] or 0), 2), "sniper": round(float(r[3] or 0), 2),
+                                  "volumen": round(float(r[4] or 0), 2), "cross": round(float(r[5] or 0), 2),
+                                  "decision": r[6], "tiempo": r[7].isoformat()} for r in rows]
+
+    # ── 7. Rendimiento hoy (hora Chile) ───────────────────────────────────────
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT
+                    COUNT(*) FILTER (WHERE resultado_final IS NOT NULL),
+                    COUNT(*) FILTER (WHERE resultado_final = 'GANADO'),
+                    COUNT(*) FILTER (WHERE resultado_final = 'PERDIDO'),
+                    COALESCE(SUM(pnl_usd) FILTER (WHERE resultado_final IS NOT NULL), 0),
+                    COUNT(*) FILTER (WHERE resultado_final IS NULL AND estado = 'ABIERTA')
+                FROM registro_operaciones
+                WHERE (tiempo_entrada AT TIME ZONE 'America/Santiago')::date =
+                      (NOW() AT TIME ZONE 'America/Santiago')::date
+            """)
+            r = db.cursor.fetchone()
+            result["hoy"] = {"total": int(r[0]), "ganados": int(r[1]), "perdidos": int(r[2]),
+                              "pnl": round(float(r[3]), 2), "abiertas": int(r[4])}
+        except Exception:
+            db.conn.rollback()
+            result["hoy"] = {"total": 0, "ganados": 0, "perdidos": 0, "pnl": 0.0, "abiertas": 0}
+
+    # ── 8. Activos con problemas ───────────────────────────────────────────────
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT simbolo, estado_operativo FROM activos WHERE estado_operativo NOT IN ('ACTIVO') ORDER BY simbolo")
+            rows = db.cursor.fetchall()
+            result["activos_problema"] = [{"simbolo": r[0], "estado": r[1]} for r in rows]
+        except Exception:
+            db.conn.rollback()
+            result["activos_problema"] = []
+
+    return result
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "operational", "version": "Prism 1.0"}
