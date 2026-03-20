@@ -17,6 +17,7 @@ const SideNav = ({ onLogout, botVersion }) => {
         <nav className="side-nav">
             {/* Marca + versión — siempre arriba en desktop */}
             <div className="nav-brand">
+                <img src="/favicon.svg" alt="Aurum" style={{ width: 26, height: 25, objectFit: 'contain' }} />
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent-primary)', letterSpacing: 1 }}>AURUM</span>
                 {botVersion && (
                     <span style={{ fontSize: 9, color: 'var(--text-secondary)', fontFamily: 'monospace', letterSpacing: 0.5 }}>
