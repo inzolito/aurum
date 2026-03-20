@@ -28,7 +28,10 @@ export const ASSET_SESSIONS = {
     // Pares Oceanía/Asia
     AUDUSD: ['sydney', 'tokyo', 'london', 'newyork'],
     NZDUSD: ['sydney', 'tokyo', 'london', 'newyork'],
-    AUDCAD: ['sydney', 'london', 'newyork'],
+    AUDCAD: ['sydney', 'tokyo', 'london', 'newyork'],
+    AUDNZD: ['sydney', 'tokyo'],
+    AUDJPY: ['sydney', 'tokyo', 'london'],
+    EURJPY: ['tokyo', 'london', 'newyork'],
     USDCNH: ['sydney', 'tokyo'],
 };
 
