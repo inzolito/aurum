@@ -1003,6 +1003,209 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
     return result
 
 
+@app.get("/api/lab")
+async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+
+    import json as _json
+
+    laboratorios = []
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT l.id, l.nombre, l.categoria, l.estado,
+                       l.capital_virtual, l.balance_virtual, l.creado_en, l.notas
+                FROM laboratorios l
+                ORDER BY l.id
+            """)
+            labs_rows = db.cursor.fetchall()
+        except Exception as e:
+            db.conn.rollback()
+            labs_rows = []
+
+    for r in labs_rows:
+        lab_id    = r[0]
+        nombre    = r[1]
+        categoria = r[2]
+        estado    = r[3]
+        capital   = float(r[4] or 3000)
+        balance   = float(r[5] or capital)
+
+        # Activos del lab
+        activos_lab = []
+        with db._lock:
+            try:
+                db.cursor.execute("""
+                    SELECT a.simbolo FROM lab_activos la
+                    JOIN activos a ON a.id = la.activo_id
+                    WHERE la.lab_id = %s AND la.estado = 'ACTIVO'
+                    ORDER BY a.simbolo
+                """, (lab_id,))
+                activos_lab = [row[0] for row in db.cursor.fetchall()]
+            except Exception:
+                db.conn.rollback()
+
+        # Métricas del lab
+        metricas = {
+            "trades_total": 0, "ganados": 0, "perdidos": 0,
+            "win_rate": 0.0, "pnl_total": 0.0, "roe_pct": 0.0,
+            "profit_factor": 0.0, "max_drawdown": 0.0,
+            "avg_ganancia": 0.0, "avg_perdida": 0.0,
+            "datos_suficientes": False,
+        }
+        with db._lock:
+            try:
+                db.cursor.execute("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE estado = 'CERRADA') as total,
+                        COUNT(*) FILTER (WHERE estado = 'CERRADA' AND resultado = 'TP') as ganados,
+                        COUNT(*) FILTER (WHERE estado = 'CERRADA' AND resultado = 'SL') as perdidos,
+                        COALESCE(SUM(pnl_virtual) FILTER (WHERE estado = 'CERRADA'), 0) as pnl_total,
+                        COALESCE(AVG(pnl_virtual) FILTER (WHERE estado = 'CERRADA' AND resultado = 'TP'), 0) as avg_win,
+                        COALESCE(AVG(pnl_virtual) FILTER (WHERE estado = 'CERRADA' AND resultado = 'SL'), 0) as avg_loss,
+                        COALESCE(SUM(pnl_virtual) FILTER (WHERE estado = 'CERRADA' AND resultado = 'TP'), 0) as sum_win,
+                        COALESCE(ABS(SUM(pnl_virtual) FILTER (WHERE estado = 'CERRADA' AND resultado = 'SL')), 0) as sum_loss
+                    FROM lab_operaciones
+                    WHERE lab_id = %s
+                """, (lab_id,))
+                mr = db.cursor.fetchone()
+                if mr:
+                    total = int(mr[0] or 0)
+                    ganados = int(mr[1] or 0)
+                    perdidos = int(mr[2] or 0)
+                    pnl_total = float(mr[3] or 0)
+                    avg_win = float(mr[4] or 0)
+                    avg_loss = float(mr[5] or 0)
+                    sum_win = float(mr[6] or 0)
+                    sum_loss = float(mr[7] or 0)
+                    win_rate = round((ganados / total * 100), 1) if total > 0 else 0.0
+                    roe_pct = round(((balance - capital) / capital * 100), 2) if capital > 0 else 0.0
+                    profit_factor = round(sum_win / sum_loss, 2) if sum_loss > 0 else 0.0
+                    metricas = {
+                        "trades_total": total,
+                        "ganados": ganados,
+                        "perdidos": perdidos,
+                        "win_rate": win_rate,
+                        "pnl_total": round(pnl_total, 2),
+                        "roe_pct": roe_pct,
+                        "profit_factor": profit_factor,
+                        "max_drawdown": 0.0,  # Calculado aparte si hay lab_balance_diario
+                        "avg_ganancia": round(avg_win, 2),
+                        "avg_perdida": round(avg_loss, 2),
+                        "datos_suficientes": total >= 30,
+                    }
+            except Exception as e:
+                db.conn.rollback()
+
+        # Operaciones recientes
+        ops_recientes = []
+        with db._lock:
+            try:
+                db.cursor.execute("""
+                    SELECT lo.id, a.simbolo, lo.tipo_orden, lo.precio_entrada,
+                           lo.stop_loss, lo.take_profit, lo.volumen_lotes,
+                           lo.estado, lo.tiempo_entrada, lo.tiempo_salida,
+                           lo.precio_salida, lo.resultado, lo.pnl_virtual, lo.roe_pct
+                    FROM lab_operaciones lo
+                    JOIN activos a ON a.id = lo.activo_id
+                    WHERE lo.lab_id = %s
+                    ORDER BY lo.tiempo_entrada DESC
+                    LIMIT 10
+                """, (lab_id,))
+                cols_op = ["id", "simbolo", "tipo", "precio_entrada", "sl", "tp",
+                           "lotes", "estado", "entrada", "salida",
+                           "precio_salida", "resultado", "pnl_virtual", "roe_pct"]
+                for op_row in db.cursor.fetchall():
+                    op = dict(zip(cols_op, op_row))
+                    op["entrada"] = op["entrada"].isoformat() if op["entrada"] else None
+                    op["salida"] = op["salida"].isoformat() if op["salida"] else None
+                    for k in ["precio_entrada", "sl", "tp", "lotes", "pnl_virtual", "roe_pct"]:
+                        if op[k] is not None:
+                            op[k] = float(op[k])
+                    ops_recientes.append(op)
+            except Exception:
+                db.conn.rollback()
+
+        laboratorios.append({
+            "id": lab_id,
+            "nombre": nombre,
+            "categoria": categoria,
+            "estado": estado,
+            "capital_virtual": capital,
+            "balance_virtual": round(balance, 2),
+            "activos": activos_lab,
+            "metricas": metricas,
+            "operaciones_recientes": ops_recientes,
+        })
+
+    # Regímenes macro activos
+    regimenes_macro = []
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT id, tipo, nombre, fase, direccion, peso,
+                       activos_afectados, razonamiento, expira_en, creado_en
+                FROM regimenes_macro
+                WHERE activo = TRUE
+                ORDER BY peso DESC, creado_en DESC
+            """)
+            cols_rm = ["id", "tipo", "nombre", "fase", "direccion", "peso",
+                       "activos_afectados", "razonamiento", "expira_en", "creado_en"]
+            for rm_row in db.cursor.fetchall():
+                rm = dict(zip(cols_rm, rm_row))
+                rm["peso"] = float(rm["peso"] or 0)
+                rm["expira_en"] = rm["expira_en"].isoformat() if rm["expira_en"] else None
+                rm["creado_en"] = rm["creado_en"].isoformat() if rm["creado_en"] else None
+                # Parsear activos_afectados si es JSON string
+                if rm["activos_afectados"]:
+                    try:
+                        rm["activos_afectados"] = _json.loads(rm["activos_afectados"])
+                    except Exception:
+                        rm["activos_afectados"] = []
+                else:
+                    rm["activos_afectados"] = []
+                regimenes_macro.append(rm)
+        except Exception:
+            db.conn.rollback()
+
+    return {
+        "laboratorios": laboratorios,
+        "regimenes_macro": regimenes_macro,
+    }
+
+
+class LabEstadoUpdate(BaseModel):
+    estado: str
+
+@app.put("/api/lab/{lab_id}/estado")
+async def update_lab_estado(lab_id: int, body: LabEstadoUpdate,
+                             token: str = Depends(oauth2_scheme),
+                             db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    estados_validos = ("ACTIVO", "PAUSADO", "GRADUADO")
+    if body.estado not in estados_validos:
+        raise HTTPException(status_code=422, detail=f"Estado inválido. Opciones: {estados_validos}")
+    with db._lock:
+        try:
+            db.cursor.execute(
+                "UPDATE laboratorios SET estado = %s WHERE id = %s",
+                (body.estado, lab_id)
+            )
+            if db.cursor.rowcount == 0:
+                raise HTTPException(status_code=404, detail="Laboratorio no encontrado")
+            db.conn.commit()
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "lab_id": lab_id, "estado": body.estado}
+
+
 @app.get("/health")
 async def health_check():
     return {"status": "operational", "version": "Prism 1.0"}

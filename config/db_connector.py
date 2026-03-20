@@ -734,6 +734,303 @@ class DBConnector:
             cols = ["simbolo", "trend", "nlp", "flow", "vol", "cross", "hurst", "sniper", "verdict", "ia_analysis", "fecha"]
             return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
 
+    # ------------------------------------------------------------------
+    # Métodos del Laboratorio (V18)
+    # ------------------------------------------------------------------
+
+    def get_lab_params(self, lab_id: int) -> dict:
+        """
+        Lee lab_parametros para un lab, con fallback a get_parametros() si no existe.
+        Retorna dict fusionado: producción + overrides del lab.
+        """
+        base = self.get_parametros().copy()
+        if not self.cursor:
+            return base
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    "SELECT nombre_parametro, valor FROM lab_parametros WHERE lab_id = %s",
+                    (lab_id,)
+                )
+                for nombre, valor in self.cursor.fetchall():
+                    try:
+                        base[nombre] = float(valor)
+                    except (ValueError, TypeError):
+                        base[nombre] = valor
+            except Exception as e:
+                print(f"[DB-LAB] Error leyendo lab_parametros para lab {lab_id}: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+        return base
+
+    def get_labs_activos(self) -> list:
+        """
+        Retorna lista de labs con estado=ACTIVO con sus activos asignados.
+        Cada item: {id, nombre, categoria, estado, capital_virtual, balance_virtual, activos: [list]}
+        """
+        if not self.cursor:
+            return []
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    SELECT l.id, l.nombre, l.categoria, l.estado,
+                           l.capital_virtual, l.balance_virtual
+                    FROM laboratorios l
+                    WHERE l.estado = 'ACTIVO'
+                    ORDER BY l.id
+                """)
+                cols = ["id", "nombre", "categoria", "estado", "capital_virtual", "balance_virtual"]
+                labs = [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+
+                for lab in labs:
+                    self.cursor.execute("""
+                        SELECT la.activo_id, a.simbolo
+                        FROM lab_activos la
+                        JOIN activos a ON a.id = la.activo_id
+                        WHERE la.lab_id = %s AND la.estado = 'ACTIVO'
+                    """, (lab["id"],))
+                    lab["activos"] = [
+                        {"id": r[0], "simbolo": r[1]}
+                        for r in self.cursor.fetchall()
+                    ]
+                return labs
+            except Exception as e:
+                print(f"[DB-LAB] Error en get_labs_activos: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return []
+
+    def get_activos_para_evaluar(self) -> list:
+        """
+        UNION de activos de producción + activos de labs activos.
+        Retorna lista de dicts con {id, simbolo, nombre, categoria, simbolo_broker}.
+        Cada activo aparece UNA sola vez (DISTINCT).
+        """
+        if not self.cursor:
+            return self.obtener_activos_patrullaje()
+        cols = ["id", "simbolo", "nombre", "categoria", "simbolo_broker"]
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    SELECT DISTINCT a.id, a.simbolo, a.nombre, a.categoria, a.simbolo_broker
+                    FROM activos a
+                    WHERE a.id IN (
+                        SELECT id FROM activos WHERE estado_operativo = 'ACTIVO'
+                        UNION
+                        SELECT la.activo_id FROM lab_activos la
+                        JOIN laboratorios l ON l.id = la.lab_id
+                        WHERE la.estado = 'ACTIVO' AND l.estado = 'ACTIVO'
+                    )
+                    ORDER BY a.id
+                """)
+                res = [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+                if res:
+                    self._last_assets_cache = res
+                return res
+            except Exception as e:
+                print(f"[DB-LAB] Error en get_activos_para_evaluar: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return self.obtener_activos_patrullaje()
+
+    def guardar_lab_senal(self, lab_id: int, activo_id: int, votos: dict,
+                          decision: str, motivo: str, umbral: float, pesos: dict) -> int | None:
+        """
+        Inserta una señal de lab en lab_senales.
+        Retorna el id insertado (para referencia en lab_operaciones).
+        """
+        if not self.cursor:
+            return None
+        import json as _json
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    INSERT INTO lab_senales
+                        (lab_id, activo_id, voto_tendencia, voto_nlp, voto_sniper,
+                         voto_hurst, voto_volume, voto_cross, voto_final_ponderado,
+                         decision_gerente, motivo, umbral_usado, pesos_usados)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                """, (
+                    lab_id, activo_id,
+                    votos.get("trend", 0.0), votos.get("nlp", 0.0),
+                    votos.get("sniper", 0.0), votos.get("hurst", 0.5),
+                    votos.get("volume", 0.0), votos.get("cross", 0.0),
+                    votos.get("veredicto", 0.0),
+                    decision, motivo, umbral,
+                    _json.dumps(pesos)
+                ))
+                row = self.cursor.fetchone()
+                self.conn.commit()
+                return row[0] if row else None
+            except Exception as e:
+                print(f"[DB-LAB] Error guardando lab_senal (lab={lab_id}): {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return None
+
+    def guardar_lab_operacion(self, lab_id: int, activo_id: int, senal_id: int,
+                               tipo: str, precio: float, sl: float, tp: float,
+                               lotes: float, capital: float, justificacion: str) -> int | None:
+        """Inserta una operación virtual en lab_operaciones. Retorna id."""
+        if not self.cursor:
+            return None
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    INSERT INTO lab_operaciones
+                        (lab_id, activo_id, lab_senal_id, tipo_orden,
+                         precio_entrada, stop_loss, take_profit,
+                         volumen_lotes, capital_usado, justificacion_entrada,
+                         version_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            (SELECT id FROM versiones_sistema WHERE estado = 'ACTIVA' ORDER BY id DESC LIMIT 1))
+                    RETURNING id
+                """, (
+                    lab_id, activo_id, senal_id, tipo,
+                    precio, sl, tp, lotes, capital, justificacion
+                ))
+                row = self.cursor.fetchone()
+                self.conn.commit()
+                return row[0] if row else None
+            except Exception as e:
+                print(f"[DB-LAB] Error guardando lab_operacion (lab={lab_id}): {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return None
+
+    def cerrar_lab_operacion(self, op_id: int, precio_salida: float,
+                              resultado: str, pnl: float, roe: float):
+        """Cierra una operación virtual (TP/SL/MANUAL) y actualiza balance del lab."""
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    UPDATE lab_operaciones
+                    SET estado = 'CERRADA', tiempo_salida = NOW(),
+                        precio_salida = %s, resultado = %s,
+                        pnl_virtual = %s, roe_pct = %s
+                    WHERE id = %s
+                """, (precio_salida, resultado, pnl, roe, op_id))
+                # Actualizar balance_virtual del lab
+                self.cursor.execute("""
+                    UPDATE laboratorios
+                    SET balance_virtual = balance_virtual + %s
+                    WHERE id = (
+                        SELECT lab_id FROM lab_operaciones WHERE id = %s
+                    )
+                """, (pnl, op_id))
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB-LAB] Error cerrando lab_operacion {op_id}: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+
+    def get_lab_operaciones_abiertas(self, lab_id: int) -> list:
+        """Retorna todas las operaciones virtuales abiertas de un lab."""
+        if not self.cursor:
+            return []
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    SELECT lo.id, lo.activo_id, a.simbolo, lo.tipo_orden,
+                           lo.precio_entrada, lo.stop_loss, lo.take_profit,
+                           lo.volumen_lotes, lo.capital_usado, lo.tiempo_entrada
+                    FROM lab_operaciones lo
+                    JOIN activos a ON a.id = lo.activo_id
+                    WHERE lo.lab_id = %s AND lo.estado = 'ABIERTA'
+                    ORDER BY lo.tiempo_entrada DESC
+                """, (lab_id,))
+                cols = ["id", "activo_id", "simbolo", "tipo_orden",
+                        "precio_entrada", "stop_loss", "take_profit",
+                        "volumen_lotes", "capital_usado", "tiempo_entrada"]
+                return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+            except Exception as e:
+                print(f"[DB-LAB] Error en get_lab_operaciones_abiertas (lab={lab_id}): {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return []
+
+    def get_regimenes_macro_activos(self) -> list:
+        """Retorna regímenes macro activos para inyectar en NLP."""
+        if not self.cursor:
+            return []
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    SELECT id, tipo, nombre, fase, direccion, peso,
+                           activos_afectados, razonamiento, expira_en
+                    FROM regimenes_macro
+                    WHERE activo = TRUE
+                    ORDER BY peso DESC, creado_en DESC
+                """)
+                cols = ["id", "tipo", "nombre", "fase", "direccion", "peso",
+                        "activos_afectados", "razonamiento", "expira_en"]
+                return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+            except Exception as e:
+                print(f"[DB-LAB] Error en get_regimenes_macro_activos: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+                return []
+
+    def cleanup_lab_senales(self):
+        """DELETE lab_senales WHERE tiempo < NOW() - 30 días (job nocturno)."""
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    "DELETE FROM lab_senales WHERE tiempo < NOW() - INTERVAL '30 days'"
+                )
+                deleted = self.cursor.rowcount
+                self.conn.commit()
+                if deleted:
+                    print(f"[DB-LAB] cleanup_lab_senales: {deleted} filas eliminadas.")
+            except Exception as e:
+                print(f"[DB-LAB] Error en cleanup_lab_senales: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+
+    def expirar_regimenes_macro(self):
+        """UPDATE activo=FALSE WHERE expira_en < NOW() (job nocturno)."""
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    UPDATE regimenes_macro
+                    SET activo = FALSE
+                    WHERE activo = TRUE AND expira_en IS NOT NULL AND expira_en < NOW()
+                """)
+                updated = self.cursor.rowcount
+                self.conn.commit()
+                if updated:
+                    print(f"[DB-LAB] expirar_regimenes_macro: {updated} regímenes expirados.")
+            except Exception as e:
+                print(f"[DB-LAB] Error en expirar_regimenes_macro: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
 
 
 # ------------------------------------------------------------------

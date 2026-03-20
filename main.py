@@ -14,6 +14,7 @@ from datetime import datetime
 from config.db_connector import DBConnector
 from config.mt5_connector import MT5Connector
 from core.manager import Manager
+from core.lab_evaluator import LabEvaluator
 from core.scheduler import AurumScheduler
 from config.notifier import notificar_inicio, notificar_error_critico, notificar_resumen_horario
 from config.logging_config import setup_logging, get_logger
@@ -148,6 +149,7 @@ class AurumEngine:
         self.db = None
         self.mt5_conn = None
         self.gerente = None
+        self.lab_evaluator = None
         self.programador = None
         self.running = False
         self.ciclo = 0
@@ -219,6 +221,7 @@ class AurumEngine:
             return
 
         self.gerente = Manager(self.db, self.mt5_conn)
+        self.lab_evaluator = LabEvaluator(self.db)
         self.programador = AurumScheduler(self.gerente)
         self.programador.start()
 
@@ -301,6 +304,10 @@ class AurumEngine:
                 #     self.running = False
                 #     break
 
+                # Recolector de votos para el Laboratorio (V18)
+                _votos_lab   = {}  # {simbolo: {trend, nlp, sniper, hurst, volume, cross}}
+                _precios_lab = {}  # {simbolo: {bid, ask}}
+
                 for activo in activos_db:
                     print(f"\n[{hora}] Analizando {activo['simbolo']} ({activo['nombre']})...")
                     try:
@@ -311,10 +318,32 @@ class AurumEngine:
                         )
                         if resultado.get("decision") not in ("IGNORADO", "CANCELADO_RIESGO"):
                             ordenes_hora += 1
+                        # Capturar votos para el lab si están disponibles en el resultado
+                        if "votos" in resultado:
+                            _votos_lab[activo['simbolo']] = resultado["votos"]
+                        # Capturar precio actual del activo
+                        try:
+                            _sb = activo.get("simbolo_broker") or self.db.obtener_simbolo_broker(activo['simbolo'])
+                            if _sb:
+                                _tick = mt5_api.symbol_info_tick(_sb)
+                                if _tick:
+                                    _precios_lab[activo['simbolo']] = {
+                                        "bid": float(_tick.bid),
+                                        "ask": float(_tick.ask),
+                                    }
+                        except Exception:
+                            pass
                     except Exception as e:
                         print(f"[MAIN] ERROR evaluando {activo['simbolo']}: {e}")
                         self.db.registrar_log("ERROR", "MAIN",
                                          f"Excepcion en ciclo de {activo['simbolo']}: {e}")
+
+                # V18: Evaluar Laboratorio al final del ciclo de producción
+                try:
+                    if _precios_lab:
+                        self.lab_evaluator.evaluar_todos(_votos_lab, _precios_lab)
+                except Exception as e_lab:
+                    print(f"[LAB] Error en ciclo del laboratorio: {e_lab}")
 
                 ciclos_hora    += 1
                 if self.ciclo % CICLOS_POR_HORA == 0:

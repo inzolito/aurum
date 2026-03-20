@@ -8,6 +8,8 @@ import Noticias from './pages/Noticias';
 import Historial from './pages/Historial';
 import Config from './pages/Config';
 import Monitor from './pages/Monitor';
+import Lab from './pages/Lab';
+import MacroBar from './components/MacroBar';
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -36,6 +38,7 @@ function App() {
 
   return (
     <Router>
+      {isAuthenticated && <MacroBar />}
       <Routes>
         <Route
           path="/login"
@@ -47,6 +50,7 @@ function App() {
         <Route path="/historial" element={<PrivateRoute element={withVersion(<Historial setAuth={setIsAuthenticated} />)} />} />
         <Route path="/config"    element={<PrivateRoute element={withVersion(<Config    setAuth={setIsAuthenticated} />)} />} />
         <Route path="/monitor"   element={<PrivateRoute element={withVersion(<Monitor   setAuth={setIsAuthenticated} />)} />} />
+        <Route path="/lab"       element={<PrivateRoute element={withVersion(<Lab       setAuth={setIsAuthenticated} />)} />} />
         <Route path="/" element={<Navigate to="/control" />} />
       </Routes>
     </Router>

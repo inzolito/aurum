@@ -1,5 +1,5 @@
 import { useNavigate, useLocation } from 'react-router-dom';
-import { LayoutGrid, Activity, Newspaper, LogOut, History, Settings, HeartPulse } from 'lucide-react';
+import { LayoutGrid, Activity, Newspaper, LogOut, History, Settings, HeartPulse, FlaskConical } from 'lucide-react';
 
 const SideNav = ({ onLogout, botVersion }) => {
     const navigate = useNavigate();
@@ -10,8 +10,9 @@ const SideNav = ({ onLogout, botVersion }) => {
         { path: '/dashboard', icon: <LayoutGrid size={20} />, title: 'Señales' },
         { path: '/historial', icon: <History size={20} />,    title: 'Historial' },
         { path: '/noticias',  icon: <Newspaper size={20} />,  title: 'Noticias' },
-        { path: '/config',    icon: <Settings size={20} />,   title: 'Config' },
-        { path: '/monitor',   icon: <HeartPulse size={20} />, title: 'Monitor' },
+        { path: '/config',    icon: <Settings size={20} />,       title: 'Config' },
+        { path: '/monitor',   icon: <HeartPulse size={20} />,    title: 'Monitor' },
+        { path: '/lab',       icon: <FlaskConical size={20} />,  title: 'Lab' },
     ];
 
     return (
