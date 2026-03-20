@@ -152,8 +152,11 @@ const Monitor = ({ setAuth, botVersion }) => {
     const umbral = umbral_disparo || 0.45;
 
     // Cálculos de estado
-    const latidoOk   = bot && bot.segundos_inactivo < 90;
-    const latidoWarn  = bot && bot.segundos_inactivo >= 90 && bot.segundos_inactivo < 300;
+    const enVigilancia = bot?.estado === 'VIGILANCIA' || bot?.estado?.includes('VIGILANCIA');
+    const umbralOk   = enVigilancia ? 720 : 90;   // vigilancia cicla cada 10min, normal cada 60s
+    const umbralWarn = enVigilancia ? 1800 : 300;
+    const latidoOk   = bot && bot.segundos_inactivo < umbralOk;
+    const latidoWarn  = bot && bot.segundos_inactivo >= umbralOk && bot.segundos_inactivo < umbralWarn;
     const todosVivos  = procesos && Object.values(procesos).every(p => p.vivo);
     const ramStatus   = sistema?.ram?.pct  > 85 ? 'fail' : sistema?.ram?.pct  > 65 ? 'warn' : 'ok';
     const discoStatus = sistema?.disco?.pct > 90 ? 'fail' : sistema?.disco?.pct > 80 ? 'warn' : 'ok';
@@ -304,7 +307,7 @@ const Monitor = ({ setAuth, botVersion }) => {
                                         </span>
                                     </div>
                                     <Badge status={latidoOk ? 'ok' : latidoWarn ? 'warn' : 'fail'}>
-                                        {latidoOk ? 'Normal' : latidoWarn ? 'Lento' : 'Sin señal'}
+                                        {latidoOk ? (enVigilancia ? 'Vigilancia' : 'Normal') : latidoWarn ? 'Lento' : 'Sin señal'}
                                     </Badge>
                                 </div>
                                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
