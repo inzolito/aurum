@@ -3,7 +3,7 @@ import axios from 'axios';
 import { FlaskConical, TrendingUp, TrendingDown, Activity, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
 import SideNav from '../components/SideNav';
 
-// ── Helpers de estado ─────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 const Badge = ({ status, children }) => {
     const styles = {
@@ -48,32 +48,113 @@ const Card = ({ title, icon, children }) => (
     </div>
 );
 
-// ── Badge de estado del modelo ────────────────────────────────────────────────
-
 const BadgeDatos = ({ total }) => {
     if (total < 30) return <Badge status="warn">Datos insuficientes</Badge>;
     if (total < 100) return <Badge status="blue">En evaluación</Badge>;
     return <Badge status="ok">Validado</Badge>;
 };
 
-// ── Chip de Régimen Macro ──────────────────────────────────────────────────────
+const MetricBox = ({ label, value, color }) => (
+    <div style={{
+        background: 'var(--bg-primary)', borderRadius: 8,
+        padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4,
+    }}>
+        <span style={{ fontSize: 9, color: 'var(--text-secondary)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+            {label}
+        </span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: color || 'var(--text-primary)', fontFamily: 'monospace' }}>
+            {value}
+        </span>
+    </div>
+);
 
-const CHIP_CLS = {
-    RISK_OFF: 'bg-red-100 text-red-500',
-    RISK_ON:  'bg-emerald-100 text-emerald-600',
-    VOLATIL:  'bg-amber-100 text-amber-600',
+// ── Celda de voto coloreada ────────────────────────────────────────────────────
+
+const CeldaVoto = ({ voto }) => {
+    const v = parseFloat(voto) || 0;
+    const color = v >= 0.3 ? '#22c55e' : v <= -0.3 ? '#ef4444' : '#6b7280';
+    return (
+        <td style={{ textAlign: 'center', fontSize: 11, fontFamily: 'monospace', fontWeight: 700, color, padding: '5px 8px' }}>
+            {v > 0 ? '+' : ''}{v.toFixed(2)}
+        </td>
+    );
 };
 
-const ChipRegimen = ({ regimen, onClick }) => {
-    const cls = CHIP_CLS[regimen.direccion] || 'bg-gray-100 text-gray-400';
+// ── Tabla de votaciones del lab ────────────────────────────────────────────────
+
+const TablaVotos = ({ votos, umbral = 0.55 }) => {
+    if (!votos || votos.length === 0) {
+        return (
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' }}>
+                Sin votos registrados aún.
+            </p>
+        );
+    }
     return (
-        <button
-            onClick={() => onClick && onClick(regimen)}
-            title={regimen.razonamiento}
-            className={`px-3 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap border-none cursor-pointer ${cls}`}
-        >
-            {regimen.nombre}
-        </button>
+        <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                    <tr style={{ color: 'var(--text-secondary)', textAlign: 'center' }}>
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>Activo</th>
+                        {['Trend', 'NLP', 'Sniper', 'Macro'].map(h => (
+                            <th key={h} style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)' }}>{h}</th>
+                        ))}
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)' }}>Veredicto</th>
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', minWidth: 130 }}>
+                            Falta <span style={{ color: 'var(--accent-primary)' }}>(umbral {umbral})</span>
+                        </th>
+                        <th style={{ padding: '6px 8px', borderBottom: '1px solid var(--border-color)', textAlign: 'left' }}>Decisión</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {votos.map((w, i) => {
+                        const v      = parseFloat(w.veredicto) || 0;
+                        const absV   = Math.abs(v);
+                        const falta  = umbral - absV;
+                        const pct    = Math.min((absV / umbral) * 100, 100);
+                        const dispara = falta <= 0;
+                        const cerca  = !dispara && falta <= 0.10;
+                        const barColor = dispara ? '#22c55e' : cerca ? '#f59e0b' : '#3b82f6';
+                        const dir    = v > 0 ? '▲' : v < 0 ? '▼' : '—';
+                        return (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', background: dispara ? '#14532d11' : 'transparent' }}>
+                                <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700 }}>{w.simbolo}</td>
+                                <CeldaVoto voto={w.trend} />
+                                <CeldaVoto voto={w.nlp} />
+                                <CeldaVoto voto={w.sniper} />
+                                <CeldaVoto voto={w.macro} />
+                                <td style={{ textAlign: 'center', padding: '5px 8px', fontFamily: 'monospace', fontWeight: 700,
+                                    color: dispara ? '#22c55e' : cerca ? '#f59e0b' : 'var(--text-secondary)' }}>
+                                    {dir} {v > 0 ? '+' : ''}{v.toFixed(3)}
+                                </td>
+                                <td style={{ padding: '5px 12px', minWidth: 130 }}>
+                                    {dispara ? (
+                                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <div style={{ flex: 1, height: 6, background: '#22c55e', borderRadius: 3 }} />
+                                            <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e', whiteSpace: 'nowrap' }}>✓ DISPARA</span>
+                                        </div>
+                                    ) : (
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                            <div style={{ height: 5, background: 'var(--bg-primary)', borderRadius: 3, overflow: 'hidden' }}>
+                                                <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s' }} />
+                                            </div>
+                                            <span style={{ fontSize: 10, color: barColor, fontFamily: 'monospace', fontWeight: 700 }}>
+                                                −{falta.toFixed(3)} {cerca ? '⚡' : ''}
+                                            </span>
+                                        </div>
+                                    )}
+                                </td>
+                                <td style={{ padding: '5px 8px' }}>
+                                    <Badge status={w.decision === 'EJECUTADO' ? 'ok' : w.decision === 'IGNORADO' ? 'info' : 'warn'}>
+                                        {w.decision}
+                                    </Badge>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
     );
 };
 
@@ -144,11 +225,19 @@ const TablaOps = ({ ops }) => {
 // ── Tarjeta de laboratorio ─────────────────────────────────────────────────────
 
 const LabCard = ({ lab, onToggle }) => {
-    const [expanded, setExpanded] = useState(false);
+    const [expandedOps,   setExpandedOps]   = useState(false);
+    const [expandedVotos, setExpandedVotos] = useState(false);
     const m = lab.metricas;
     const roe = m.roe_pct;
     const roeColor = roe >= 0 ? '#22c55e' : '#ef4444';
     const estadoActivo = lab.estado === 'ACTIVO';
+
+    const btnStyle = {
+        background: 'none', border: '1px solid var(--border-color)',
+        borderRadius: 6, padding: '6px 12px',
+        cursor: 'pointer', color: 'var(--text-secondary)',
+        fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
+    };
 
     return (
         <div style={{
@@ -162,20 +251,12 @@ const LabCard = ({ lab, onToggle }) => {
                 <span style={{ fontSize: 16, fontWeight: 700, flex: 1 }}>{lab.nombre}</span>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <BadgeDatos total={m.trades_total} />
-                    {lab.categoria && (
-                        <Badge status="info">{lab.categoria}</Badge>
-                    )}
-                    <Badge status={estadoActivo ? 'ok' : 'warn'}>
-                        {lab.estado}
-                    </Badge>
+                    {lab.categoria && <Badge status="info">{lab.categoria}</Badge>}
+                    <Badge status={estadoActivo ? 'ok' : 'warn'}>{lab.estado}</Badge>
                     <button
                         onClick={() => onToggle(lab)}
                         title={estadoActivo ? 'Pausar laboratorio' : 'Activar laboratorio'}
-                        style={{
-                            background: 'none', border: 'none', cursor: 'pointer',
-                            color: estadoActivo ? '#22c55e' : '#6b7280',
-                            display: 'flex', alignItems: 'center',
-                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: estadoActivo ? '#22c55e' : '#6b7280', display: 'flex', alignItems: 'center' }}
                     >
                         {estadoActivo ? <ToggleRight size={22} /> : <ToggleLeft size={22} />}
                     </button>
@@ -185,9 +266,7 @@ const LabCard = ({ lab, onToggle }) => {
             {/* Activos */}
             {lab.activos.length > 0 && (
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {lab.activos.map(s => (
-                        <Badge key={s} status="info">{s}</Badge>
-                    ))}
+                    {lab.activos.map(s => <Badge key={s} status="info">{s}</Badge>)}
                 </div>
             )}
 
@@ -208,21 +287,14 @@ const LabCard = ({ lab, onToggle }) => {
             </div>
 
             {/* Balance virtual */}
-            <div style={{
-                display: 'flex', justifyContent: 'space-between',
-                borderTop: '1px solid var(--border-color)', paddingTop: 10,
-            }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
                 <div>
                     <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Capital inicial</span>
-                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace' }}>
-                        ${lab.capital_virtual?.toFixed(2)}
-                    </p>
+                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace' }}>${lab.capital_virtual?.toFixed(2)}</p>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                     <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Balance virtual</span>
-                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: roeColor }}>
-                        ${lab.balance_virtual?.toFixed(2)}
-                    </p>
+                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: roeColor }}>${lab.balance_virtual?.toFixed(2)}</p>
                 </div>
                 <div style={{ textAlign: 'center' }}>
                     <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>PnL total (virtual)</span>
@@ -232,24 +304,24 @@ const LabCard = ({ lab, onToggle }) => {
                 </div>
             </div>
 
-            {/* Expandir tabla de operaciones */}
-            <button
-                onClick={() => setExpanded(p => !p)}
-                style={{
-                    background: 'none', border: '1px solid var(--border-color)',
-                    borderRadius: 6, padding: '6px 12px',
-                    cursor: 'pointer', color: 'var(--text-secondary)',
-                    fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
-                }}
-            >
-                {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {expanded ? 'Ocultar operaciones' : `Ver últimas operaciones (${lab.operaciones_recientes?.length || 0})`}
-            </button>
+            {/* Botones colapsables */}
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={() => setExpandedVotos(p => !p)} style={btnStyle}>
+                    {expandedVotos ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {expandedVotos ? 'Ocultar votaciones' : `Ver votaciones (${lab.votos_lab?.length || 0})`}
+                </button>
+                <button onClick={() => setExpandedOps(p => !p)} style={btnStyle}>
+                    {expandedOps ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                    {expandedOps ? 'Ocultar operaciones' : `Ver últimas operaciones (${lab.operaciones_recientes?.length || 0})`}
+                </button>
+            </div>
 
-            {expanded && <TablaOps ops={lab.operaciones_recientes} />}
+            {expandedVotos && <TablaVotos votos={lab.votos_lab} />}
 
-            {/* Métricas secundarias expandidas */}
-            {expanded && m.datos_suficientes && (
+            {expandedOps && <TablaOps ops={lab.operaciones_recientes} />}
+
+            {/* Métricas secundarias */}
+            {expandedOps && m.datos_suficientes && (
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
                     <MetricBox label="Ganancia promedio" value={`+$${m.avg_ganancia?.toFixed(2)}`} color="#22c55e" />
                     <MetricBox label="Pérdida promedio"  value={`$${m.avg_perdida?.toFixed(2)}`}  color="#ef4444" />
@@ -261,102 +333,18 @@ const LabCard = ({ lab, onToggle }) => {
     );
 };
 
-const MetricBox = ({ label, value, color }) => (
-    <div style={{
-        background: 'var(--bg-primary)', borderRadius: 8,
-        padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 4,
-    }}>
-        <span style={{ fontSize: 9, color: 'var(--text-secondary)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-            {label}
-        </span>
-        <span style={{ fontSize: 16, fontWeight: 700, color: color || 'var(--text-primary)', fontFamily: 'monospace' }}>
-            {value}
-        </span>
-    </div>
-);
-
-// ── Panel de détail de régimen ─────────────────────────────────────────────────
-
-const PanelRegimen = ({ regimen, onClose }) => {
-    if (!regimen) return null;
-    const colores = {
-        RISK_OFF: '#ef4444',
-        RISK_ON:  '#22c55e',
-        VOLATIL:  '#f59e0b',
-    };
-    const color = colores[regimen.direccion] || '#94a3b8';
-    return (
-        <div style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: '#00000088', zIndex: 1000,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }} onClick={onClose}>
-            <div style={{
-                background: 'var(--bg-secondary)',
-                border: `1px solid ${color}44`,
-                borderRadius: 12, padding: 24,
-                maxWidth: 480, width: '90%',
-            }} onClick={e => e.stopPropagation()}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ margin: 0, color }}>{regimen.nombre}</h3>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18 }}>✕</button>
-                </div>
-                <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
-                    <Badge status="info">{regimen.tipo}</Badge>
-                    <Badge status="info">{regimen.fase}</Badge>
-                    <Badge status={regimen.direccion === 'RISK_ON' ? 'ok' : regimen.direccion === 'RISK_OFF' ? 'fail' : 'warn'}>
-                        {regimen.direccion}
-                    </Badge>
-                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Peso: {regimen.peso}</span>
-                </div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, marginBottom: 12 }}>
-                    {regimen.razonamiento}
-                </p>
-                {regimen.activos_afectados && regimen.activos_afectados.length > 0 && (
-                    <div>
-                        <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: 0.5, textTransform: 'uppercase' }}>
-                            Activos afectados
-                        </span>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                            {regimen.activos_afectados.map((a, i) => {
-                                const dir = typeof a === 'object' ? a.dir : null;
-                                const sym = typeof a === 'string' ? a : a.simbolo;
-                                const arrow = dir === 'UP' ? ' ▲' : dir === 'DOWN' ? ' ▼' : '';
-                                const arrowColor = dir === 'UP' ? '#22c55e' : dir === 'DOWN' ? '#ef4444' : 'inherit';
-                                return (
-                                    <Badge key={i} status="info">
-                                        {sym}<span style={{ color: arrowColor }}>{arrow}</span>
-                                    </Badge>
-                                );
-                            })}
-                        </div>
-                    </div>
-                )}
-                {regimen.expira_en && (
-                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 12 }}>
-                        Expira: {new Date(regimen.expira_en).toLocaleString('es-CL')}
-                    </p>
-                )}
-            </div>
-        </div>
-    );
-};
-
 // ── Página principal ───────────────────────────────────────────────────────────
 
 const Lab = ({ setAuth, botVersion }) => {
-    const [data, setData] = useState(null);
+    const [data, setData]       = useState(null);
     const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [regimenSeleccionado, setRegimenSeleccionado] = useState(null);
+    const [error, setError]     = useState(null);
     const [lastUpdate, setLastUpdate] = useState('');
     const token = localStorage.getItem('token');
 
     const fetchData = async () => {
         try {
-            const res = await axios.get('/api/lab', {
-                headers: { Authorization: `Bearer ${token}` },
-            });
+            const res = await axios.get('/api/lab', { headers: { Authorization: `Bearer ${token}` } });
             setData(res.data);
             setLastUpdate(new Date().toLocaleTimeString('es-CL'));
             setError(null);
@@ -401,20 +389,13 @@ const Lab = ({ setAuth, botVersion }) => {
     );
 
     const laboratorios = data?.laboratorios || [];
-    const regimenes = data?.regimenes_macro || [];
 
     return (
         <div className="dashboard-layout">
-            <SideNav
-                onLogout={() => { localStorage.removeItem('token'); setAuth(false); }}
-                botVersion={botVersion}
-            />
+            <SideNav onLogout={() => { localStorage.removeItem('token'); setAuth(false); }} botVersion={botVersion} />
             <main className="main-content">
                 {/* Header */}
-                <div style={{
-                    display: 'flex', justifyContent: 'space-between',
-                    alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12,
-                }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, flexWrap: 'wrap', gap: 12 }}>
                     <div>
                         <h1 style={{ margin: 0, fontSize: 20, display: 'flex', alignItems: 'center', gap: 8 }}>
                             <FlaskConical size={22} style={{ color: 'var(--accent-primary)' }} />
@@ -424,81 +405,31 @@ const Lab = ({ setAuth, botVersion }) => {
                             Simulación de estrategias con capital virtual · Actualizado {lastUpdate}
                         </p>
                     </div>
-                    <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
-                            {laboratorios.length} modelo{laboratorios.length !== 1 ? 's' : ''}
-                        </span>
-                    </div>
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        {laboratorios.length} modelo{laboratorios.length !== 1 ? 's' : ''}
+                    </span>
                 </div>
 
-                {/* Barra MacroSensor */}
-                {regimenes.length > 0 && (
-                    <div style={{
-                        background: 'var(--bg-secondary)',
-                        border: '1px solid var(--border-color)',
-                        borderRadius: 8, padding: '10px 14px',
-                        marginBottom: 20,
-                        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
-                    }}>
-                        <span style={{ fontSize: 10, color: 'var(--text-secondary)', letterSpacing: 0.5, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-                            MacroSensor
-                        </span>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {regimenes.map(r => (
-                                <ChipRegimen key={r.id} regimen={r} onClick={setRegimenSeleccionado} />
-                            ))}
-                        </div>
-                    </div>
-                )}
-
                 {error && (
-                    <div style={{
-                        background: '#7f1d1d33', border: '1px solid #ef444444',
-                        borderRadius: 8, padding: '12px 16px', marginBottom: 20,
-                        color: '#ef4444', fontSize: 13,
-                    }}>
+                    <div style={{ background: '#7f1d1d33', border: '1px solid #ef444444', borderRadius: 8, padding: '12px 16px', marginBottom: 20, color: '#ef4444', fontSize: 13 }}>
                         {error}
                     </div>
                 )}
 
-                {/* Sin laboratorios */}
                 {laboratorios.length === 0 && !error && (
                     <Card title="Sin modelos configurados" icon={<FlaskConical size={16} />}>
                         <p style={{ fontSize: 13, color: 'var(--text-secondary)', textAlign: 'center', padding: '20px 0' }}>
-                            No hay laboratorios configurados aún. Inserta un registro en la tabla{' '}
-                            <code style={{ fontFamily: 'monospace', background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: 4 }}>laboratorios</code>
-                            {' '}y asígna activos en{' '}
-                            <code style={{ fontFamily: 'monospace', background: 'var(--bg-primary)', padding: '2px 6px', borderRadius: 4 }}>lab_activos</code>.
+                            No hay laboratorios configurados aún.
                         </p>
                     </Card>
                 )}
 
-                {/* Lista de laboratorios */}
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
                     {laboratorios.map(lab => (
                         <LabCard key={lab.id} lab={lab} onToggle={handleToggle} />
                     ))}
                 </div>
-
-                {/* Sin regímenes macro */}
-                {regimenes.length === 0 && (
-                    <div style={{ marginTop: 20 }}>
-                        <Card title="MacroSensor" icon={<Activity size={16} />}>
-                            <p style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center', padding: '8px 0' }}>
-                                Sin regímenes macro activos. El news_hunter los generará automáticamente al procesar noticias relevantes.
-                            </p>
-                        </Card>
-                    </div>
-                )}
             </main>
-
-            {/* Panel modal de régimen */}
-            {regimenSeleccionado && (
-                <PanelRegimen
-                    regimen={regimenSeleccionado}
-                    onClose={() => setRegimenSeleccionado(null)}
-                />
-            )}
         </div>
     );
 };

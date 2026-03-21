@@ -1128,6 +1128,34 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
             except Exception:
                 db.conn.rollback()
 
+        # Último voto por activo del lab (desde lab_senales)
+        votos_lab = []
+        with db._lock:
+            try:
+                db.cursor.execute("""
+                    SELECT DISTINCT ON (ls.activo_id)
+                        a.simbolo,
+                        ls.voto_tendencia, ls.voto_nlp, ls.voto_sniper, ls.voto_macro,
+                        ls.voto_final_ponderado, ls.decision_gerente, ls.tiempo
+                    FROM lab_senales ls
+                    JOIN activos a ON a.id = ls.activo_id
+                    WHERE ls.lab_id = %s
+                    ORDER BY ls.activo_id, ls.tiempo DESC
+                """, (lab_id,))
+                for vr in db.cursor.fetchall():
+                    votos_lab.append({
+                        "simbolo":   vr[0],
+                        "trend":     round(float(vr[1] or 0), 2),
+                        "nlp":       round(float(vr[2] or 0), 2),
+                        "sniper":    round(float(vr[3] or 0), 2),
+                        "macro":     round(float(vr[4] or 0), 2),
+                        "veredicto": round(float(vr[5] or 0), 3),
+                        "decision":  vr[6],
+                        "tiempo":    vr[7].isoformat() if vr[7] else None,
+                    })
+            except Exception:
+                db.conn.rollback()
+
         laboratorios.append({
             "id": lab_id,
             "nombre": nombre,
@@ -1138,6 +1166,7 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
             "activos": activos_lab,
             "metricas": metricas,
             "operaciones_recientes": ops_recientes,
+            "votos_lab": votos_lab,
         })
 
     # Regímenes macro activos
