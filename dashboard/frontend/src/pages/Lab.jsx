@@ -3,6 +3,42 @@ import axios from 'axios';
 import { FlaskConical, Activity, ChevronDown, ChevronUp, ToggleLeft, ToggleRight, History } from 'lucide-react';
 import SideNav from '../components/SideNav';
 
+// ── PriceBar ────────────────────────────────────────────────────────────────────
+
+const PriceBar = ({ sl, tp, entry, current, pnl }) => {
+    const lo  = Math.min(sl, tp);
+    const hi  = Math.max(sl, tp);
+    const rng = hi - lo || 1;
+
+    const clamp = (v) => Math.max(0, Math.min(100, ((v - lo) / rng) * 100));
+    const entryPct   = clamp(entry);
+    const currentPct = clamp(current);
+    const fillLeft   = Math.min(entryPct, currentPct);
+    const fillWidth  = Math.abs(currentPct - entryPct);
+    const isGain     = pnl >= 0;
+    const fmtP = (v) => v < 10 ? v.toFixed(5) : v.toFixed(2);
+
+    return (
+        <div className="mt-1.5 space-y-1">
+            <div className="flex justify-between text-[9px] text-slate-600 font-mono">
+                <span>SL {fmtP(sl)}</span>
+                <span className="text-slate-500">{fmtP(entry)}</span>
+                <span>TP {fmtP(tp)}</span>
+            </div>
+            <div className="relative h-[8px] bg-slate-800 rounded-full overflow-hidden">
+                <div className="absolute top-0 h-full rounded-full transition-all duration-1000"
+                    style={{ left: `${fillLeft}%`, width: `${fillWidth}%`,
+                        backgroundColor: isGain ? 'rgba(16,185,129,0.7)' : 'rgba(244,63,94,0.7)' }} />
+                <div className="absolute top-0 w-px h-full bg-slate-400"
+                    style={{ left: `${entryPct}%` }} />
+                <div className="absolute top-0 w-1 h-full rounded-full"
+                    style={{ left: `calc(${currentPct}% - 2px)`,
+                        backgroundColor: isGain ? '#10b981' : '#f43f5e' }} />
+            </div>
+        </div>
+    );
+};
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 const Badge = ({ status, children }) => {
@@ -243,7 +279,7 @@ const TablaOps = ({ ops }) => {
                 <thead>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <th style={{ width: 20, padding: '5px 4px' }} />
-                        {['Activo', 'Tipo', 'Entrada', 'SL', 'TP', 'Estado', 'PnL', 'ROE%', 'Ticket'].map(h => (
+                        {['Activo', 'Tipo', 'Estado', 'PnL', 'ROE%', 'Ticket'].map(h => (
                             <th key={h} style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--text-secondary)', fontWeight: 600, fontSize: 10 }}>{h}</th>
                         ))}
                     </tr>
@@ -263,17 +299,22 @@ const TablaOps = ({ ops }) => {
                                     <td style={{ padding: '5px 4px', color: 'var(--text-secondary)' }}>
                                         {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                     </td>
-                                    <td style={{ padding: '5px 8px', fontWeight: 700 }}>{op.simbolo}</td>
+                                    <td style={{ padding: '5px 8px', minWidth: 160 }}>
+                                        <span style={{ fontWeight: 700 }}>{op.simbolo}</span>
+                                        {op.sl != null && op.tp != null && op.precio_entrada != null && (() => {
+                                            const pnl = op.pnl_virtual ?? 0;
+                                            const notional = (op.lotes ?? 0.01) * 1000;
+                                            const pctRet = pnl / notional;
+                                            const diff = pctRet * op.precio_entrada;
+                                            const current = op.estado === 'CERRADA' && op.precio_salida != null
+                                                ? op.precio_salida
+                                                : op.tipo === 'BUY'
+                                                    ? op.precio_entrada + diff
+                                                    : op.precio_entrada - diff;
+                                            return <PriceBar sl={op.sl} tp={op.tp} entry={op.precio_entrada} current={current} pnl={pnl} />;
+                                        })()}
+                                    </td>
                                     <td style={{ padding: '5px 8px', color: tipoColor, fontWeight: 700 }}>{op.tipo}</td>
-                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>
-                                        {op.precio_entrada > 100 ? op.precio_entrada?.toFixed(2) : op.precio_entrada?.toFixed(4)}
-                                    </td>
-                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#ef4444' }}>
-                                        {op.sl > 100 ? op.sl?.toFixed(2) : op.sl?.toFixed(4)}
-                                    </td>
-                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#22c55e' }}>
-                                        {op.tp > 100 ? op.tp?.toFixed(2) : op.tp?.toFixed(4)}
-                                    </td>
                                     <td style={{ padding: '5px 8px' }}>
                                         {op.estado === 'ABIERTA'
                                             ? <Badge status="blue">Abierta</Badge>
@@ -294,7 +335,7 @@ const TablaOps = ({ ops }) => {
                                 </tr>
                                 {isOpen && (
                                     <tr>
-                                        <td colSpan="10" style={{ padding: 0 }}>
+                                        <td colSpan="7" style={{ padding: 0 }}>
                                             <LabTradeDetail op={op} />
                                         </td>
                                     </tr>
