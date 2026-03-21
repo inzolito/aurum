@@ -266,6 +266,33 @@ class AurumEngine:
                     print(f"\n[GATEKEEPER] {ahora_dt.strftime('%A %H:%M')} -> MODO VIGILANCIA (Fin de semana).")
                     self.db.update_estado_bot("VIGILANCIA_FINDE", "Gatekeeper activo. Patrullando noticias...")
                     self.gerente.mantener_vigilancia()
+
+                    # Lab-only (cripto 24/7) — evaluar igual aunque sea finde
+                    try:
+                        activos_lab_only = self.db.get_activos_lab_only()
+                        if activos_lab_only:
+                            _votos_finde   = {}
+                            _precios_finde = {}
+                            for activo_lab in activos_lab_only:
+                                sim = activo_lab['simbolo']
+                                try:
+                                    resultado_lab = self.gerente.evaluar(
+                                        sim, modo_simulacion=True, id_activo=activo_lab['id']
+                                    )
+                                    if "votos" in resultado_lab:
+                                        _votos_finde[sim] = resultado_lab["votos"]
+                                    _sb = activo_lab.get("simbolo_broker") or self.db.obtener_simbolo_broker(sim)
+                                    if _sb:
+                                        _tick = mt5_api.symbol_info_tick(_sb)
+                                        if _tick:
+                                            _precios_finde[sim] = {"bid": float(_tick.bid), "ask": float(_tick.ask)}
+                                except Exception as e_sim:
+                                    print(f"[LAB-FINDE] Error evaluando {sim}: {e_sim}")
+                            if _precios_finde:
+                                self.lab_evaluator.evaluar_todos(_votos_finde, _precios_finde)
+                    except Exception as e_finde:
+                        print(f"[LAB-FINDE] Error en ciclo finde: {e_finde}")
+
                     time.sleep(600)
                     continue
 
