@@ -58,33 +58,29 @@ const BadgeDatos = ({ total }) => {
 
 // ── Chip de Régimen Macro ──────────────────────────────────────────────────────
 
-const DOT_COLOR = {
-    RISK_OFF: '#ef4444',
-    RISK_ON:  '#16a34a',
-    VOLATIL:  '#d97706',
+const CHIP_CLS = {
+    RISK_OFF: 'bg-red-50 text-red-400',
+    RISK_ON:  'bg-green-50 text-green-500',
+    VOLATIL:  'bg-amber-50 text-amber-500',
+};
+const DOT_CLS = {
+    RISK_OFF: 'bg-red-400',
+    RISK_ON:  'bg-green-500',
+    VOLATIL:  'bg-amber-400',
 };
 
 const ChipRegimen = ({ regimen, onClick }) => {
-    const dotColor = DOT_COLOR[regimen.direccion] || '#9ca3af';
+    const cls    = CHIP_CLS[regimen.direccion] || 'bg-gray-50 text-gray-400';
+    const dotCls = DOT_CLS[regimen.direccion]  || 'bg-gray-300';
     return (
-        <span
+        <button
             onClick={() => onClick && onClick(regimen)}
-            style={{
-                display: 'inline-flex', alignItems: 'center', gap: 5,
-                background: 'none',
-                border: '1px solid #e5e7eb',
-                borderRadius: 6, padding: '3px 9px',
-                fontSize: 11, fontWeight: 500, color: '#6b7280',
-                cursor: 'pointer', whiteSpace: 'nowrap',
-            }}
             title={regimen.razonamiento}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border-none cursor-pointer ${cls}`}
         >
-            <span style={{
-                display: 'inline-block', width: 6, height: 6,
-                borderRadius: '50%', background: dotColor, flexShrink: 0,
-            }} />
+            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls}`} />
             {regimen.nombre}
-        </span>
+        </button>
     );
 };
 

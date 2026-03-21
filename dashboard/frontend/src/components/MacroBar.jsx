@@ -1,116 +1,89 @@
 /**
- * MacroBar — V18.1
- * Barra de estado de regímenes macro. Estilo sutil, armónico con el tema light.
- * Dot de color (no emoji) + texto en gris secundario. Sin fondos pesados.
+ * MacroBar — V18.2
+ * Tailwind. Pasteles suaves, sin bordes, redondeado leve.
  */
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const DIR_COLOR = {
-    RISK_OFF: '#ef4444',
-    RISK_ON:  '#16a34a',
-    VOLATIL:  '#d97706',
+const CHIP_COLOR = {
+    RISK_OFF: 'bg-red-50 text-red-400',
+    RISK_ON:  'bg-green-50 text-green-500',
+    VOLATIL:  'bg-amber-50 text-amber-500',
 };
 
-const Dot = ({ color }) => (
-    <span style={{
-        display: 'inline-block',
-        width: 6, height: 6,
-        borderRadius: '50%',
-        background: color,
-        flexShrink: 0,
-        marginTop: 1,
-    }} />
-);
+const DOT_COLOR = {
+    RISK_OFF: 'bg-red-400',
+    RISK_ON:  'bg-green-500',
+    VOLATIL:  'bg-amber-400',
+};
+
+const TAG_COLOR = {
+    RISK_OFF: 'bg-red-50 text-red-400',
+    RISK_ON:  'bg-green-50 text-green-500',
+    VOLATIL:  'bg-amber-50 text-amber-400',
+};
+
+const ARROW_COLOR = {
+    UP:   'text-green-500',
+    DOWN: 'text-red-400',
+};
 
 const PanelDetalle = ({ regimen, onClose }) => {
     if (!regimen) return null;
-    const color = DIR_COLOR[regimen.direccion] || '#6b7280';
+    const chip  = CHIP_COLOR[regimen.direccion] || 'bg-gray-50 text-gray-400';
+    const tag   = TAG_COLOR[regimen.direccion]  || 'bg-gray-50 text-gray-400';
+
     return (
         <div
-            style={{
-                position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                background: 'rgba(0,0,0,0.18)', zIndex: 2000,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-            }}
+            className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/10"
             onClick={onClose}
         >
             <div
-                style={{
-                    background: '#ffffff',
-                    border: '1px solid #e5e7eb',
-                    borderRadius: 10,
-                    padding: '20px 24px',
-                    maxWidth: 460, width: '90%',
-                    boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
-                }}
+                className="bg-white rounded-xl p-6 w-[90%] max-w-md shadow-lg"
                 onClick={e => e.stopPropagation()}
             >
-                {/* Header del modal */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                    <Dot color={color} />
-                    <span style={{ fontWeight: 700, fontSize: 14, color: '#111827', flex: 1 }}>
-                        {regimen.nombre}
+                {/* Header */}
+                <div className="flex items-center gap-2 mb-4">
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${chip}`}>
+                        {regimen.direccion}
                     </span>
+                    <span className="flex-1 font-bold text-sm text-gray-800">{regimen.nombre}</span>
                     <button
                         onClick={onClose}
-                        style={{
-                            background: 'none', border: 'none',
-                            color: '#9ca3af', cursor: 'pointer',
-                            fontSize: 16, lineHeight: 1, padding: 2,
-                        }}
+                        className="text-gray-300 hover:text-gray-400 text-base leading-none"
                     >✕</button>
                 </div>
 
                 {/* Tags */}
-                <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
-                    {[regimen.tipo, regimen.fase, regimen.direccion].map((t, i) => (
-                        <span key={i} style={{
-                            background: '#f3f4f6',
-                            borderRadius: 4, padding: '2px 7px',
-                            fontSize: 10, fontWeight: 600,
-                            color: '#6b7280',
-                            letterSpacing: 0.4, textTransform: 'uppercase',
-                        }}>
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                    {[regimen.tipo, regimen.fase].filter(Boolean).map((t, i) => (
+                        <span key={i} className={`text-[10px] font-semibold px-2 py-0.5 rounded-md uppercase tracking-wide ${tag}`}>
                             {t}
                         </span>
                     ))}
-                    <span style={{ fontSize: 10, color: '#9ca3af', alignSelf: 'center' }}>
-                        peso {regimen.peso}
-                    </span>
+                    <span className="text-[10px] text-gray-300 self-center">peso {regimen.peso}</span>
                 </div>
 
                 {/* Razonamiento */}
-                <p style={{
-                    fontSize: 12, color: '#374151',
-                    lineHeight: 1.65, marginBottom: 12,
-                }}>
+                <p className="text-xs text-gray-500 leading-relaxed mb-4">
                     {regimen.razonamiento}
                 </p>
 
                 {/* Activos afectados */}
-                {regimen.activos_afectados && regimen.activos_afectados.length > 0 && (
+                {regimen.activos_afectados?.length > 0 && (
                     <div>
-                        <p style={{
-                            fontSize: 10, color: '#9ca3af',
-                            marginBottom: 6, letterSpacing: 0.4,
-                            textTransform: 'uppercase',
-                        }}>
+                        <p className="text-[10px] uppercase tracking-wide text-gray-300 mb-2">
                             Activos afectados
                         </p>
-                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                        <div className="flex flex-wrap gap-1.5">
                             {regimen.activos_afectados.map((a, i) => {
                                 const dir = typeof a === 'object' ? a.dir : null;
                                 const sym = typeof a === 'string' ? a : a.simbolo;
                                 const arrow = dir === 'UP' ? ' ▲' : dir === 'DOWN' ? ' ▼' : '';
-                                const arrowColor = dir === 'UP' ? '#16a34a' : dir === 'DOWN' ? '#ef4444' : 'inherit';
+                                const arrowCls = ARROW_COLOR[dir] || '';
                                 return (
-                                    <span key={i} style={{
-                                        background: '#f3f4f6',
-                                        borderRadius: 4, padding: '2px 7px',
-                                        fontSize: 10, fontWeight: 600, color: '#374151',
-                                    }}>
-                                        {sym}<span style={{ color: arrowColor }}>{arrow}</span>
+                                    <span key={i} className="bg-gray-50 text-gray-500 text-[10px] font-semibold px-2 py-0.5 rounded-md">
+                                        {sym}<span className={arrowCls}>{arrow}</span>
                                     </span>
                                 );
                             })}
@@ -120,7 +93,7 @@ const PanelDetalle = ({ regimen, onClose }) => {
 
                 {/* Expiración */}
                 {regimen.expira_en && (
-                    <p style={{ fontSize: 10, color: '#9ca3af', marginTop: 12 }}>
+                    <p className="text-[10px] text-gray-300 mt-4">
                         Expira {new Date(regimen.expira_en).toLocaleString('es-CL')}
                     </p>
                 )}
@@ -142,7 +115,7 @@ const MacroBar = () => {
             });
             setRegimenes(res.data?.regimenes_macro || []);
         } catch {
-            // Silencioso
+            // silencioso
         }
     };
 
@@ -156,61 +129,23 @@ const MacroBar = () => {
 
     return (
         <>
-            <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '0 16px',
-                height: 30,
-                background: '#ffffff',
-                borderBottom: '1px solid #e5e7eb',
-                overflowX: 'auto',
-                flexShrink: 0,
-            }}>
-                {/* Label */}
-                <span style={{
-                    fontSize: 9, fontWeight: 600,
-                    color: '#9ca3af',
-                    letterSpacing: 0.8,
-                    textTransform: 'uppercase',
-                    whiteSpace: 'nowrap',
-                    marginRight: 6,
-                }}>
+            <div className="flex items-center gap-1.5 px-4 h-9 bg-white border-b border-gray-100 overflow-x-auto flex-shrink-0">
+                <span className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest whitespace-nowrap mr-2">
                     Macro
                 </span>
-
-                {/* Items separados por · */}
-                {regimenes.map((r, idx) => {
-                    const color = DIR_COLOR[r.direccion] || '#9ca3af';
+                {regimenes.map(r => {
+                    const cls    = CHIP_COLOR[r.direccion] || 'bg-gray-50 text-gray-400';
+                    const dotCls = DOT_COLOR[r.direccion]  || 'bg-gray-300';
                     return (
-                        <React.Fragment key={r.id}>
-                            {idx > 0 && (
-                                <span style={{ color: '#d1d5db', fontSize: 10, userSelect: 'none' }}>·</span>
-                            )}
-                            <button
-                                onClick={() => setSeleccionado(r)}
-                                title={r.razonamiento}
-                                style={{
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    gap: 5,
-                                    background: 'none',
-                                    border: 'none',
-                                    cursor: 'pointer',
-                                    padding: '0 4px',
-                                    borderRadius: 4,
-                                    whiteSpace: 'nowrap',
-                                }}
-                            >
-                                <Dot color={color} />
-                                <span style={{
-                                    fontSize: 11, color: '#6b7280',
-                                    fontWeight: 500,
-                                }}>
-                                    {r.nombre}
-                                </span>
-                            </button>
-                        </React.Fragment>
+                        <button
+                            key={r.id}
+                            onClick={() => setSeleccionado(r)}
+                            title={r.razonamiento}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border-none cursor-pointer ${cls}`}
+                        >
+                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls}`} />
+                            {r.nombre}
+                        </button>
                     );
                 })}
             </div>
