@@ -257,7 +257,17 @@ class Manager:
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
-            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+            result = {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+            if modo_simulacion:
+                result["votos"] = {
+                    "trend": round(float(v_trend), 4), "nlp": round(float(v_nlp), 4),
+                    "sniper": round(float(v_struct['voto']), 4),
+                    "hurst": round(float(h_val), 4),
+                    "volume": round(float(v_volume['voto']), 4),
+                    "cross": round(float(v_cross['voto']), 4),
+                    "macro": round(float(v_macro), 4),
+                }
+            return result
 
         # --- V17.2: WEIGHTED VOTING (sin FlowWorker) ---
         # Pesos leídos desde parametros_sistema en BD (fallback a defaults si no hay dato).
