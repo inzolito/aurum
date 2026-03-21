@@ -143,7 +143,8 @@ class LabEvaluator:
             f"Señal de {direccion}. "
             f"Trend={votos.get('trend',0):+.2f} "
             f"NLP={votos.get('nlp',0):+.2f} "
-            f"Sniper={votos.get('sniper',0):+.2f}"
+            f"Sniper={votos.get('sniper',0):+.2f} "
+            f"Macro={votos.get('macro',0):+.2f}"
         )
         senal_id = self.db.guardar_lab_senal(
             lab_id, activo_id, {**votos, "veredicto": veredicto},
@@ -168,16 +169,19 @@ class LabEvaluator:
         p_trend  = float(params.get("TENDENCIA.peso_voto", 0.50))
         p_nlp    = float(params.get("NLP.peso_voto",       0.30))
         p_sniper = float(params.get("SNIPER.peso_voto",    0.20))
+        p_macro  = float(params.get("MACRO.peso_voto",     0.20))
 
         v_trend  = float(votos.get("trend",  0.0))
         v_nlp    = float(votos.get("nlp",    0.0))
         v_sniper = float(votos.get("sniper", 0.0))
         v_hurst  = float(votos.get("hurst",  0.5))
+        v_macro  = float(votos.get("macro",  0.0))
 
         veredicto = round(
-            (v_trend * p_trend) +
-            (v_nlp   * p_nlp)   +
-            (v_sniper * p_sniper),
+            (v_trend  * p_trend)  +
+            (v_nlp    * p_nlp)    +
+            (v_sniper * p_sniper) +
+            (v_macro  * p_macro),
             4
         )
 
@@ -191,7 +195,7 @@ class LabEvaluator:
         veredicto = round(max(-1.0, min(1.0, veredicto)), 4)
 
         pesos_usados = {
-            "trend": p_trend, "nlp": p_nlp, "sniper": p_sniper
+            "trend": p_trend, "nlp": p_nlp, "sniper": p_sniper, "macro": p_macro
         }
         return veredicto, pesos_usados
 

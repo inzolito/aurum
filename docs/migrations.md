@@ -2,6 +2,45 @@
 
 ---
 
+## Migración V18.1 — MacroWorker
+
+**Versión:** V18.1
+**Fecha:** 2026-03-20
+**Ejecutar en:** `psql -h localhost -U aurum_admin -d aurum_db`
+**Descripción:** Agrega columna `voto_macro` a `registro_senales` y `lab_senales`, y el parámetro `MACRO.peso_voto` en `parametros_sistema`. Permite al MacroWorker votar en cada ciclo con el contexto macro estructural persistente.
+
+```sql
+BEGIN;
+
+-- Columna voto_macro en registro_senales (produccion)
+ALTER TABLE registro_senales
+    ADD COLUMN IF NOT EXISTS voto_macro NUMERIC(4,3) DEFAULT 0.0;
+
+-- Columna voto_macro en lab_senales
+ALTER TABLE lab_senales
+    ADD COLUMN IF NOT EXISTS voto_macro NUMERIC(4,3) DEFAULT 0.0;
+
+-- Parametro peso del MacroWorker en produccion
+INSERT INTO parametros_sistema (nombre, valor, descripcion, categoria)
+VALUES ('MACRO.peso_voto', '0.20', 'Peso del MacroWorker en el ensemble de produccion', 'GERENTE')
+ON CONFLICT (nombre) DO NOTHING;
+
+-- Tambien poblar activos_afectados en regimenes existentes para que
+-- MacroWorker pueda calcular votos por simbolo especifico.
+-- (Actualizar manualmente segun los regimenes activos en BD)
+
+COMMIT;
+```
+
+**Rollback:**
+```sql
+ALTER TABLE registro_senales DROP COLUMN IF EXISTS voto_macro;
+ALTER TABLE lab_senales DROP COLUMN IF EXISTS voto_macro;
+DELETE FROM parametros_sistema WHERE nombre = 'MACRO.peso_voto';
+```
+
+---
+
 ## Migración V18 — Laboratorio de Activos + MacroSensor
 
 **Versión:** V18.0

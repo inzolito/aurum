@@ -351,8 +351,9 @@ class DBConnector:
     @survival_shield
     def guardar_senal(self, simbolo: str, v_trend: float, v_nlp: float,
                       v_flow: float, veredicto: float, decision: str, motivo: str,
-                      v_vol: float = 0.0, v_cross: float = 0.0, 
-                      v_hurst: float = 0.5, v_sniper: float = 0.0):
+                      v_vol: float = 0.0, v_cross: float = 0.0,
+                      v_hurst: float = 0.5, v_sniper: float = 0.0,
+                      v_macro: float = 0.0):
         """Inserta una fila en registro_senales con bloqueo de hilo (V10.0 Enhanced)."""
         with self._lock:
             self.cursor.execute(
@@ -360,12 +361,12 @@ class DBConnector:
                 INSERT INTO registro_senales
                     (activo_id, voto_tendencia, voto_nlp, voto_order_flow,
                      voto_final_ponderado, decision_gerente, motivo,
-                     voto_volume, voto_cross, voto_hurst, voto_sniper)
-                SELECT id, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                     voto_volume, voto_cross, voto_hurst, voto_sniper, voto_macro)
+                SELECT id, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                 FROM activos WHERE simbolo = %s;
                 """,
-                (v_trend, v_nlp, v_flow, veredicto, decision, motivo, 
-                 v_vol, v_cross, v_hurst, v_sniper, simbolo),
+                (v_trend, v_nlp, v_flow, veredicto, decision, motivo,
+                 v_vol, v_cross, v_hurst, v_sniper, v_macro, simbolo),
             )
             self.conn.commit()
 

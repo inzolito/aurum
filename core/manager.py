@@ -18,6 +18,7 @@ from workers.worker_cross import CrossWorker
 from workers.worker_structure import StructureWorker
 from workers.worker_spread import SpreadWorker
 from workers.worker_vix import VIXWorker
+from workers.worker_macro import MacroWorker
 from core.visualizer import Visualizer
 from config.notifier import (
     notificar_proximidad,
@@ -65,6 +66,7 @@ class Manager:
         self.structure = StructureWorker(db, mt5)
         self.spread    = SpreadWorker(db, mt5)
         self.vix       = VIXWorker(db, mt5)
+        self.macro     = MacroWorker()
         self.visualizer = Visualizer()
 
         # V7.7 & V9.0: Variables de estado global
@@ -77,6 +79,8 @@ class Manager:
         self._hibernacion_activos = {}  # {simbolo: timestamp_inicio}
         self._last_vol_alert_level = {} # {simbolo: int_level}
         self._last_nlp_hash = None      # V15.0: Rastro de contexto macro
+        self._regimenes_cache = []      # V18.1: Cache de regimenes_macro activos
+        self._regimenes_cache_ts = 0.0  # Timestamp de última actualización
 
     # ------------------------------------------------------------------
     # Ciclo principal
@@ -233,13 +237,24 @@ class Manager:
         # --- Reasoner de Ruido (V7.7) ---
         self._procesar_razonamiento_ruido(simbolo_interno, h_estado)
 
+        # --- MacroWorker V18.1: voto de contexto macro estructural ---
+        # Se calcula aquí (antes de la divergencia) para disponerlo en todos los return paths.
+        if time.time() - self._regimenes_cache_ts > 60:
+            try:
+                self._regimenes_cache = self.db.get_regimenes_macro_activos()
+                self._regimenes_cache_ts = time.time()
+            except Exception:
+                self._regimenes_cache = []
+        v_macro = self.macro.votar(simbolo_interno, self._regimenes_cache)
+
         # 5. Reflejo de Combate: Alerta de Divergencia
         if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
             motivo = f"Bloqueado por DIVERGENCIA extrema entre Trend e IA."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     0.0, "CANCELADO_RIESGO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['voto'])
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
         # --- V17.2: WEIGHTED VOTING (sin FlowWorker) ---
@@ -294,7 +309,14 @@ class Manager:
         if isinstance(ajuste_cross, (int, float)) and ajuste_cross != 0.0:
             veredicto = round(max(-1.0, min(1.0, veredicto + ajuste_cross)), 4)
             print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f} → Veredicto: {veredicto:+.4f}")
-        
+
+        # --- MACRO WORKER V18.1: Ajuste de contexto macro estructural ---
+        p_macro = float(params.get("MACRO.peso_voto", 0.20))
+        if v_macro != 0.0:
+            ajuste_macro = round(v_macro * p_macro, 4)
+            veredicto = round(max(-1.0, min(1.0, veredicto + ajuste_macro)), 4)
+            print(f"[GERENTE] 🌐 MacroWorker: {v_macro:+.4f} × {p_macro:.0%} → ajuste {ajuste_macro:+.4f} → Veredicto: {veredicto:+.4f}")
+
         # --- FUERZA DOMINANTE (V17.2) ---
         pesos_votos = {
             "Trend": abs(v_trend * p_trend),
@@ -366,7 +388,8 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "IGNORADO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['voto'])
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
             return {
                 "decision": "IGNORADO",
                 "veredicto": veredicto,
@@ -378,6 +401,7 @@ class Manager:
                     "hurst":  round(float(h_val), 4),
                     "volume": round(float(v_volume['voto']), 4),
                     "cross":  round(float(v_cross['voto']), 4),
+                    "macro":  round(float(v_macro), 4),
                 },
             }
 
@@ -388,7 +412,8 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "BLOQUEADO_HORARIO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['voto'])
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
             return {
                 "decision": "BLOQUEADO_HORARIO",
                 "veredicto": veredicto,
@@ -400,6 +425,7 @@ class Manager:
                     "hurst":  round(float(h_val), 4),
                     "volume": round(float(v_volume['voto']), 4),
                     "cross":  round(float(v_cross['voto']), 4),
+                    "macro":  round(float(v_macro), 4),
                 },
             }
 
@@ -415,7 +441,8 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "CANCELADO_RIESGO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['voto'])
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
             return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
 
         print(f"[GERENTE] Riesgo V16 -> Conviccion: {abs(veredicto)*100:.1f}% | Lotes: {lotes} | SL: {sl:.4f} | TP: {tp:.4f}")
@@ -480,7 +507,8 @@ class Manager:
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                     veredicto, "EJECUTADO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['voto'])
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
             return {
                 "decision": direccion,
                 "lotes": lotes,
@@ -493,6 +521,7 @@ class Manager:
                     "hurst":  round(float(h_val), 4),
                     "volume": round(float(v_volume['voto']), 4),
                     "cross":  round(float(v_cross['voto']), 4),
+                    "macro":  round(float(v_macro), 4),
                 },
             }
         else:
@@ -537,7 +566,8 @@ class Manager:
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                         veredicto, "ERROR_BROKER", err_msg,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                        v_hurst=h_val, v_sniper=v_struct['voto'])
+                                        v_hurst=h_val, v_sniper=v_struct['voto'],
+                                        v_macro=v_macro)
                 return {"decision": "ERROR_BROKER", "motivo": err_msg}
             else:
                 ticket = obj_ticket.get("ticket")
@@ -552,7 +582,8 @@ class Manager:
                     notificar_error_critico("DISCREPANCIA_BROKER", err_msg)
                     self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0, veredicto, "ERROR_BROKER", err_msg,
                                             v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                            v_hurst=h_val, v_sniper=v_struct['voto'])
+                                            v_hurst=h_val, v_sniper=v_struct['voto'],
+                                            v_macro=v_macro)
                     return {"decision": "ERROR_BROKER", "motivo": err_msg}
                 
                 # Obtener detalles reales
@@ -670,7 +701,8 @@ class Manager:
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
                                         veredicto, "EJECUTADO", motivo,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                        v_hurst=h_val, v_sniper=v_struct['voto'])
+                                        v_hurst=h_val, v_sniper=v_struct['voto'],
+                                        v_macro=v_macro)
                 return {
                     "decision": direccion,
                     "lotes": lotes,
@@ -683,6 +715,7 @@ class Manager:
                         "hurst":  round(float(h_val), 4),
                         "volume": round(float(v_volume['voto']), 4),
                         "cross":  round(float(v_cross['voto']), 4),
+                        "macro":  round(float(v_macro), 4),
                     },
                 }
 
@@ -881,16 +914,18 @@ class Manager:
 
     def _guardar_auditoria(self, simbolo: str, v_trend: float, v_nlp: float,
                             v_flow: float, veredicto: float,
-                            decision: str, motivo: str, 
-                            v_vol: float = 0.0, v_cross: float = 0.0, 
-                            v_hurst: float = 0.5, v_sniper: float = 0.0):
+                            decision: str, motivo: str,
+                            v_vol: float = 0.0, v_cross: float = 0.0,
+                            v_hurst: float = 0.5, v_sniper: float = 0.0,
+                            v_macro: float = 0.0):
         """Guarda la auditoría completa en registro_senales. SIEMPRE se ejecuta."""
         try:
             # V12.0: Forzar cast a float para evitar fugas de tipos numpy (np.float64) a SQL
             self.db.guardar_senal(simbolo, float(v_trend), float(v_nlp), float(v_flow),
                                   float(veredicto), decision, motivo,
-                                  v_vol=float(v_vol), v_cross=float(v_cross), 
-                                  v_hurst=float(v_hurst), v_sniper=float(v_sniper))
+                                  v_vol=float(v_vol), v_cross=float(v_cross),
+                                  v_hurst=float(v_hurst), v_sniper=float(v_sniper),
+                                  v_macro=float(v_macro))
             
             # --- NUEVO: Persistencia de Veredicto en registro_operaciones si fue ejecutado ---
             if decision in ("COMPRA", "VENTA", "EJECUTADO") and not motivo.startswith("Simulando"):
