@@ -39,6 +39,23 @@ RSS_FEEDS = [
     "https://es.investing.com/rss/market_overview.rss", # Resumen
 ]
 
+# Feeds cripto — solo eventos de alto impacto (colapso, ban regulatorio, intervención)
+RSS_FEEDS_CRIPTO = [
+    "https://www.coindesk.com/arc/outboundfeeds/rss/",  # CoinDesk
+    "https://cointelegraph.com/rss",                    # CoinTelegraph
+    "https://www.theblock.co/rss.xml",                  # The Block
+]
+
+# Palabras clave adicionales para filtro mecánico de noticias cripto
+KEYWORDS_CRIPTO = [
+    "EXCHANGE COLLAPSE", "HACK", "EXPLOIT", "BANKRUPTCY", "INSOLVENCY",
+    "SEC", "CFTC", "REGULATION", "BAN", "SEIZURE", "ARREST",
+    "TETHER", "USDT", "USDC", "STABLECOIN", "DEPEG",
+    "ETHEREUM", "ETH", "SOLANA", "SOL", "XRP", "RIPPLE",
+    "CBDC", "GOVERNMENT", "FEDERAL RESERVE CRYPTO", "CONGRESS",
+    "FTX", "BINANCE", "COINBASE", "KRAKEN", "BYBIT",
+]
+
 class NewsHunter:
     def __init__(self, mode="daemon"):
         self.db = DBConnector()
@@ -145,14 +162,21 @@ class NewsHunter:
             try:
                 feed = feedparser.parse(url)
                 for entry in feed.entries:
-                    self._procesar_entrada(entry)
+                    self._procesar_entrada(entry, es_cripto=False)
             except Exception as e_feed:
                 print(f"[HUNTER] Error procesando feed {url}: {e_feed}")
+        for url in RSS_FEEDS_CRIPTO:
+            try:
+                feed = feedparser.parse(url)
+                for entry in feed.entries:
+                    self._procesar_entrada(entry, es_cripto=True)
+            except Exception as e_feed:
+                print(f"[HUNTER] Error procesando feed cripto {url}: {e_feed}")
 
-    def _procesar_entrada(self, entry):
+    def _procesar_entrada(self, entry, es_cripto=False):
         titulo = getattr(entry, 'title', 'Sin titulo')
         link = getattr(entry, 'link', 'Sin link')
-        
+
         # Extraer fecha real de publicación del feed
         pub_parsed = getattr(entry, 'published_parsed', None)
         if pub_parsed:
@@ -166,14 +190,19 @@ class NewsHunter:
         if self.db.verificar_hash_noticia(hash_id):
             return
 
-        relevante_mecanico = any(k.upper() in titulo.upper() for k in KEYWORDS)
-        
+        # Para feeds cripto se usa lista de keywords cripto adicional
+        keywords_activos = KEYWORDS + KEYWORDS_CRIPTO if es_cripto else KEYWORDS
+        relevante_mecanico = any(k.upper() in titulo.upper() for k in keywords_activos)
+
+        # Determinar fuente y etiquetas para BD
+        fuente_label = "Cripto" if es_cripto else "Investing"
+
         if relevante_mecanico:
-            relevancia_ia, impacto = self._evaluar_relevancia_ia(titulo)
+            relevancia_ia, impacto = self._evaluar_relevancia_ia(titulo, es_cripto=es_cripto)
 
             if relevancia_ia:
                 self.db.guardar_noticia_cruda(
-                    source="Investing",
+                    source=fuente_label,
                     title=titulo,
                     summary=f"Impacto: {impacto}/10 | {link}",
                     hash_id=hash_id,
@@ -185,15 +214,16 @@ class NewsHunter:
                 self._evaluar_regimen_macro(titulo, impacto, dt_pub)
                 # FASE 2 V15: Notificar noticias de impacto medio-alto por Telegram
                 if impacto >= 5:
+                    fuente_display = "CoinDesk/CoinTelegraph/TheBlock" if es_cripto else "Investing.com"
                     notificar_noticia_procesada(
                         titulo=titulo,
-                        fuente="Investing.com",
+                        fuente=fuente_display,
                         published_at=dt_pub,
                         impacto=impacto,
                     )
             else:
                 self.db.guardar_noticia_cruda(
-                    source="Investing",
+                    source=fuente_label,
                     title=titulo,
                     summary=f"Descargada por IA | {link}",
                     hash_id=hash_id,
@@ -201,20 +231,38 @@ class NewsHunter:
                 )
         else:
             self.db.guardar_noticia_cruda(
-                source="Investing",
+                source=fuente_label,
                 title=titulo,
                 summary=f"Filtro mecanico | {link}",
                 hash_id=hash_id,
                 published_at=dt_pub
             )
 
-    def _evaluar_relevancia_ia(self, titulo: str):
+    def _evaluar_relevancia_ia(self, titulo: str, es_cripto: bool = False):
         if not self.client: return False, 0
-        prompt = (
-            f"Evalua si este titular afecta al Oro, Petroleo o Indices (NASDAQ/SP500).\n"
-            f"Titular: {titulo}\n"
-            f"Responde JSON: {{\"relevante\": bool, \"impacto\": int(1-10)}}"
-        )
+        if es_cripto:
+            prompt = (
+                f"Eres el sistema de análisis de noticias del bot de trading Aurum.\n"
+                f"Estamos en bear market cripto prolongado. La gran mayoría de noticias cripto "
+                f"son ruido (análisis de precio, predicciones, declaraciones menores, "
+                f"adopción institucional menor). Solo califican como relevantes los eventos "
+                f"de ALTO IMPACTO SISTÉMICO como: colapso/insolvencia de un exchange importante, "
+                f"ban regulatorio masivo (gobierno grande: EEUU, UE, China), intervención "
+                f"gubernamental directa (incautación de fondos, arresto de ejecutivos clave), "
+                f"depeg grave de una stablecoin sistémica (USDT, USDC), o hack de más de "
+                f"$500M en un protocolo crítico.\n"
+                f"Noticias de precio, análisis técnico, adopción menor, ETF de segunda línea, "
+                f"declaraciones optimistas o tweets de influencers tienen impacto BAJO (<=3) "
+                f"en bear market y NO son relevantes para trading de commodities/forex/indices.\n\n"
+                f"Titular: {titulo}\n"
+                f"Responde JSON: {{\"relevante\": bool, \"impacto\": int(1-10)}}"
+            )
+        else:
+            prompt = (
+                f"Evalua si este titular afecta al Oro, Petroleo o Indices (NASDAQ/SP500).\n"
+                f"Titular: {titulo}\n"
+                f"Responde JSON: {{\"relevante\": bool, \"impacto\": int(1-10)}}"
+            )
         try:
             resp = self.client.models.generate_content(
                 model="gemini-flash-latest",
