@@ -59,26 +59,19 @@ const BadgeDatos = ({ total }) => {
 // ── Chip de Régimen Macro ──────────────────────────────────────────────────────
 
 const CHIP_CLS = {
-    RISK_OFF: 'bg-red-50 text-red-400',
-    RISK_ON:  'bg-green-50 text-green-500',
-    VOLATIL:  'bg-amber-50 text-amber-500',
-};
-const DOT_CLS = {
-    RISK_OFF: 'bg-red-400',
-    RISK_ON:  'bg-green-500',
-    VOLATIL:  'bg-amber-400',
+    RISK_OFF: 'bg-red-100 text-red-500',
+    RISK_ON:  'bg-emerald-100 text-emerald-600',
+    VOLATIL:  'bg-amber-100 text-amber-600',
 };
 
 const ChipRegimen = ({ regimen, onClick }) => {
-    const cls    = CHIP_CLS[regimen.direccion] || 'bg-gray-50 text-gray-400';
-    const dotCls = DOT_CLS[regimen.direccion]  || 'bg-gray-300';
+    const cls = CHIP_CLS[regimen.direccion] || 'bg-gray-100 text-gray-400';
     return (
         <button
             onClick={() => onClick && onClick(regimen)}
             title={regimen.razonamiento}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border-none cursor-pointer ${cls}`}
+            className={`px-3 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap border-none cursor-pointer ${cls}`}
         >
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls}`} />
             {regimen.nombre}
         </button>
     );

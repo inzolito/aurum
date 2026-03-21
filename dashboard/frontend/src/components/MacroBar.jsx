@@ -6,21 +6,15 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
 const CHIP_COLOR = {
-    RISK_OFF: 'bg-red-50 text-red-400',
-    RISK_ON:  'bg-green-50 text-green-500',
-    VOLATIL:  'bg-amber-50 text-amber-500',
-};
-
-const DOT_COLOR = {
-    RISK_OFF: 'bg-red-400',
-    RISK_ON:  'bg-green-500',
-    VOLATIL:  'bg-amber-400',
+    RISK_OFF: 'bg-red-100 text-red-500',
+    RISK_ON:  'bg-emerald-100 text-emerald-600',
+    VOLATIL:  'bg-amber-100 text-amber-600',
 };
 
 const TAG_COLOR = {
-    RISK_OFF: 'bg-red-50 text-red-400',
-    RISK_ON:  'bg-green-50 text-green-500',
-    VOLATIL:  'bg-amber-50 text-amber-400',
+    RISK_OFF: 'bg-red-100 text-red-500',
+    RISK_ON:  'bg-emerald-100 text-emerald-600',
+    VOLATIL:  'bg-amber-100 text-amber-600',
 };
 
 const ARROW_COLOR = {
@@ -134,16 +128,14 @@ const MacroBar = () => {
                     Macro
                 </span>
                 {regimenes.map(r => {
-                    const cls    = CHIP_COLOR[r.direccion] || 'bg-gray-50 text-gray-400';
-                    const dotCls = DOT_COLOR[r.direccion]  || 'bg-gray-300';
+                    const cls = CHIP_COLOR[r.direccion] || 'bg-gray-100 text-gray-400';
                     return (
                         <button
                             key={r.id}
                             onClick={() => setSeleccionado(r)}
                             title={r.razonamiento}
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-medium whitespace-nowrap border-none cursor-pointer ${cls}`}
+                            className={`px-3 py-1 rounded-xl text-[11px] font-semibold whitespace-nowrap border-none cursor-pointer ${cls}`}
                         >
-                            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dotCls}`} />
                             {r.nombre}
                         </button>
                     );
