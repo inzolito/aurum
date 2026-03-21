@@ -217,7 +217,7 @@ const LabTradeDetail = ({ op }) => {
                         Justificación
                     </p>
                     <p style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.65 }}>
-                        {op.motivo || 'Sin justificación disponible'}
+                        {op.analisis?.ia_texto || op.motivo || 'Sin análisis disponible'}
                     </p>
                 </div>
             </div>

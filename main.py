@@ -281,6 +281,8 @@ class AurumEngine:
                                     )
                                     if "votos" in resultado_lab:
                                         _votos_finde[sim] = resultado_lab["votos"]
+                                        _votos_finde[sim]["nlp_razonamiento"] = \
+                                            self.gerente.nlp.obtener_razonamiento(sim)
                                     _sb = activo_lab.get("simbolo_broker") or self.db.obtener_simbolo_broker(sim)
                                     if _sb:
                                         _tick = mt5_api.symbol_info_tick(_sb)
@@ -348,6 +350,8 @@ class AurumEngine:
                         # Capturar votos para el lab si están disponibles en el resultado
                         if "votos" in resultado:
                             _votos_lab[activo['simbolo']] = resultado["votos"]
+                            _votos_lab[activo['simbolo']]["nlp_razonamiento"] = \
+                                self.gerente.nlp.obtener_razonamiento(activo['simbolo'])
                         # Capturar precio actual del activo
                         try:
                             _sb = activo.get("simbolo_broker") or self.db.obtener_simbolo_broker(activo['simbolo'])
@@ -382,6 +386,8 @@ class AurumEngine:
                             )
                             if "votos" in resultado_lab:
                                 _votos_lab[sim] = resultado_lab["votos"]
+                                _votos_lab[sim]["nlp_razonamiento"] = \
+                                    self.gerente.nlp.obtener_razonamiento(sim)
                             _sb = activo_lab.get("simbolo_broker") or self.db.obtener_simbolo_broker(sim)
                             if _sb:
                                 _tick = mt5_api.symbol_info_tick(_sb)

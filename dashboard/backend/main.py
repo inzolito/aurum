@@ -1112,7 +1112,8 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                            lo.precio_salida, lo.resultado, lo.pnl_virtual, lo.roe_pct,
                            ls.voto_tendencia, ls.voto_nlp, ls.voto_sniper, ls.voto_macro,
                            ls.voto_hurst, ls.voto_volume, ls.voto_cross,
-                           ls.voto_final_ponderado, ls.pesos_usados, ls.motivo
+                           ls.voto_final_ponderado, ls.pesos_usados, ls.motivo,
+                           lo.justificacion_entrada
                     FROM lab_operaciones lo
                     JOIN activos a ON a.id = lo.activo_id
                     LEFT JOIN lab_senales ls ON ls.id = lo.lab_senal_id
@@ -1125,7 +1126,8 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                            "precio_salida", "resultado", "pnl_virtual", "roe_pct",
                            "v_trend", "v_nlp", "v_sniper", "v_macro",
                            "v_hurst", "v_volume", "v_cross",
-                           "veredicto", "pesos_usados", "motivo"]
+                           "veredicto", "pesos_usados", "motivo", "justificacion_entrada"]
+                import json as _json_lab
                 for op_row in db.cursor.fetchall():
                     op = dict(zip(cols_op, op_row))
                     op["entrada"] = op["entrada"].isoformat() if op["entrada"] else None
@@ -1135,6 +1137,12 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                               "v_hurst", "v_volume", "v_cross", "veredicto"]:
                         if op[k] is not None:
                             op[k] = float(op[k])
+                    raw_j = op.pop("justificacion_entrada", None)
+                    if raw_j:
+                        try:
+                            op["analisis"] = _json_lab.loads(raw_j)
+                        except Exception:
+                            op["analisis"] = {"ia_texto": raw_j}
                     ops_recientes.append(op)
             except Exception:
                 db.conn.rollback()

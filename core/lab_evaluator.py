@@ -151,10 +151,15 @@ class LabEvaluator:
             "EJECUTADO", motivo, umbral, pesos_usados
         )
 
-        # 8. Simular entrada
+        # 8. Simular entrada — incluir análisis IA en justificación
+        import json as _json
+        justificacion_json = _json.dumps({
+            "ia_texto": votos.get("nlp_razonamiento", ""),
+            "motivo_lab": motivo,
+        }, ensure_ascii=False)
         self._simular_entrada(
             lab_id, activo_id, simbolo, tipo_orden,
-            precio_info, params, veredicto, senal_id, motivo
+            precio_info, params, veredicto, senal_id, justificacion_json
         )
 
     # ------------------------------------------------------------------
