@@ -1109,21 +1109,30 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                     SELECT lo.id, a.simbolo, lo.tipo_orden, lo.precio_entrada,
                            lo.stop_loss, lo.take_profit, lo.volumen_lotes,
                            lo.estado, lo.tiempo_entrada, lo.tiempo_salida,
-                           lo.precio_salida, lo.resultado, lo.pnl_virtual, lo.roe_pct
+                           lo.precio_salida, lo.resultado, lo.pnl_virtual, lo.roe_pct,
+                           ls.voto_tendencia, ls.voto_nlp, ls.voto_sniper, ls.voto_macro,
+                           ls.voto_hurst, ls.voto_volume, ls.voto_cross,
+                           ls.voto_final_ponderado, ls.pesos_usados, ls.motivo
                     FROM lab_operaciones lo
                     JOIN activos a ON a.id = lo.activo_id
+                    LEFT JOIN lab_senales ls ON ls.id = lo.lab_senal_id
                     WHERE lo.lab_id = %s
                     ORDER BY lo.tiempo_entrada DESC
                     LIMIT 10
                 """, (lab_id,))
                 cols_op = ["id", "simbolo", "tipo", "precio_entrada", "sl", "tp",
                            "lotes", "estado", "entrada", "salida",
-                           "precio_salida", "resultado", "pnl_virtual", "roe_pct"]
+                           "precio_salida", "resultado", "pnl_virtual", "roe_pct",
+                           "v_trend", "v_nlp", "v_sniper", "v_macro",
+                           "v_hurst", "v_volume", "v_cross",
+                           "veredicto", "pesos_usados", "motivo"]
                 for op_row in db.cursor.fetchall():
                     op = dict(zip(cols_op, op_row))
                     op["entrada"] = op["entrada"].isoformat() if op["entrada"] else None
-                    op["salida"] = op["salida"].isoformat() if op["salida"] else None
-                    for k in ["precio_entrada", "sl", "tp", "lotes", "pnl_virtual", "roe_pct"]:
+                    op["salida"]  = op["salida"].isoformat()  if op["salida"]  else None
+                    for k in ["precio_entrada", "sl", "tp", "lotes", "pnl_virtual", "roe_pct",
+                              "v_trend", "v_nlp", "v_sniper", "v_macro",
+                              "v_hurst", "v_volume", "v_cross", "veredicto"]:
                         if op[k] is not None:
                             op[k] = float(op[k])
                     ops_recientes.append(op)

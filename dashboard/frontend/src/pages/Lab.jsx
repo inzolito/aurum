@@ -158,9 +158,78 @@ const TablaVotos = ({ votos, umbral = 0.55 }) => {
     );
 };
 
+// ── Barra de voto worker ──────────────────────────────────────────────────────
+
+const VotoBar = ({ label, voto, peso }) => {
+    const pct = Math.min(Math.abs(voto) * 100, 100);
+    const color = voto > 0 ? '#22c55e' : voto < 0 ? '#ef4444' : 'var(--text-secondary)';
+    return (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5 }}>
+            <span style={{ width: 52, fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase' }}>{label}</span>
+            <div style={{ flex: 1, background: 'var(--bg-primary)', borderRadius: 3, height: 6, overflow: 'hidden' }}>
+                <div style={{ width: `${pct}%`, background: color, height: '100%', borderRadius: 3 }} />
+            </div>
+            <span style={{ width: 52, fontSize: 12, color, fontWeight: 700, textAlign: 'right' }}>
+                {voto >= 0 ? '+' : ''}{voto?.toFixed(3)}
+            </span>
+            {peso != null && (
+                <span style={{ width: 36, fontSize: 11, color: 'var(--text-secondary)', textAlign: 'right' }}>
+                    {(peso * 100).toFixed(0)}%
+                </span>
+            )}
+        </div>
+    );
+};
+
+// ── Detalle de operación del lab ──────────────────────────────────────────────
+
+const LabTradeDetail = ({ op }) => {
+    const pesos = op.pesos_usados || {};
+    const tieneVotos = op.v_trend != null || op.v_nlp != null;
+    return (
+        <div style={{ background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24, padding: '16px 20px' }}>
+
+                {/* Votación de entrada */}
+                <div>
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                        Votación de Entrada
+                    </p>
+                    {tieneVotos ? (
+                        <>
+                            <VotoBar label="Trend"  voto={op.v_trend  ?? 0} peso={pesos.trend} />
+                            <VotoBar label="NLP"    voto={op.v_nlp    ?? 0} peso={pesos.nlp} />
+                            <VotoBar label="Sniper" voto={op.v_sniper ?? 0} peso={pesos.sniper} />
+                            <VotoBar label="Macro"  voto={op.v_macro  ?? 0} peso={pesos.macro} />
+                            {op.v_hurst != null && <VotoBar label="Hurst"  voto={op.v_hurst}  />}
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: '1px solid var(--border-color)' }}>
+                                <VotoBar label="Final" voto={op.veredicto ?? 0} />
+                            </div>
+                        </>
+                    ) : (
+                        <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Sin datos de votación</p>
+                    )}
+                </div>
+
+                {/* Justificación */}
+                <div>
+                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>
+                        Justificación
+                    </p>
+                    <p style={{ fontSize: 12, color: 'var(--text-primary)', lineHeight: 1.65 }}>
+                        {op.motivo || 'Sin justificación disponible'}
+                    </p>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 // ── Tabla de operaciones recientes ────────────────────────────────────────────
 
 const TablaOps = ({ ops }) => {
+    const [expandedRow, setExpandedRow] = useState(null);
+
     if (!ops || ops.length === 0) {
         return (
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center', padding: '12px 0' }}>
@@ -173,47 +242,64 @@ const TablaOps = ({ ops }) => {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
                 <thead>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <th style={{ width: 20, padding: '5px 4px' }} />
                         {['Activo', 'Tipo', 'Entrada', 'SL', 'TP', 'Estado', 'PnL', 'ROE%', 'Ticket'].map(h => (
                             <th key={h} style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--text-secondary)', fontWeight: 600, fontSize: 10 }}>{h}</th>
                         ))}
                     </tr>
                 </thead>
                 <tbody>
-                    {ops.map(op => {
+                    {ops.map((op, i) => {
                         const pnl = op.pnl_virtual;
                         const pnlColor = pnl === null ? '#6b7280' : pnl >= 0 ? '#22c55e' : '#ef4444';
                         const tipoColor = op.tipo === 'BUY' ? '#22c55e' : '#ef4444';
+                        const isOpen = expandedRow === i;
                         return (
-                            <tr key={op.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                                <td style={{ padding: '5px 8px', fontWeight: 700 }}>{op.simbolo}</td>
-                                <td style={{ padding: '5px 8px', color: tipoColor, fontWeight: 700 }}>{op.tipo}</td>
-                                <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>
-                                    {op.precio_entrada > 100 ? op.precio_entrada?.toFixed(2) : op.precio_entrada?.toFixed(4)}
-                                </td>
-                                <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#ef4444' }}>
-                                    {op.sl > 100 ? op.sl?.toFixed(2) : op.sl?.toFixed(4)}
-                                </td>
-                                <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#22c55e' }}>
-                                    {op.tp > 100 ? op.tp?.toFixed(2) : op.tp?.toFixed(4)}
-                                </td>
-                                <td style={{ padding: '5px 8px' }}>
-                                    {op.estado === 'ABIERTA'
-                                        ? <Badge status="blue">Abierta</Badge>
-                                        : op.resultado === 'TP'
-                                            ? <Badge status="ok">TP</Badge>
-                                            : <Badge status="fail">SL</Badge>
-                                    }
-                                </td>
-                                <td style={{ padding: '5px 8px', color: pnlColor, fontWeight: 700, fontFamily: 'monospace' }}>
-                                    {pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl?.toFixed(2)}` : '—'}
-                                </td>
-                                <td style={{ padding: '5px 8px', color: pnlColor, fontFamily: 'monospace' }}>
-                                    {op.roe_pct !== null ? `${op.roe_pct?.toFixed(2)}%` : '—'}
-                                </td>
-                                <td style={{ padding: '5px 8px' }}>
-                                    <Badge status="sim">SIM</Badge>
-                                </td>
-                            </tr>
+                            <React.Fragment key={op.id}>
+                                <tr
+                                    style={{ borderBottom: '1px solid var(--border-color)', cursor: 'pointer', background: isOpen ? 'var(--bg-primary)' : 'transparent' }}
+                                    onClick={() => setExpandedRow(isOpen ? null : i)}
+                                >
+                                    <td style={{ padding: '5px 4px', color: 'var(--text-secondary)' }}>
+                                        {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                    </td>
+                                    <td style={{ padding: '5px 8px', fontWeight: 700 }}>{op.simbolo}</td>
+                                    <td style={{ padding: '5px 8px', color: tipoColor, fontWeight: 700 }}>{op.tipo}</td>
+                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>
+                                        {op.precio_entrada > 100 ? op.precio_entrada?.toFixed(2) : op.precio_entrada?.toFixed(4)}
+                                    </td>
+                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#ef4444' }}>
+                                        {op.sl > 100 ? op.sl?.toFixed(2) : op.sl?.toFixed(4)}
+                                    </td>
+                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#22c55e' }}>
+                                        {op.tp > 100 ? op.tp?.toFixed(2) : op.tp?.toFixed(4)}
+                                    </td>
+                                    <td style={{ padding: '5px 8px' }}>
+                                        {op.estado === 'ABIERTA'
+                                            ? <Badge status="blue">Abierta</Badge>
+                                            : op.resultado === 'TP'
+                                                ? <Badge status="ok">TP</Badge>
+                                                : <Badge status="fail">SL</Badge>
+                                        }
+                                    </td>
+                                    <td style={{ padding: '5px 8px', color: pnlColor, fontWeight: 700, fontFamily: 'monospace' }}>
+                                        {pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl?.toFixed(2)}` : '—'}
+                                    </td>
+                                    <td style={{ padding: '5px 8px', color: pnlColor, fontFamily: 'monospace' }}>
+                                        {op.roe_pct !== null ? `${op.roe_pct?.toFixed(2)}%` : '—'}
+                                    </td>
+                                    <td style={{ padding: '5px 8px' }}>
+                                        <Badge status="sim">SIM</Badge>
+                                    </td>
+                                </tr>
+                                {isOpen && (
+                                    <tr>
+                                        <td colSpan="10" style={{ padding: 0 }}>
+                                            <LabTradeDetail op={op} />
+                                        </td>
+                                    </tr>
+                                )}
+                            </React.Fragment>
                         );
                     })}
                 </tbody>
