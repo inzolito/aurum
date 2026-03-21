@@ -338,6 +338,33 @@ class AurumEngine:
                         self.db.registrar_log("ERROR", "MAIN",
                                          f"Excepcion en ciclo de {activo['simbolo']}: {e}")
 
+                # V18.1: Evaluar activos lab-only (ej. BTCUSD, ETHUSD) que no están
+                # en producción — se corren workers en modo simulación para alimentar
+                # al LabEvaluator sin generar órdenes reales.
+                try:
+                    activos_lab_only = self.db.get_activos_lab_only()
+                    for activo_lab in activos_lab_only:
+                        sim = activo_lab['simbolo']
+                        if sim in _votos_lab:
+                            continue  # ya evaluado como producción
+                        try:
+                            resultado_lab = self.gerente.evaluar(
+                                sim,
+                                modo_simulacion=True,
+                                id_activo=activo_lab['id']
+                            )
+                            if "votos" in resultado_lab:
+                                _votos_lab[sim] = resultado_lab["votos"]
+                            _sb = activo_lab.get("simbolo_broker") or self.db.obtener_simbolo_broker(sim)
+                            if _sb:
+                                _tick = mt5_api.symbol_info_tick(_sb)
+                                if _tick:
+                                    _precios_lab[sim] = {"bid": float(_tick.bid), "ask": float(_tick.ask)}
+                        except Exception as e_sim:
+                            print(f"[LAB] Error evaluando activo lab-only {sim}: {e_sim}")
+                except Exception as e_lo:
+                    print(f"[LAB] Error obteniendo activos lab-only: {e_lo}")
+
                 # V18: Evaluar Laboratorio al final del ciclo de producción
                 try:
                     if _precios_lab:

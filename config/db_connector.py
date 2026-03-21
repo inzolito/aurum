@@ -266,6 +266,30 @@ class DBConnector:
     def obtener_activos_encendidos(self) -> list:
         return [a["simbolo"] for a in self.obtener_activos_patrullaje()]
 
+    def get_activos_lab_only(self) -> list:
+        """
+        Retorna activos asignados a labs ACTIVOS que NO están en producción
+        (estado_operativo != 'ACTIVO'). Se usan para correr workers en modo
+        simulación y alimentar al LabEvaluator.
+        """
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    SELECT DISTINCT a.id, a.simbolo, a.nombre, a.categoria, a.simbolo_broker
+                    FROM lab_activos la
+                    JOIN laboratorios l ON l.id = la.lab_id
+                    JOIN activos a ON a.id = la.activo_id
+                    WHERE la.estado = 'ACTIVO'
+                      AND l.estado  = 'ACTIVO'
+                      AND a.estado_operativo != 'ACTIVO'
+                    ORDER BY a.simbolo
+                """)
+                cols = ["id", "simbolo", "nombre", "categoria", "simbolo_broker"]
+                return [dict(zip(cols, r)) for r in self.cursor.fetchall()]
+            except Exception:
+                self.conn.rollback()
+                return []
+
     # Mapa de símbolo interno -> símbolo broker (fallback Survival Mode V13.1)
     # V15.3: Nomenclatura real de Weltrade — índices americanos sin sufijo _i,
     # DAX como GEREUR. Actualizar si se cambia de broker.
