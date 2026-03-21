@@ -114,13 +114,13 @@ const TablaOps = ({ ops }) => {
                                 <td style={{ padding: '5px 8px', fontWeight: 700 }}>{op.simbolo}</td>
                                 <td style={{ padding: '5px 8px', color: tipoColor, fontWeight: 700 }}>{op.tipo}</td>
                                 <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>
-                                    {op.precio_entrada?.toFixed(4)}
+                                    {op.precio_entrada > 100 ? op.precio_entrada?.toFixed(2) : op.precio_entrada?.toFixed(4)}
                                 </td>
                                 <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#ef4444' }}>
-                                    {op.sl?.toFixed(4)}
+                                    {op.sl > 100 ? op.sl?.toFixed(2) : op.sl?.toFixed(4)}
                                 </td>
                                 <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: '#22c55e' }}>
-                                    {op.tp?.toFixed(4)}
+                                    {op.tp > 100 ? op.tp?.toFixed(2) : op.tp?.toFixed(4)}
                                 </td>
                                 <td style={{ padding: '5px 8px' }}>
                                     {op.estado === 'ABIERTA'
@@ -201,8 +201,16 @@ const LabCard = ({ lab, onToggle }) => {
             {/* Métricas primarias */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
                 <MetricBox label="ROE%" value={`${roe >= 0 ? '+' : ''}${roe?.toFixed(2)}%`} color={roeColor} />
-                <MetricBox label="Win Rate" value={`${m.win_rate?.toFixed(1)}%`} color={m.win_rate >= 50 ? '#22c55e' : '#f59e0b'} />
-                <MetricBox label="Profit Factor" value={m.profit_factor?.toFixed(2)} color={m.profit_factor >= 1.5 ? '#22c55e' : m.profit_factor >= 1 ? '#f59e0b' : '#ef4444'} />
+                <MetricBox
+                    label="Win Rate"
+                    value={m.trades_total === 0 ? '—' : `${m.win_rate?.toFixed(1)}%`}
+                    color={m.trades_total === 0 ? 'var(--text-secondary)' : m.win_rate >= 50 ? '#22c55e' : '#f59e0b'}
+                />
+                <MetricBox
+                    label="Profit Factor"
+                    value={m.trades_total === 0 ? '—' : m.profit_factor?.toFixed(2)}
+                    color={m.trades_total === 0 ? 'var(--text-secondary)' : m.profit_factor >= 1.5 ? '#22c55e' : m.profit_factor >= 1 ? '#f59e0b' : '#ef4444'}
+                />
                 <MetricBox label="Trades" value={m.trades_total} color="var(--text-primary)" />
             </div>
 
@@ -317,11 +325,17 @@ const PanelRegimen = ({ regimen, onClose }) => {
                             Activos afectados
                         </span>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
-                            {regimen.activos_afectados.map((a, i) => (
-                                <Badge key={i} status="info">
-                                    {typeof a === 'string' ? a : `${a.simbolo} ${a.dir || ''}`}
-                                </Badge>
-                            ))}
+                            {regimen.activos_afectados.map((a, i) => {
+                                const dir = typeof a === 'object' ? a.dir : null;
+                                const sym = typeof a === 'string' ? a : a.simbolo;
+                                const arrow = dir === 'UP' ? ' ▲' : dir === 'DOWN' ? ' ▼' : '';
+                                const arrowColor = dir === 'UP' ? '#22c55e' : dir === 'DOWN' ? '#ef4444' : 'inherit';
+                                return (
+                                    <Badge key={i} status="info">
+                                        {sym}<span style={{ color: arrowColor }}>{arrow}</span>
+                                    </Badge>
+                                );
+                            })}
                         </div>
                     </div>
                 )}

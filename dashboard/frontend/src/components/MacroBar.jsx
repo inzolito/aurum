@@ -66,15 +66,21 @@ const PanelDetalle = ({ regimen, onClose }) => {
                             Activos afectados
                         </p>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                            {regimen.activos_afectados.map((a, i) => (
-                                <span key={i} style={{
-                                    background: 'var(--bg-primary)', borderRadius: 4,
-                                    padding: '2px 8px', fontSize: 10, fontWeight: 600,
-                                    color: 'var(--text-secondary)', border: '1px solid var(--border-color)',
-                                }}>
-                                    {typeof a === 'string' ? a : `${a.simbolo} ${a.dir || ''}`}
-                                </span>
-                            ))}
+                            {regimen.activos_afectados.map((a, i) => {
+                                const dir = typeof a === 'object' ? a.dir : null;
+                                const sym = typeof a === 'string' ? a : a.simbolo;
+                                const arrow = dir === 'UP' ? ' ▲' : dir === 'DOWN' ? ' ▼' : '';
+                                const arrowColor = dir === 'UP' ? '#22c55e' : dir === 'DOWN' ? '#ef4444' : 'var(--text-secondary)';
+                                return (
+                                    <span key={i} style={{
+                                        background: 'var(--bg-primary)', borderRadius: 4,
+                                        padding: '2px 8px', fontSize: 10, fontWeight: 600,
+                                        color: 'var(--text-secondary)', border: '1px solid var(--border-color)',
+                                    }}>
+                                        {sym}<span style={{ color: arrowColor }}>{arrow}</span>
+                                    </span>
+                                );
+                            })}
                         </div>
                     </div>
                 )}
