@@ -15,53 +15,21 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
     const currentPct = clamp(current);
     const fillLeft   = Math.min(entryPct, currentPct);
     const fillWidth  = Math.abs(currentPct - entryPct);
-    const isGain     = pnl >= 0;
-    const fmtP = (v) => v < 10 ? v.toFixed(5) : v.toFixed(2);
-    const color      = isGain ? '#10b981' : '#f43f5e';
-    const colorAlpha = isGain ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
-
-    // Las etiquetas van donde realmente están en la barra
-    const slPct = clamp(sl);
-    const tpPct = clamp(tp);
-
-    const lbl = { position: 'absolute', whiteSpace: 'nowrap', transform: 'translateX(-50%)' };
+    const colorAlpha = pnl >= 0 ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
 
     return (
         <div style={{ marginTop: 4, width: '100%' }}>
-            {/* Labels posicionados en su % real */}
-            <div style={{ position: 'relative', height: 12, fontSize: 9, fontFamily: 'monospace' }}>
-                <span style={{ ...lbl, left: `${slPct}%`, color: '#f43f5e' }}>SL</span>
-                <span style={{ ...lbl, left: `${tpPct}%`, color: '#10b981' }}>TP</span>
-            </div>
-            {/* Barra */}
             <div style={{
-                position: 'relative', height: 6,
-                background: 'rgba(100,116,139,0.2)',
+                position: 'relative', height: 10,
+                background: 'rgb(100 116 139 / 8%)',
                 borderRadius: 999, overflow: 'hidden',
             }}>
                 <div style={{
                     position: 'absolute', top: 0, height: '100%',
                     left: `${fillLeft}%`, width: `${Math.max(fillWidth, 0)}%`,
-                    background: colorAlpha, borderRadius: 999,
+                    background: colorAlpha, borderRadius: 5,
                     transition: 'left 0.8s, width 0.8s',
                 }} />
-                {/* Línea de entrada */}
-                <div style={{
-                    position: 'absolute', top: 0, width: 2, height: '100%',
-                    background: 'rgba(148,163,184,0.9)', left: `${entryPct}%`,
-                }} />
-                {/* Punto de precio actual */}
-                <div style={{
-                    position: 'absolute', top: 0, width: 4, height: '100%',
-                    background: color, borderRadius: 999,
-                    left: `calc(${currentPct}% - 2px)`, transition: 'left 0.8s',
-                }} />
-            </div>
-            {/* Precios debajo */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontFamily: 'monospace', marginTop: 2, color: '#64748b' }}>
-                <span>{fmtP(lo)}</span>
-                <span style={{ color: '#94a3b8' }}>{fmtP(entry)}</span>
-                <span>{fmtP(hi)}</span>
             </div>
         </div>
     );
