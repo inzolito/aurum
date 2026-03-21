@@ -342,17 +342,12 @@ class LabEvaluator:
                     resultado = "SL"
                     precio_salida = sl
 
-            if resultado and precio_salida:
-                # Calcular PnL virtual aproximado
-                diff = precio_salida - precio_entrada
-                if op["tipo_orden"] == "SELL":
-                    diff = -diff
-                # PnL = diff * lotes * 1000 (aproximación genérica — sin pip value real)
-                capital_usado = float(op["capital_usado"] or 1000.0)
-                pnl = round(diff * lotes * 100.0, 2)  # Simplificado
-                capital_inicial = float(op["capital_usado"] or 1000.0)
-                roe = round((pnl / capital_inicial) * 100.0, 2) if capital_inicial else 0.0
+            capital_usado = float(op["capital_usado"] or 1000.0)
 
+            if resultado and precio_salida:
+                pnl, roe = self._calcular_pnl(
+                    op["tipo_orden"], precio_entrada, precio_salida, lotes, capital_usado
+                )
                 self.db.cerrar_lab_operacion(
                     op_id=op["id"],
                     precio_salida=precio_salida,
@@ -361,10 +356,32 @@ class LabEvaluator:
                     roe=roe
                 )
                 print(f"[LAB] Cierre {resultado}: Lab {op['lab_id']} | {simbolo} | PnL={pnl:+.2f}")
+            else:
+                # Posición abierta — actualizar P&L flotante con precio actual
+                precio_mid = (bid + ask) / 2.0
+                pnl_float, roe_float = self._calcular_pnl(
+                    op["tipo_orden"], precio_entrada, precio_mid, lotes, capital_usado
+                )
+                self.db.actualizar_pnl_flotante_lab(op["id"], pnl_float, roe_float)
 
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _calcular_pnl(self, tipo: str, precio_entrada: float, precio_salida: float,
+                      lotes: float, capital_usado: float) -> tuple:
+        """
+        Calcula PnL y ROE de forma consistente con cómo se calculan los lotes.
+        Lotes = capital_riesgo / 1000 → 1 lote = $1000 de nocional.
+        PnL = retorno_pct * notional = (diff/entrada) * (lotes * 1000).
+        """
+        diff = precio_salida - precio_entrada
+        if tipo == "SELL":
+            diff = -diff
+        notional = lotes * 1000.0
+        pnl = round((diff / precio_entrada) * notional, 2) if precio_entrada else 0.0
+        roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
+        return pnl, roe
 
     def _get_punto(self, simbolo: str) -> float:
         """Retorna el valor de un punto para el símbolo (simplificado)."""

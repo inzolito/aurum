@@ -1048,6 +1048,25 @@ class DBConnector:
                     pass
                 return None
 
+    def actualizar_pnl_flotante_lab(self, op_id: int, pnl: float, roe: float):
+        """Actualiza pnl_virtual y roe_pct de una operación ABIERTA con P&L flotante."""
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    UPDATE lab_operaciones
+                    SET pnl_virtual = %s, roe_pct = %s
+                    WHERE id = %s AND estado = 'ABIERTA'
+                """, (pnl, roe, op_id))
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB-LAB] Error actualizando pnl flotante op {op_id}: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+
     def cerrar_lab_operacion(self, op_id: int, precio_salida: float,
                               resultado: str, pnl: float, roe: float):
         """Cierra una operación virtual (TP/SL/MANUAL) y actualiza balance del lab."""
