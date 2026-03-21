@@ -17,23 +17,53 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
     const fillWidth  = Math.abs(currentPct - entryPct);
     const isGain     = pnl >= 0;
     const fmtP = (v) => v < 10 ? v.toFixed(5) : v.toFixed(2);
+    const color      = isGain ? '#10b981' : '#f43f5e';
+    const colorAlpha = isGain ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
 
     return (
-        <div className="mt-1.5 space-y-1">
-            <div className="flex justify-between text-[9px] text-slate-600 font-mono">
-                <span>SL {fmtP(sl)}</span>
-                <span className="text-slate-500">{fmtP(entry)}</span>
-                <span>TP {fmtP(tp)}</span>
+        <div style={{ marginTop: 6 }}>
+            {/* Labels: SL izquierda, TP derecha — entry posicionado dinámicamente */}
+            <div style={{ position: 'relative', height: 14, fontSize: 9, fontFamily: 'monospace', color: '#64748b' }}>
+                <span style={{ position: 'absolute', left: 0 }}>SL {fmtP(sl)}</span>
+                <span style={{ position: 'absolute', right: 0 }}>TP {fmtP(tp)}</span>
+                <span style={{
+                    position: 'absolute',
+                    left: `${entryPct}%`,
+                    transform: 'translateX(-50%)',
+                    color: '#94a3b8',
+                    whiteSpace: 'nowrap',
+                }}>
+                    {fmtP(entry)}
+                </span>
             </div>
-            <div className="relative h-[8px] bg-slate-800 rounded-full overflow-hidden">
-                <div className="absolute top-0 h-full rounded-full transition-all duration-1000"
-                    style={{ left: `${fillLeft}%`, width: `${fillWidth}%`,
-                        backgroundColor: isGain ? 'rgba(16,185,129,0.7)' : 'rgba(244,63,94,0.7)' }} />
-                <div className="absolute top-0 w-px h-full bg-slate-400"
-                    style={{ left: `${entryPct}%` }} />
-                <div className="absolute top-0 w-1 h-full rounded-full"
-                    style={{ left: `calc(${currentPct}% - 2px)`,
-                        backgroundColor: isGain ? '#10b981' : '#f43f5e' }} />
+            {/* Barra */}
+            <div style={{
+                position: 'relative', height: 7,
+                background: 'rgba(100,116,139,0.25)',
+                borderRadius: 999, overflow: 'hidden',
+            }}>
+                {/* Relleno entre entry y current */}
+                <div style={{
+                    position: 'absolute', top: 0, height: '100%',
+                    left: `${fillLeft}%`, width: `${fillWidth}%`,
+                    background: colorAlpha,
+                    borderRadius: 999,
+                    transition: 'left 1s, width 1s',
+                }} />
+                {/* Marcador de entrada: línea delgada */}
+                <div style={{
+                    position: 'absolute', top: 0, width: 1, height: '100%',
+                    background: 'rgba(148,163,184,0.8)',
+                    left: `${entryPct}%`,
+                }} />
+                {/* Marcador de precio actual: punto grueso */}
+                <div style={{
+                    position: 'absolute', top: 0, width: 4, height: '100%',
+                    background: color,
+                    borderRadius: 999,
+                    left: `calc(${currentPct}% - 2px)`,
+                    transition: 'left 1s',
+                }} />
             </div>
         </div>
     );
@@ -299,7 +329,7 @@ const TablaOps = ({ ops }) => {
                                     <td style={{ padding: '5px 4px', color: 'var(--text-secondary)' }}>
                                         {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                     </td>
-                                    <td style={{ padding: '5px 8px', minWidth: 160 }}>
+                                    <td style={{ padding: '5px 8px', minWidth: 140, maxWidth: 200 }}>
                                         <span style={{ fontWeight: 700 }}>{op.simbolo}</span>
                                         {op.sl != null && op.tp != null && op.precio_entrada != null && (() => {
                                             const pnl = op.pnl_virtual ?? 0;
