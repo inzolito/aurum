@@ -6,6 +6,7 @@ Ciclo: evalúa cada activo activo cada 60 segundos (1 vela M1).
 import time
 import sys
 import os
+import signal
 import subprocess
 import psutil
 import fcntl
@@ -195,8 +196,15 @@ class AurumEngine:
         if not _adquirir_lock():
             print("[MAIN] 🚨 Ya hay una instancia de Aurum Core corriendo. Abortando.")
             try:
-                from config.notifier import _enviar_telegram
-                _enviar_telegram("🚨 <b>AURUM CORE — INSTANCIA DUPLICADA DETECTADA</b>\n\nEl bot intentó arrancar pero ya hay un proceso corriendo.\nRevisa el servidor inmediatamente.")
+                # Rate-limit: enviar Telegram máximo 1 vez cada 10 minutos
+                _NOTIF_FLAG = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".dup_notif_ts")
+                _ahora = time.time()
+                _ultimo = float(open(_NOTIF_FLAG).read().strip()) if os.path.exists(_NOTIF_FLAG) else 0
+                if _ahora - _ultimo > 600:
+                    from config.notifier import _enviar_telegram
+                    _enviar_telegram("🚨 <b>AURUM CORE — INSTANCIA DUPLICADA DETECTADA</b>\n\nEl bot intentó arrancar pero ya hay un proceso corriendo.\nRevisa el servidor inmediatamente.")
+                    with open(_NOTIF_FLAG, 'w') as _f:
+                        _f.write(str(_ahora))
             except Exception:
                 pass
             sys.exit(1)
@@ -295,7 +303,10 @@ class AurumEngine:
                     except Exception as e_finde:
                         print(f"[LAB-FINDE] Error en ciclo finde: {e_finde}")
 
-                    time.sleep(600)
+                    for _ in range(600):
+                        if not self.running:
+                            break
+                        time.sleep(1)
                     continue
 
                 print(f"\n{'-'*60}")
@@ -442,6 +453,14 @@ class AurumEngine:
 
 def main():
     engine = AurumEngine()
+
+    def _sigterm_handler(signum, frame):
+        print("[MAIN] SIGTERM recibido — apagando limpiamente...")
+        engine.running = False
+        engine.stop()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
     engine.run()
 
 if __name__ == "__main__":

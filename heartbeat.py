@@ -215,14 +215,25 @@ def check_heartbeat():
                     # Doble verificación: ni psutil lo ve ni el lock está ocupado
                     print("[!] Motor Core caido. Intentando reinicio silencioso...")
                     try:
-                        _base = os.path.dirname(os.path.abspath(__file__))
-                        python_exe = _get_venv_python()
-                        main_path = os.path.join(_base, "main.py")
-                        flags = 0x08000000 if os.name == 'nt' else 0
-                        subprocess.Popen([python_exe, main_path], creationflags=flags)
+                        # En Linux con systemd, usar systemctl para no competir con
+                        # el Restart=always del servicio (evita instancias duplicadas)
+                        _es_systemd = os.path.exists('/run/systemd/system') and os.name != 'nt'
+                        if _es_systemd:
+                            resultado = subprocess.run(
+                                ['sudo', 'systemctl', 'start', 'aurum-core.service'],
+                                capture_output=True, timeout=15
+                            )
+                            _reinicio_ok = resultado.returncode == 0
+                        else:
+                            _base = os.path.dirname(os.path.abspath(__file__))
+                            python_exe = _get_venv_python()
+                            main_path = os.path.join(_base, "main.py")
+                            flags = 0x08000000 if os.name == 'nt' else 0
+                            subprocess.Popen([python_exe, main_path], creationflags=flags)
+                            _reinicio_ok = True
+
                         cooldown_reinicio = _COOLDOWN_CICLOS_TRAS_REINICIO
-                        alerta_core_enviada_flag = not alerta_core_enviada
-                        if not alerta_core_enviada:
+                        if not alerta_core_enviada and _reinicio_ok:
                             _enviar_telegram("⚠️ <b>Maikol, el motor principal ha sido reiniciado silenciosamente por el SHIELD.</b>")
                             alerta_core_enviada = True
                     except Exception as e:
