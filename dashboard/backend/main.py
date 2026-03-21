@@ -1083,7 +1083,7 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                     sum_win = float(mr[6] or 0)
                     sum_loss = float(mr[7] or 0)
                     win_rate = round((ganados / total * 100), 1) if total > 0 else 0.0
-                    roe_pct = round(((balance - capital) / capital * 100), 2) if capital > 0 else 0.0
+                    roe_pct = round((pnl_total / capital * 100), 2) if capital > 0 else 0.0
                     profit_factor = round(sum_win / sum_loss, 2) if sum_loss > 0 else 0.0
                     metricas = {
                         "trades_total": total,
@@ -1095,7 +1095,7 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                         "profit_factor": profit_factor,
                         "max_drawdown": 0.0,  # Calculado aparte si hay lab_balance_diario
                         "avg_ganancia": round(avg_win, 2),
-                        "avg_perdida": round(avg_loss, 2),
+                        "avg_perdida": round(abs(avg_loss), 2),  # abs: avg_loss es negativo en BD
                         "datos_suficientes": total >= 30,
                     }
             except Exception as e:
@@ -1143,6 +1143,13 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                             op["analisis"] = _json_lab.loads(raw_j)
                         except Exception:
                             op["analisis"] = {"ia_texto": raw_j}
+                    # Bug 7: pesos_usados llega como string JSON desde la BD — parsear a dict
+                    raw_p = op.get("pesos_usados")
+                    if isinstance(raw_p, str):
+                        try:
+                            op["pesos_usados"] = _json_lab.loads(raw_p)
+                        except Exception:
+                            op["pesos_usados"] = {}
                     ops_recientes.append(op)
             except Exception:
                 db.conn.rollback()
