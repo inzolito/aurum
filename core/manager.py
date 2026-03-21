@@ -116,7 +116,9 @@ class Manager:
         self._verificar_volatilidad_escalonada(simbolo_interno)
 
         # 1. Filtro de seguridad previo (RiskModule)
-        if not self.risk.filtro_seguridad(simbolo_interno):
+        # modo_simulacion=True (activos lab-only) omite el filtro de estado
+        # para que los workers corran y generen votos para el LabEvaluator.
+        if not modo_simulacion and not self.risk.filtro_seguridad(simbolo_interno):
             # Determinar razón específica para diagnóstico en el admin
             _sb = self.db.obtener_simbolo_broker(simbolo_interno)
             _pos = mt5.positions_get(symbol=_sb) if _sb else None
