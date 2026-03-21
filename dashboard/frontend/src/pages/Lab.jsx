@@ -58,28 +58,32 @@ const BadgeDatos = ({ total }) => {
 
 // ── Chip de Régimen Macro ──────────────────────────────────────────────────────
 
+const DOT_COLOR = {
+    RISK_OFF: '#ef4444',
+    RISK_ON:  '#16a34a',
+    VOLATIL:  '#d97706',
+};
+
 const ChipRegimen = ({ regimen, onClick }) => {
-    const colores = {
-        RISK_OFF: { bg: '#7f1d1d33', color: '#ef4444', border: '#ef444444', emoji: '🔴' },
-        RISK_ON:  { bg: '#14532d33', color: '#22c55e', border: '#22c55e44', emoji: '🟢' },
-        VOLATIL:  { bg: '#78350f33', color: '#f59e0b', border: '#f59e0b44', emoji: '🟡' },
-    };
-    const c = colores[regimen.direccion] || colores.VOLATIL;
+    const dotColor = DOT_COLOR[regimen.direccion] || '#9ca3af';
     return (
         <span
             onClick={() => onClick && onClick(regimen)}
             style={{
-                background: c.bg, color: c.color,
-                border: `1px solid ${c.border}`,
-                borderRadius: 20, padding: '3px 10px',
-                fontSize: 11, fontWeight: 600,
-                cursor: 'pointer', display: 'inline-flex',
-                alignItems: 'center', gap: 5,
-                whiteSpace: 'nowrap',
+                display: 'inline-flex', alignItems: 'center', gap: 5,
+                background: 'none',
+                border: '1px solid #e5e7eb',
+                borderRadius: 6, padding: '3px 9px',
+                fontSize: 11, fontWeight: 500, color: '#6b7280',
+                cursor: 'pointer', whiteSpace: 'nowrap',
             }}
             title={regimen.razonamiento}
         >
-            {c.emoji} {regimen.nombre}
+            <span style={{
+                display: 'inline-block', width: 6, height: 6,
+                borderRadius: '50%', background: dotColor, flexShrink: 0,
+            }} />
+            {regimen.nombre}
         </span>
     );
 };

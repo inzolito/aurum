@@ -1,81 +1,114 @@
 /**
- * MacroBar — V18.0
- * Barra de regímenes macro activos. Aparece en el header de todas las páginas.
- * Datos: /api/lab → regimenes_macro. Polling cada 15s.
+ * MacroBar — V18.1
+ * Barra de estado de regímenes macro. Estilo sutil, armónico con el tema light.
+ * Dot de color (no emoji) + texto en gris secundario. Sin fondos pesados.
  */
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 
-const COLORES = {
-    RISK_OFF: { bg: '#7f1d1d33', color: '#ef4444', border: '#ef444444', emoji: '🔴' },
-    RISK_ON:  { bg: '#14532d33', color: '#22c55e', border: '#22c55e44', emoji: '🟢' },
-    VOLATIL:  { bg: '#78350f33', color: '#f59e0b', border: '#f59e0b44', emoji: '🟡' },
+const DIR_COLOR = {
+    RISK_OFF: '#ef4444',
+    RISK_ON:  '#16a34a',
+    VOLATIL:  '#d97706',
 };
+
+const Dot = ({ color }) => (
+    <span style={{
+        display: 'inline-block',
+        width: 6, height: 6,
+        borderRadius: '50%',
+        background: color,
+        flexShrink: 0,
+        marginTop: 1,
+    }} />
+);
 
 const PanelDetalle = ({ regimen, onClose }) => {
     if (!regimen) return null;
-    const c = COLORES[regimen.direccion] || COLORES.VOLATIL;
+    const color = DIR_COLOR[regimen.direccion] || '#6b7280';
     return (
         <div
             style={{
                 position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-                background: '#00000088', zIndex: 2000,
+                background: 'rgba(0,0,0,0.18)', zIndex: 2000,
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}
             onClick={onClose}
         >
             <div
                 style={{
-                    background: 'var(--bg-secondary)',
-                    border: `1px solid ${c.color}44`,
-                    borderRadius: 12, padding: 24,
-                    maxWidth: 480, width: '90%',
+                    background: '#ffffff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 10,
+                    padding: '20px 24px',
+                    maxWidth: 460, width: '90%',
+                    boxShadow: '0 4px 24px rgba(0,0,0,0.10)',
                 }}
                 onClick={e => e.stopPropagation()}
             >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                    <h3 style={{ margin: 0, color: c.color, fontSize: 16 }}>
-                        {c.emoji} {regimen.nombre}
-                    </h3>
+                {/* Header del modal */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
+                    <Dot color={color} />
+                    <span style={{ fontWeight: 700, fontSize: 14, color: '#111827', flex: 1 }}>
+                        {regimen.nombre}
+                    </span>
                     <button
                         onClick={onClose}
-                        style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 18 }}
+                        style={{
+                            background: 'none', border: 'none',
+                            color: '#9ca3af', cursor: 'pointer',
+                            fontSize: 16, lineHeight: 1, padding: 2,
+                        }}
                     >✕</button>
                 </div>
+
+                {/* Tags */}
                 <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap' }}>
                     {[regimen.tipo, regimen.fase, regimen.direccion].map((t, i) => (
                         <span key={i} style={{
-                            background: 'var(--bg-primary)', borderRadius: 4,
-                            padding: '2px 8px', fontSize: 10, fontWeight: 700,
-                            color: 'var(--text-secondary)', border: '1px solid var(--border-color)',
-                            textTransform: 'uppercase', letterSpacing: 0.5,
+                            background: '#f3f4f6',
+                            borderRadius: 4, padding: '2px 7px',
+                            fontSize: 10, fontWeight: 600,
+                            color: '#6b7280',
+                            letterSpacing: 0.4, textTransform: 'uppercase',
                         }}>
                             {t}
                         </span>
                     ))}
-                    <span style={{ fontSize: 10, color: 'var(--text-secondary)', alignSelf: 'center' }}>
-                        Peso: {regimen.peso}
+                    <span style={{ fontSize: 10, color: '#9ca3af', alignSelf: 'center' }}>
+                        peso {regimen.peso}
                     </span>
                 </div>
-                <p style={{ fontSize: 13, color: 'var(--text-primary)', lineHeight: 1.6, marginBottom: 12 }}>
+
+                {/* Razonamiento */}
+                <p style={{
+                    fontSize: 12, color: '#374151',
+                    lineHeight: 1.65, marginBottom: 12,
+                }}>
                     {regimen.razonamiento}
                 </p>
+
+                {/* Activos afectados */}
                 {regimen.activos_afectados && regimen.activos_afectados.length > 0 && (
                     <div>
-                        <p style={{ fontSize: 10, color: 'var(--text-secondary)', margin: '0 0 6px', letterSpacing: 0.5, textTransform: 'uppercase' }}>
+                        <p style={{
+                            fontSize: 10, color: '#9ca3af',
+                            marginBottom: 6, letterSpacing: 0.4,
+                            textTransform: 'uppercase',
+                        }}>
                             Activos afectados
                         </p>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                             {regimen.activos_afectados.map((a, i) => {
                                 const dir = typeof a === 'object' ? a.dir : null;
                                 const sym = typeof a === 'string' ? a : a.simbolo;
                                 const arrow = dir === 'UP' ? ' ▲' : dir === 'DOWN' ? ' ▼' : '';
-                                const arrowColor = dir === 'UP' ? '#22c55e' : dir === 'DOWN' ? '#ef4444' : 'var(--text-secondary)';
+                                const arrowColor = dir === 'UP' ? '#16a34a' : dir === 'DOWN' ? '#ef4444' : 'inherit';
                                 return (
                                     <span key={i} style={{
-                                        background: 'var(--bg-primary)', borderRadius: 4,
-                                        padding: '2px 8px', fontSize: 10, fontWeight: 600,
-                                        color: 'var(--text-secondary)', border: '1px solid var(--border-color)',
+                                        background: '#f3f4f6',
+                                        borderRadius: 4, padding: '2px 7px',
+                                        fontSize: 10, fontWeight: 600, color: '#374151',
                                     }}>
                                         {sym}<span style={{ color: arrowColor }}>{arrow}</span>
                                     </span>
@@ -84,9 +117,11 @@ const PanelDetalle = ({ regimen, onClose }) => {
                         </div>
                     </div>
                 )}
+
+                {/* Expiración */}
                 {regimen.expira_en && (
-                    <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 12 }}>
-                        Expira: {new Date(regimen.expira_en).toLocaleString('es-CL')}
+                    <p style={{ fontSize: 10, color: '#9ca3af', marginTop: 12 }}>
+                        Expira {new Date(regimen.expira_en).toLocaleString('es-CL')}
                     </p>
                 )}
             </div>
@@ -107,7 +142,7 @@ const MacroBar = () => {
             });
             setRegimenes(res.data?.regimenes_macro || []);
         } catch {
-            // Silencioso — no mostrar errores en la barra global
+            // Silencioso
         }
     };
 
@@ -122,39 +157,60 @@ const MacroBar = () => {
     return (
         <>
             <div style={{
-                display: 'flex', alignItems: 'center', gap: 8,
-                padding: '6px 14px',
-                background: 'var(--bg-secondary)',
-                borderBottom: '1px solid var(--border-color)',
-                flexWrap: 'wrap', minHeight: 36,
-                position: 'sticky', top: 0, zIndex: 100,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '0 16px',
+                height: 30,
+                background: '#ffffff',
+                borderBottom: '1px solid #e5e7eb',
+                overflowX: 'auto',
+                flexShrink: 0,
             }}>
+                {/* Label */}
                 <span style={{
-                    fontSize: 9, color: 'var(--text-secondary)',
-                    letterSpacing: 0.5, textTransform: 'uppercase',
-                    whiteSpace: 'nowrap', marginRight: 4,
+                    fontSize: 9, fontWeight: 600,
+                    color: '#9ca3af',
+                    letterSpacing: 0.8,
+                    textTransform: 'uppercase',
+                    whiteSpace: 'nowrap',
+                    marginRight: 6,
                 }}>
-                    MacroSensor
+                    Macro
                 </span>
-                {regimenes.map(r => {
-                    const c = COLORES[r.direccion] || COLORES.VOLATIL;
+
+                {/* Items separados por · */}
+                {regimenes.map((r, idx) => {
+                    const color = DIR_COLOR[r.direccion] || '#9ca3af';
                     return (
-                        <span
-                            key={r.id}
-                            onClick={() => setSeleccionado(r)}
-                            title={r.razonamiento}
-                            style={{
-                                background: c.bg, color: c.color,
-                                border: `1px solid ${c.border}`,
-                                borderRadius: 20, padding: '2px 10px',
-                                fontSize: 10, fontWeight: 600,
-                                cursor: 'pointer',
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                whiteSpace: 'nowrap',
-                            }}
-                        >
-                            {c.emoji} {r.nombre}
-                        </span>
+                        <React.Fragment key={r.id}>
+                            {idx > 0 && (
+                                <span style={{ color: '#d1d5db', fontSize: 10, userSelect: 'none' }}>·</span>
+                            )}
+                            <button
+                                onClick={() => setSeleccionado(r)}
+                                title={r.razonamiento}
+                                style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    background: 'none',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    padding: '0 4px',
+                                    borderRadius: 4,
+                                    whiteSpace: 'nowrap',
+                                }}
+                            >
+                                <Dot color={color} />
+                                <span style={{
+                                    fontSize: 11, color: '#6b7280',
+                                    fontWeight: 500,
+                                }}>
+                                    {r.nombre}
+                                </span>
+                            </button>
+                        </React.Fragment>
                     );
                 })}
             </div>
