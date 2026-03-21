@@ -1016,7 +1016,8 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
         try:
             db.cursor.execute("""
                 SELECT l.id, l.nombre, l.categoria, l.estado,
-                       l.capital_virtual, l.balance_virtual, l.creado_en, l.notas
+                       l.capital_virtual, l.balance_virtual, l.creado_en, l.notas,
+                       COALESCE(l.version, '1.0.0') as version
                 FROM laboratorios l
                 ORDER BY l.id
             """)
@@ -1032,6 +1033,7 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
         estado    = r[3]
         capital   = float(r[4] or 3000)
         balance   = float(r[5] or capital)
+        version   = r[8] or "1.0.0"
 
         # Activos del lab
         activos_lab = []
@@ -1167,6 +1169,7 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
             "metricas": metricas,
             "operaciones_recientes": ops_recientes,
             "votos_lab": votos_lab,
+            "version": version,
         })
 
     # Regímenes macro activos
@@ -1233,6 +1236,37 @@ async def update_lab_estado(lab_id: int, body: LabEstadoUpdate,
             db.conn.rollback()
             raise HTTPException(status_code=500, detail=str(e))
     return {"ok": True, "lab_id": lab_id, "estado": body.estado}
+
+
+class LabParamsUpdate(BaseModel):
+    params: dict
+    bump: str = "patch"   # patch | minor | major
+    notas: str = ""
+
+@app.put("/api/lab/{lab_id}/parametros")
+async def update_lab_parametros(lab_id: int, body: LabParamsUpdate,
+                                 token: str = Depends(oauth2_scheme),
+                                 db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    if body.bump not in ("patch", "minor", "major"):
+        raise HTTPException(status_code=422, detail="bump debe ser patch, minor o major")
+    try:
+        nueva_version = db.bump_lab_version(lab_id, body.bump, body.notas, body.params)
+        return {"ok": True, "lab_id": lab_id, "version": nueva_version}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/lab/{lab_id}/versiones")
+async def get_lab_versiones(lab_id: int,
+                             token: str = Depends(oauth2_scheme),
+                             db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    return {"versiones": db.get_lab_versiones(lab_id)}
 
 
 @app.get("/health")

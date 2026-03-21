@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { FlaskConical, TrendingUp, TrendingDown, Activity, ChevronDown, ChevronUp, ToggleLeft, ToggleRight } from 'lucide-react';
+import { FlaskConical, Activity, ChevronDown, ChevronUp, ToggleLeft, ToggleRight, History } from 'lucide-react';
 import SideNav from '../components/SideNav';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -224,9 +224,60 @@ const TablaOps = ({ ops }) => {
 
 // ── Tarjeta de laboratorio ─────────────────────────────────────────────────────
 
+// ── Historial de versiones ─────────────────────────────────────────────────────
+
+const TablaVersiones = ({ versiones }) => {
+    if (!versiones || versiones.length === 0) {
+        return <p style={{ fontSize: 12, color: 'var(--text-secondary)', padding: '8px 0' }}>Sin historial de versiones.</p>;
+    }
+    return (
+        <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                    <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        {['Versión', 'Fecha', 'Trades', 'Win Rate', 'ROE%', 'PnL', 'Notas'].map(h => (
+                            <th key={h} style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--text-secondary)', fontWeight: 600, fontSize: 10 }}>{h}</th>
+                        ))}
+                    </tr>
+                </thead>
+                <tbody>
+                    {versiones.map((v, i) => {
+                        const m = v.metricas;
+                        const roe = m?.roe_pct;
+                        const roeColor = roe == null ? 'var(--text-secondary)' : roe >= 0 ? '#22c55e' : '#ef4444';
+                        return (
+                            <tr key={i} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                                <td style={{ padding: '5px 8px' }}>
+                                    <span style={{ fontFamily: 'monospace', fontWeight: 700, color: 'var(--accent-primary)' }}>v{v.version}</span>
+                                </td>
+                                <td style={{ padding: '5px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                                    {v.creado_en ? new Date(v.creado_en).toLocaleDateString('es-CL') : '—'}
+                                </td>
+                                <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>{m?.trades ?? '—'}</td>
+                                <td style={{ padding: '5px 8px', fontFamily: 'monospace' }}>{m?.win_rate != null ? `${m.win_rate}%` : '—'}</td>
+                                <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: roeColor, fontWeight: 700 }}>
+                                    {roe != null ? `${roe >= 0 ? '+' : ''}${roe}%` : '—'}
+                                </td>
+                                <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: roeColor }}>
+                                    {m?.pnl_total != null ? `${m.pnl_total >= 0 ? '+' : ''}$${m.pnl_total}` : '—'}
+                                </td>
+                                <td style={{ padding: '5px 8px', color: 'var(--text-secondary)', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                                    title={v.notas}>{v.notas || '—'}</td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
+};
+
 const LabCard = ({ lab, onToggle }) => {
-    const [expandedOps,   setExpandedOps]   = useState(false);
-    const [expandedVotos, setExpandedVotos] = useState(false);
+    const [expandedOps,       setExpandedOps]       = useState(false);
+    const [expandedVotos,     setExpandedVotos]     = useState(false);
+    const [expandedVersiones, setExpandedVersiones] = useState(false);
+    const [versiones,         setVersiones]         = useState(null);
+    const token = localStorage.getItem('token');
     const m = lab.metricas;
     const roe = m.roe_pct;
     const roeColor = roe >= 0 ? '#22c55e' : '#ef4444';
@@ -237,6 +288,20 @@ const LabCard = ({ lab, onToggle }) => {
         borderRadius: 6, padding: '6px 12px',
         cursor: 'pointer', color: 'var(--text-secondary)',
         fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
+    };
+
+    const toggleVersiones = async () => {
+        if (!expandedVersiones && versiones === null) {
+            try {
+                const res = await axios.get(`/api/lab/${lab.id}/versiones`, {
+                    headers: { Authorization: `Bearer ${token}` },
+                });
+                setVersiones(res.data.versiones || []);
+            } catch {
+                setVersiones([]);
+            }
+        }
+        setExpandedVersiones(p => !p);
     };
 
     return (
@@ -252,6 +317,9 @@ const LabCard = ({ lab, onToggle }) => {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <BadgeDatos total={m.trades_total} />
                     {lab.categoria && <Badge status="info">{lab.categoria}</Badge>}
+                    <span style={{ fontFamily: 'monospace', fontSize: 10, fontWeight: 700, color: 'var(--accent-primary)', background: 'var(--bg-primary)', padding: '2px 7px', borderRadius: 4 }}>
+                        v{lab.version || '1.0.0'}
+                    </span>
                     <Badge status={estadoActivo ? 'ok' : 'warn'}>{lab.estado}</Badge>
                     <button
                         onClick={() => onToggle(lab)}
@@ -314,9 +382,15 @@ const LabCard = ({ lab, onToggle }) => {
                     {expandedOps ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     {expandedOps ? 'Ocultar operaciones' : `Ver últimas operaciones (${lab.operaciones_recientes?.length || 0})`}
                 </button>
+                <button onClick={toggleVersiones} style={btnStyle}>
+                    {expandedVersiones ? <ChevronUp size={14} /> : <History size={14} />}
+                    {expandedVersiones ? 'Ocultar historial' : 'Historial de versiones'}
+                </button>
             </div>
 
             {expandedVotos && <TablaVotos votos={lab.votos_lab} />}
+
+            {expandedVersiones && <TablaVersiones versiones={versiones} />}
 
             {expandedOps && <TablaOps ops={lab.operaciones_recientes} />}
 

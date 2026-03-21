@@ -790,6 +790,118 @@ class DBConnector:
                     pass
         return base
 
+    def bump_lab_version(self, lab_id: int, bump: str, notas: str, nuevos_params: dict) -> str:
+        """
+        Guarda snapshot de params+métricas actuales en lab_versiones,
+        actualiza lab_parametros con nuevos_params y sube la versión.
+        bump: 'patch' | 'minor' | 'major'
+        Retorna la nueva versión como string.
+        """
+        import json as _json
+        with self._lock:
+            try:
+                # 1. Versión actual
+                self.cursor.execute("SELECT version FROM laboratorios WHERE id = %s", (lab_id,))
+                row = self.cursor.fetchone()
+                version_actual = (row[0] if row else "1.0.0") or "1.0.0"
+                parts = version_actual.split(".")
+                major, minor, patch = int(parts[0]), int(parts[1]), int(parts[2])
+
+                if bump == "major":
+                    major += 1; minor = 0; patch = 0
+                elif bump == "minor":
+                    minor += 1; patch = 0
+                else:
+                    patch += 1
+                nueva_version = f"{major}.{minor}.{patch}"
+
+                # 2. Snapshot de parámetros actuales
+                self.cursor.execute(
+                    "SELECT nombre_parametro, valor FROM lab_parametros WHERE lab_id = %s",
+                    (lab_id,)
+                )
+                params_actuales = {r[0]: r[1] for r in self.cursor.fetchall()}
+
+                # 3. Snapshot de métricas actuales
+                self.cursor.execute("""
+                    SELECT
+                        COUNT(*) FILTER (WHERE estado='CERRADA') as trades,
+                        COUNT(*) FILTER (WHERE estado='CERRADA' AND resultado='TP') as ganados,
+                        COALESCE(SUM(pnl_virtual) FILTER (WHERE estado='CERRADA'), 0) as pnl,
+                        l.balance_virtual, l.capital_virtual
+                    FROM lab_operaciones lo
+                    JOIN laboratorios l ON l.id = lo.lab_id
+                    WHERE lo.lab_id = %s
+                    GROUP BY l.balance_virtual, l.capital_virtual
+                """, (lab_id,))
+                mr = self.cursor.fetchone()
+                metricas_snap = None
+                if mr:
+                    trades = int(mr[0] or 0)
+                    ganados = int(mr[1] or 0)
+                    pnl = float(mr[2] or 0)
+                    balance = float(mr[3] or 0)
+                    capital = float(mr[4] or 1)
+                    metricas_snap = {
+                        "trades": trades,
+                        "ganados": ganados,
+                        "perdidos": trades - ganados,
+                        "win_rate": round(ganados / trades * 100, 1) if trades > 0 else 0,
+                        "pnl_total": round(pnl, 2),
+                        "roe_pct": round((balance - capital) / capital * 100, 2) if capital > 0 else 0,
+                    }
+
+                # 4. Guardar snapshot en lab_versiones
+                self.cursor.execute("""
+                    INSERT INTO lab_versiones (lab_id, version, parametros, metricas, notas)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (
+                    lab_id, nueva_version,
+                    _json.dumps(params_actuales),
+                    _json.dumps(metricas_snap) if metricas_snap else None,
+                    notas,
+                ))
+
+                # 5. Actualizar lab_parametros con nuevos valores
+                for nombre, valor in nuevos_params.items():
+                    self.cursor.execute("""
+                        INSERT INTO lab_parametros (lab_id, nombre_parametro, valor)
+                        VALUES (%s, %s, %s)
+                        ON CONFLICT (lab_id, nombre_parametro) DO UPDATE SET valor = EXCLUDED.valor
+                    """, (lab_id, nombre, str(valor)))
+
+                # 6. Actualizar versión en laboratorios
+                self.cursor.execute(
+                    "UPDATE laboratorios SET version = %s WHERE id = %s",
+                    (nueva_version, lab_id)
+                )
+                self.conn.commit()
+                return nueva_version
+            except Exception as e:
+                self.conn.rollback()
+                raise e
+
+    def get_lab_versiones(self, lab_id: int) -> list:
+        """Retorna historial de versiones de un lab, más reciente primero."""
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    SELECT version, parametros, metricas, notas, creado_en
+                    FROM lab_versiones
+                    WHERE lab_id = %s
+                    ORDER BY creado_en DESC
+                """, (lab_id,))
+                cols = ["version", "parametros", "metricas", "notas", "creado_en"]
+                rows = []
+                for r in self.cursor.fetchall():
+                    row = dict(zip(cols, r))
+                    row["creado_en"] = row["creado_en"].isoformat() if row["creado_en"] else None
+                    rows.append(row)
+                return rows
+            except Exception:
+                self.conn.rollback()
+                return []
+
     def get_labs_activos(self) -> list:
         """
         Retorna lista de labs con estado=ACTIVO con sus activos asignados.
