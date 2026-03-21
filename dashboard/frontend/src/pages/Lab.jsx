@@ -346,7 +346,7 @@ const TablaOps = ({ ops }) => {
                                                 : <Badge status="fail">SL</Badge>
                                         }
                                     </td>
-                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: pnlColor, fontWeight: 700 }}>
+                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: 'var(--text-primary)' }}>
                                         {fmtPrecio(precioActual)}
                                     </td>
                                     <td style={{ padding: '5px 8px', color: pnlColor, fontWeight: 700, fontFamily: 'monospace' }}>
