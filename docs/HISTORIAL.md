@@ -6,6 +6,40 @@ Log cronológico de todo lo resuelto. Las entradas más recientes van arriba.
 
 ---
 
+## 2026-03-20 (V18.0 — Laboratorio de Activos + MacroSensor)
+
+### Laboratorio de Activos
+Motor de simulación paralelo al bot real. Múltiples modelos (labs) con parámetros propios evalúan los mismos votos de workers que producción, sin abrir órdenes reales. Capital virtual $3,000 por lab. Aislamiento total de producción.
+
+**Nuevas tablas BD:** laboratorios, lab_activos, lab_parametros, lab_senales, lab_operaciones, lab_balance_diario
+
+**Nuevos archivos:**
+- core/lab_evaluator.py — evaluador del laboratorio (LabEvaluator)
+
+**Archivos modificados:**
+- core/manager.py — _evaluar_internamente() retorna votos individuales; hook _evaluar_laboratorios() al final del ciclo; get_activos_para_evaluar() incluye activos de labs activos
+- config/db_connector.py — 12 métodos nuevos para lab y MacroSensor
+- core/scheduler.py — limpieza nocturna 03:00 UTC (lab_senales >30d + regimenes vencidos)
+- news_hunter.py — _evaluar_regimen_macro() detecta/crea/actualiza regímenes con Gemini
+- dashboard/backend/main.py — endpoints GET /api/lab y PUT /api/lab/{id}/estado
+- dashboard/frontend/src/pages/Lab.jsx — nueva página de laboratorio
+- dashboard/frontend/src/components/MacroBar.jsx — barra macro global en header
+- dashboard/frontend/src/App.jsx y SideNav.jsx — rutas y navegación
+
+### MacroSensor
+Regímenes macro creados automáticamente por news_hunter al procesar noticias con impacto ≥ 6. Gemini decide INSERT/UPDATE/DISIPAR. Regímenes activos inyectados en prompt de NLPWorker en cada votación. Visible en barra global del header del dashboard.
+
+**Nueva tabla BD:** regimenes_macro
+
+**Primer análisis automatizado (2026-03-20):**
+1,950 noticias analizadas. 4 regímenes RISK_OFF detectados e insertados:
+- Guerra Irán - Shock Petrolero Estructural (peso 0.95, indefinido)
+- Fed Hawkish - No Pivot por Inflación Energética (peso 0.80, expira 30-Abr)
+- Recesión Industrial Europea - Shock Energético (peso 0.75, expira 15-Abr)
+- Dólar Refugio Hegemónico Absoluto (peso 0.85, indefinido)
+
+---
+
 ## 2026-03-12 (V15.6 — Tácticas de Supervivencia: Centinela Cloud y Control Remoto)
 
 ### Problema resuelto: Ceguera de caídas y Errores de compatibilidad V15
