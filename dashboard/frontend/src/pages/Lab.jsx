@@ -20,50 +20,48 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
     const color      = isGain ? '#10b981' : '#f43f5e';
     const colorAlpha = isGain ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
 
+    // Las etiquetas van donde realmente están en la barra
+    const slPct = clamp(sl);
+    const tpPct = clamp(tp);
+
+    const lbl = { position: 'absolute', whiteSpace: 'nowrap', transform: 'translateX(-50%)' };
+
     return (
-        <div style={{ marginTop: 6 }}>
-            {/* Labels: SL izquierda, TP derecha — entry posicionado dinámicamente */}
-            <div style={{ position: 'relative', height: 14, fontSize: 9, fontFamily: 'monospace', color: '#64748b' }}>
-                <span style={{ position: 'absolute', left: 0 }}>SL {fmtP(sl)}</span>
-                <span style={{ position: 'absolute', right: 0 }}>TP {fmtP(tp)}</span>
-                <span style={{
-                    position: 'absolute',
-                    left: `${entryPct}%`,
-                    transform: 'translateX(-50%)',
-                    color: '#94a3b8',
-                    whiteSpace: 'nowrap',
-                }}>
-                    {fmtP(entry)}
-                </span>
+        <div style={{ marginTop: 4, width: '100%' }}>
+            {/* Labels posicionados en su % real */}
+            <div style={{ position: 'relative', height: 12, fontSize: 9, fontFamily: 'monospace' }}>
+                <span style={{ ...lbl, left: `${slPct}%`, color: '#f43f5e' }}>SL</span>
+                <span style={{ ...lbl, left: `${tpPct}%`, color: '#10b981' }}>TP</span>
             </div>
             {/* Barra */}
             <div style={{
-                position: 'relative', height: 7,
-                background: 'rgba(100,116,139,0.25)',
+                position: 'relative', height: 6,
+                background: 'rgba(100,116,139,0.2)',
                 borderRadius: 999, overflow: 'hidden',
             }}>
-                {/* Relleno entre entry y current */}
                 <div style={{
                     position: 'absolute', top: 0, height: '100%',
-                    left: `${fillLeft}%`, width: `${fillWidth}%`,
-                    background: colorAlpha,
-                    borderRadius: 999,
-                    transition: 'left 1s, width 1s',
+                    left: `${fillLeft}%`, width: `${Math.max(fillWidth, 0)}%`,
+                    background: colorAlpha, borderRadius: 999,
+                    transition: 'left 0.8s, width 0.8s',
                 }} />
-                {/* Marcador de entrada: línea delgada */}
+                {/* Línea de entrada */}
                 <div style={{
-                    position: 'absolute', top: 0, width: 1, height: '100%',
-                    background: 'rgba(148,163,184,0.8)',
-                    left: `${entryPct}%`,
+                    position: 'absolute', top: 0, width: 2, height: '100%',
+                    background: 'rgba(148,163,184,0.9)', left: `${entryPct}%`,
                 }} />
-                {/* Marcador de precio actual: punto grueso */}
+                {/* Punto de precio actual */}
                 <div style={{
                     position: 'absolute', top: 0, width: 4, height: '100%',
-                    background: color,
-                    borderRadius: 999,
-                    left: `calc(${currentPct}% - 2px)`,
-                    transition: 'left 1s',
+                    background: color, borderRadius: 999,
+                    left: `calc(${currentPct}% - 2px)`, transition: 'left 0.8s',
                 }} />
+            </div>
+            {/* Precios debajo */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9, fontFamily: 'monospace', marginTop: 2, color: '#64748b' }}>
+                <span>{fmtP(lo)}</span>
+                <span style={{ color: '#94a3b8' }}>{fmtP(entry)}</span>
+                <span>{fmtP(hi)}</span>
             </div>
         </div>
     );
@@ -329,7 +327,7 @@ const TablaOps = ({ ops }) => {
                                     <td style={{ padding: '5px 4px', color: 'var(--text-secondary)' }}>
                                         {isOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                                     </td>
-                                    <td style={{ padding: '5px 8px', minWidth: 140, maxWidth: 200 }}>
+                                    <td style={{ padding: '4px 8px', width: 160 }}>
                                         <span style={{ fontWeight: 700 }}>{op.simbolo}</span>
                                         {op.sl != null && op.tp != null && op.precio_entrada != null && (() => {
                                             const pnl = op.pnl_virtual ?? 0;
