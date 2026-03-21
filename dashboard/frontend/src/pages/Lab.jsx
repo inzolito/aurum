@@ -300,7 +300,7 @@ const TablaOps = ({ ops }) => {
                 <thead>
                     <tr style={{ borderBottom: '1px solid var(--border-color)' }}>
                         <th style={{ width: 20, padding: '5px 4px' }} />
-                        {['Activo', 'Tipo', 'Estado', 'PnL', 'ROE%', 'Ticket'].map(h => (
+                        {['Activo', 'Tipo', 'Estado', 'Precio actual', 'PnL', 'ROE%', 'Ticket'].map(h => (
                             <th key={h} style={{ textAlign: 'left', padding: '5px 8px', color: 'var(--text-secondary)', fontWeight: 600, fontSize: 10 }}>{h}</th>
                         ))}
                     </tr>
@@ -311,6 +311,17 @@ const TablaOps = ({ ops }) => {
                         const pnlColor = pnl === null ? '#6b7280' : pnl >= 0 ? '#22c55e' : '#ef4444';
                         const tipoColor = op.tipo === 'BUY' ? '#22c55e' : '#ef4444';
                         const isOpen = expandedRow === i;
+                        const fmtPrecio = (v) => v == null ? '—' : v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
+
+                        // Precio actual reconstruido desde pnl_virtual
+                        const precioActual = (() => {
+                            if (op.estado === 'CERRADA') return op.precio_salida;
+                            if (op.pnl_virtual == null || op.precio_entrada == null) return null;
+                            const notional = (op.lotes ?? 0.01) * 1000;
+                            const diff = (op.pnl_virtual / notional) * op.precio_entrada;
+                            return op.tipo === 'BUY' ? op.precio_entrada + diff : op.precio_entrada - diff;
+                        })();
+
                         return (
                             <React.Fragment key={op.id}>
                                 <tr
@@ -322,18 +333,9 @@ const TablaOps = ({ ops }) => {
                                     </td>
                                     <td style={{ padding: '4px 8px', width: 160 }}>
                                         <span style={{ fontWeight: 700 }}>{op.simbolo}</span>
-                                        {op.sl != null && op.tp != null && op.precio_entrada != null && (() => {
-                                            const pnl = op.pnl_virtual ?? 0;
-                                            const notional = (op.lotes ?? 0.01) * 1000;
-                                            const pctRet = pnl / notional;
-                                            const diff = pctRet * op.precio_entrada;
-                                            const current = op.estado === 'CERRADA' && op.precio_salida != null
-                                                ? op.precio_salida
-                                                : op.tipo === 'BUY'
-                                                    ? op.precio_entrada + diff
-                                                    : op.precio_entrada - diff;
-                                            return <PriceBar sl={op.sl} tp={op.tp} entry={op.precio_entrada} current={current} pnl={pnl} />;
-                                        })()}
+                                        {op.sl != null && op.tp != null && op.precio_entrada != null && (
+                                            <PriceBar sl={op.sl} tp={op.tp} entry={op.precio_entrada} current={precioActual ?? op.precio_entrada} pnl={pnl ?? 0} />
+                                        )}
                                     </td>
                                     <td style={{ padding: '5px 8px', color: tipoColor, fontWeight: 700 }}>{op.tipo}</td>
                                     <td style={{ padding: '5px 8px' }}>
@@ -343,6 +345,9 @@ const TablaOps = ({ ops }) => {
                                                 ? <Badge status="ok">TP</Badge>
                                                 : <Badge status="fail">SL</Badge>
                                         }
+                                    </td>
+                                    <td style={{ padding: '5px 8px', fontFamily: 'monospace', color: pnlColor, fontWeight: 700 }}>
+                                        {fmtPrecio(precioActual)}
                                     </td>
                                     <td style={{ padding: '5px 8px', color: pnlColor, fontWeight: 700, fontFamily: 'monospace' }}>
                                         {pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl?.toFixed(2)}` : '—'}
@@ -356,7 +361,7 @@ const TablaOps = ({ ops }) => {
                                 </tr>
                                 {isOpen && (
                                     <tr>
-                                        <td colSpan="7" style={{ padding: 0 }}>
+                                        <td colSpan="8" style={{ padding: 0 }}>
                                             <LabTradeDetail op={op} />
                                         </td>
                                     </tr>
@@ -503,22 +508,35 @@ const LabCard = ({ lab, onToggle }) => {
             </div>
 
             {/* Balance virtual */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
-                <div>
-                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Capital inicial</span>
-                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace' }}>${lab.capital_virtual?.toFixed(2)}</p>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Balance virtual</span>
-                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: roeColor }}>${lab.balance_virtual?.toFixed(2)}</p>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                    <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>PnL total (virtual)</span>
-                    <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: roeColor }}>
-                        {m.pnl_total >= 0 ? '+' : ''}${m.pnl_total?.toFixed(2)}
-                    </p>
-                </div>
-            </div>
+            {(() => {
+                const pnlFlotante = (lab.operaciones_recientes || [])
+                    .filter(o => o.estado === 'ABIERTA' && o.pnl_virtual != null)
+                    .reduce((acc, o) => acc + o.pnl_virtual, 0);
+                const equity = (lab.balance_virtual ?? 0) + pnlFlotante;
+                const equityColor = equity >= lab.capital_virtual ? '#22c55e' : '#ef4444';
+                return (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: 10 }}>
+                        <div>
+                            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Capital inicial</span>
+                            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace' }}>${lab.capital_virtual?.toFixed(2)}</p>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Balance (cerradas)</span>
+                            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: roeColor }}>${lab.balance_virtual?.toFixed(2)}</p>
+                        </div>
+                        <div style={{ textAlign: 'center' }}>
+                            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>Equity (+ flotante)</span>
+                            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: equityColor }}>${equity.toFixed(2)}</p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                            <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>PnL total (virtual)</span>
+                            <p style={{ fontSize: 14, fontWeight: 700, margin: 0, fontFamily: 'monospace', color: roeColor }}>
+                                {m.pnl_total >= 0 ? '+' : ''}${m.pnl_total?.toFixed(2)}
+                            </p>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* Botones colapsables */}
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
