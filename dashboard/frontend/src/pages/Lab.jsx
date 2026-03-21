@@ -16,9 +16,21 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
     const fillLeft   = Math.min(entryPct, currentPct);
     const fillWidth  = Math.abs(currentPct - entryPct);
     const colorAlpha = pnl >= 0 ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
+    const fmt = (v) => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
+    const slPct = clamp(sl);
+    const tpPct = clamp(tp);
 
     return (
         <div style={{ marginTop: 4, width: '100%' }}>
+            {/* Entrada arriba */}
+            <div style={{ position: 'relative', height: 12 }}>
+                <span style={{
+                    position: 'absolute', left: `${entryPct}%`,
+                    transform: 'translateX(-50%)',
+                    fontSize: 8, fontFamily: 'monospace', color: '#94a3b8', whiteSpace: 'nowrap',
+                }}>{fmt(entry)}</span>
+            </div>
+            {/* Barra */}
             <div style={{
                 position: 'relative', height: 10,
                 background: 'rgb(100 116 139 / 8%)',
@@ -30,6 +42,19 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
                     background: colorAlpha, borderRadius: 5,
                     transition: 'left 0.8s, width 0.8s',
                 }} />
+            </div>
+            {/* SL y TP debajo */}
+            <div style={{ position: 'relative', height: 12 }}>
+                <span style={{
+                    position: 'absolute', left: `${slPct}%`,
+                    transform: 'translateX(-50%)',
+                    fontSize: 8, fontFamily: 'monospace', color: '#f43f5e', whiteSpace: 'nowrap',
+                }}>{fmt(sl)}</span>
+                <span style={{
+                    position: 'absolute', left: `${tpPct}%`,
+                    transform: 'translateX(-50%)',
+                    fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap',
+                }}>{fmt(tp)}</span>
             </div>
         </div>
     );
