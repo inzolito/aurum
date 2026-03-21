@@ -369,6 +369,7 @@ class LabEvaluator:
             "XAUUSD": 0.01,    "XAGUSD": 0.001,   "XTIUSD": 0.001,
             "XBRUSD": 0.001,   "US30":   0.1,      "US500":  0.01,
             "USTEC":  0.01,    "GER40":  0.01,
+            "BTCUSD": 0.01,    "ETHUSD": 0.01,
         }
         return puntos.get(simbolo, 0.00001)
 

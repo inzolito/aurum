@@ -854,15 +854,17 @@ class DBConnector:
                 self.cursor.execute("""
                     INSERT INTO lab_senales
                         (lab_id, activo_id, voto_tendencia, voto_nlp, voto_sniper,
-                         voto_hurst, voto_volume, voto_cross, voto_final_ponderado,
+                         voto_hurst, voto_volume, voto_cross, voto_macro,
+                         voto_final_ponderado,
                          decision_gerente, motivo, umbral_usado, pesos_usados)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     RETURNING id
                 """, (
                     lab_id, activo_id,
                     votos.get("trend", 0.0), votos.get("nlp", 0.0),
                     votos.get("sniper", 0.0), votos.get("hurst", 0.5),
                     votos.get("volume", 0.0), votos.get("cross", 0.0),
+                    votos.get("macro", 0.0),
                     votos.get("veredicto", 0.0),
                     decision, motivo, umbral,
                     _json.dumps(pesos)
