@@ -15,6 +15,9 @@ log "=== Aurum Update iniciado ==="
 # 1. Git — forzar sincronización con origin
 log "Sincronizando con Git..."
 cd "$AURUM_DIR"
+# Asegurar permisos correctos antes del reset (evita error en dist/assets/)
+chown -R aurum_bot:root "$AURUM_DIR/dashboard/frontend/dist/" 2>/dev/null || true
+chown -R aurum_bot:root "$AURUM_DIR/.git/" 2>/dev/null || true
 git fetch origin 2>&1 | tee -a "$LOG_FILE"
 git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 
