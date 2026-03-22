@@ -25,7 +25,24 @@ git reset --hard origin/main 2>&1 | tee -a "$LOG_FILE"
 log "Verificando dependencias Python..."
 "$AURUM_DIR/venv/bin/pip" install --quiet -r "$AURUM_DIR/requirements_linux.txt" 2>&1 | tee -a "$LOG_FILE" || true
 
-# 3. Reiniciar servicios del bot
+# 3. Resetear latido DB para evitar que el Shield mate el bot por timestamp viejo
+log "Reseteando latido en BD..."
+"$AURUM_DIR/venv/bin/python" -c "
+import os, sys
+sys.path.insert(0, '$AURUM_DIR')
+from dotenv import load_dotenv
+load_dotenv('$AURUM_DIR/.env')
+from config.db_connector import DBConnector
+db = DBConnector()
+if db.conectar():
+    db.cursor.execute(\"UPDATE estado_bot SET tiempo = NOW() WHERE id = 1;\")
+    db.conn.commit()
+    print('[UPDATE] Latido reseteado OK')
+else:
+    print('[UPDATE] WARN: No se pudo conectar a DB para resetear latido')
+" 2>&1 | tee -a "$LOG_FILE" || true
+
+# 4. Reiniciar servicios del bot
 log "Reiniciando servicios..."
 sudo systemctl restart aurum-core     2>&1 | tee -a "$LOG_FILE"
 sudo systemctl restart aurum-hunter   2>&1 | tee -a "$LOG_FILE"
