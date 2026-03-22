@@ -27,8 +27,8 @@ load_dotenv()
 
 GEMINI_API_KEY    = os.getenv("GEMINI_API_KEY", "")
 CACHE_TTL_MIN     = int(os.getenv("NLP_CACHE_TTL_MIN", "5"))       # P-2 V14: reducido de 30 a 5 min
-GEMINI_MODEL_LITE = "gemini-2.0-flash-lite"  # Modelo ligero (google-genai SDK v1.0+)
-GEMINI_MODEL_PRO  = "gemini-2.0-flash"         # Modelo estándar para alertas de emergencia
+GEMINI_MODEL_LITE = "gemini-flash-lite-latest"  # Modelo ligero
+GEMINI_MODEL_PRO  = "gemini-flash-latest"        # Modelo estándar para alertas de emergencia
 _MAX_CALLS_PER_DAY = int(os.getenv("NLP_MAX_CALLS_DAY", "1500"))  # D5 V14: límite diario de API
 
 
@@ -197,7 +197,7 @@ class NLPWorker:
         Llama a Gemini con un prompt multi-activo (Dual: Clasificación + Correlación).
         """
         simbolos = [a["simbolo"] for a in activos]
-        fallback  = {s: {'voto': 0.0, 'razonamiento': "Error API Gemini."} for s in simbolos}
+        fallback  = {}  # Vacío para que NO se guarde en caché (evita propagar 0.0 por fallo API)
 
         # D5 V14: Control de límite diario de llamadas API
         hoy = datetime.now(timezone.utc).date()
