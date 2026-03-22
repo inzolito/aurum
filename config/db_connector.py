@@ -128,22 +128,35 @@ class DBConnector:
     # ------------------------------------------------------------------
 
     def conectar(self) -> bool:
-        """Establece la conexión con PostgreSQL. Retorna True si exitosa."""
-        try:
-            self.conn = psycopg2.connect(
-                host=os.getenv("DB_HOST"),
-                port=os.getenv("DB_PORT", 5432),
-                dbname=os.getenv("DB_NAME"),
-                user=os.getenv("DB_USER"),
-                password=os.getenv("DB_PASS"),
-                connect_timeout=10,
-            )
-            self.cursor = self.conn.cursor()
-            print("[DB] Conexión exitosa a PostgreSQL.")
-            return True
-        except psycopg2.OperationalError as e:
-            print(f"[DB] ERROR de conexión: {e}")
-            return False
+        """Establece la conexión con PostgreSQL. Retorna True si exitosa.
+        Intenta primero con DB_HOST configurado; si falla, reintenta con localhost
+        (útil cuando DB_HOST apunta a la IP externa del mismo VM en GCP)."""
+        hosts_a_probar = [os.getenv("DB_HOST")]
+        if hosts_a_probar[0] not in ("localhost", "127.0.0.1", None):
+            hosts_a_probar.append("localhost")
+
+        for host in hosts_a_probar:
+            if not host:
+                continue
+            try:
+                self.conn = psycopg2.connect(
+                    host=host,
+                    port=os.getenv("DB_PORT", 5432),
+                    dbname=os.getenv("DB_NAME"),
+                    user=os.getenv("DB_USER"),
+                    password=os.getenv("DB_PASS"),
+                    connect_timeout=10,
+                )
+                self.cursor = self.conn.cursor()
+                if host != os.getenv("DB_HOST"):
+                    print(f"[DB] Conexión exitosa a PostgreSQL (fallback localhost).")
+                else:
+                    print("[DB] Conexión exitosa a PostgreSQL.")
+                return True
+            except psycopg2.OperationalError as e:
+                print(f"[DB] ERROR de conexión a {host}: {e}")
+
+        return False
 
     def desconectar(self):
         """Cierra el cursor y la conexión de forma limpia."""
