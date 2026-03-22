@@ -9,7 +9,7 @@ BEGIN;
 -- 1. Insertar XPTUSD en tabla activos (lab-only: estado_operativo=PAUSADO)
 --    ON CONFLICT por si ya existe (idempotente)
 INSERT INTO activos (simbolo, nombre, categoria, simbolo_broker, estado_operativo)
-VALUES ('XPTUSD', 'Platino/USD', 'COMMODITIES', 'XPTUSD_i', 'PAUSADO')
+VALUES ('XPTUSD', 'Platino/USD', 'METALES', 'XPTUSD_i', 'PAUSADO')
 ON CONFLICT (simbolo) DO UPDATE
     SET simbolo_broker    = EXCLUDED.simbolo_broker,
         nombre            = EXCLUDED.nombre,
