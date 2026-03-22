@@ -130,9 +130,11 @@ class DBConnector:
     def conectar(self) -> bool:
         """Establece la conexión con PostgreSQL. Retorna True si exitosa.
         Intenta primero con DB_HOST configurado; si falla, reintenta con localhost
-        (útil cuando DB_HOST apunta a la IP externa del mismo VM en GCP)."""
-        hosts_a_probar = [os.getenv("DB_HOST")]
-        if hosts_a_probar[0] not in ("localhost", "127.0.0.1", None):
+        y actualiza DB_HOST en el entorno para que las conexiones futuras no
+        repitan el timeout (útil cuando DB_HOST apunta a la IP externa del VM en GCP)."""
+        host_configurado = os.getenv("DB_HOST")
+        hosts_a_probar = [host_configurado]
+        if host_configurado not in ("localhost", "127.0.0.1", None):
             hosts_a_probar.append("localhost")
 
         for host in hosts_a_probar:
@@ -148,8 +150,9 @@ class DBConnector:
                     connect_timeout=10,
                 )
                 self.cursor = self.conn.cursor()
-                if host != os.getenv("DB_HOST"):
+                if host != host_configurado:
                     print(f"[DB] Conexión exitosa a PostgreSQL (fallback localhost).")
+                    os.environ["DB_HOST"] = host  # evitar timeout en reconexiones futuras
                 else:
                     print("[DB] Conexión exitosa a PostgreSQL.")
                 return True
