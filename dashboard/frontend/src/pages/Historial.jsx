@@ -98,7 +98,7 @@ const TradeDetail = ({ t }) => {
 
             {/* Fila 2: autopsia (solo si existe) */}
             {t.tipo_fallo && (
-                <div style={{ borderTop: '1px solid var(--border-color)', padding: '14px 24px', background: '#fff8f8', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                <div style={{ borderTop: '1px solid var(--border-color)', padding: '14px 24px', background: 'rgba(233,30,99,0.06)', display: 'flex', gap: 16, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                     <p style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 0, flexShrink: 0, paddingTop: 2 }}>Autopsia IA:</p>
                     <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 10px', borderRadius: 10, background: FALLO_COLOR[t.tipo_fallo] || '#6b7280', color: '#fff', flexShrink: 0 }}>{t.tipo_fallo}</span>
                     {t.worker_culpable && <span style={{ fontSize: 11, padding: '2px 10px', borderRadius: 10, background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', flexShrink: 0 }}>{t.worker_culpable}</span>}
