@@ -167,6 +167,18 @@ def check_heartbeat():
             log_vivo = False
             tiempo_inactivo = 999
 
+            # Gracia para procesos recién iniciados por systemd (sin pasar por el Shield).
+            # Si el proceso lleva menos de MAX_TIEMPO_INACTIVO_SEGUNDOS en pie, no lo matamos
+            # aunque el latido DB sea antiguo — necesita tiempo para conectarse y escribir.
+            if procesos["core"] and cooldown_reinicio == 0:
+                try:
+                    uptime_proceso = time.time() - procesos["core"][0].create_time()
+                    if uptime_proceso < MAX_TIEMPO_INACTIVO_SEGUNDOS:
+                        cooldown_reinicio = max(1, int((MAX_TIEMPO_INACTIVO_SEGUNDOS - uptime_proceso) / VERIFICAR_CADA_SEGUNDOS) + 1)
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] SHIELD: Proceso recién iniciado (uptime {uptime_proceso:.0f}s). Gracia automática ({cooldown_reinicio} ciclos).")
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    pass
+
             if cooldown_reinicio > 0:
                 # En periodo de gracia tras reinicio: no evaluar latido aún
                 log_vivo = True
