@@ -323,6 +323,20 @@ class LabEvaluator:
             tp = float(op["take_profit"])
             precio_entrada = float(op["precio_entrada"])
             lotes = float(op["volumen_lotes"] or 1.0)
+            capital_usado = float(op["capital_usado"] or 1000.0)
+
+            # ── Breakeven: igual que producción — si el precio recorrió 50%
+            # del camino al TP, mover SL a precio de entrada
+            sl_en_be = (op["tipo_orden"] == "BUY" and sl >= precio_entrada) or \
+                       (op["tipo_orden"] == "SELL" and sl <= precio_entrada and sl != 0)
+            if not sl_en_be:
+                distancia_tp = abs(tp - precio_entrada)
+                if distancia_tp > 0:
+                    progreso = abs(precio_actual - precio_entrada) / distancia_tp
+                    if progreso >= 0.50:
+                        self.db.actualizar_sl_lab(op["id"], precio_entrada)
+                        sl = precio_entrada  # usar el SL actualizado en la verificación de cierre
+                        print(f"[LAB] Breakeven: Lab {op['lab_id']} | {simbolo} | SL movido a {precio_entrada:.4f} (progreso {progreso*100:.1f}%)")
 
             resultado = None
             precio_salida = None
@@ -341,8 +355,6 @@ class LabEvaluator:
                 elif precio_actual >= sl:
                     resultado = "SL"
                     precio_salida = sl
-
-            capital_usado = float(op["capital_usado"] or 1000.0)
 
             if resultado and precio_salida:
                 pnl, roe = self._calcular_pnl(

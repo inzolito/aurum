@@ -1048,6 +1048,24 @@ class DBConnector:
                     pass
                 return None
 
+    def actualizar_sl_lab(self, op_id: int, nuevo_sl: float):
+        """Mueve el SL de una operación ABIERTA (breakeven u otro ajuste)."""
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute(
+                    "UPDATE lab_operaciones SET stop_loss = %s WHERE id = %s AND estado = 'ABIERTA'",
+                    (nuevo_sl, op_id)
+                )
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB-LAB] Error actualizando SL lab_operacion {op_id}: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+
     def actualizar_pnl_flotante_lab(self, op_id: int, pnl: float, roe: float):
         """Actualiza pnl_virtual y roe_pct de una operación ABIERTA con P&L flotante."""
         if not self.cursor:
