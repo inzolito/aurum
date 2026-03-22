@@ -21,6 +21,25 @@ load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
 
 app = FastAPI(title="Aurum Prism API")
 
+# ── Filtro global de versión (solo mostrar datos desde V17.01 en adelante) ───
+_FILTRO_VERSION_MINIMA = 17.01
+_filtro_version_id_cache: Optional[int] = None
+
+def _version_min_id(cursor) -> int:
+    """Retorna el version_id mínimo (de versiones_sistema) para versiones >= V17.01. Cacheado."""
+    global _filtro_version_id_cache
+    if _filtro_version_id_cache is None:
+        try:
+            cursor.execute("""
+                SELECT MIN(id) FROM versiones_sistema
+                WHERE CAST(REGEXP_REPLACE(REPLACE(UPPER(numero_version), 'V', ''), '[^0-9.]', '', 'g') AS NUMERIC) >= %s
+            """, (_FILTRO_VERSION_MINIMA,))
+            row = cursor.fetchone()
+            _filtro_version_id_cache = int(row[0]) if row and row[0] else 1
+        except Exception:
+            _filtro_version_id_cache = 1
+    return _filtro_version_id_cache
+
 # ── Cache MT5 (evita reconectar MetaAPI en cada request) ─────────────────────
 _mt5_cache      = {}
 _mt5_cache_ts   = 0.0
@@ -510,8 +529,9 @@ async def get_historial(
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
     with db._lock:
         try:
-            conditions = ["(ro.resultado_final IS NOT NULL OR ro.ticket_mt5 = 999999)"]
-            params: list = []
+            min_ver = _version_min_id(db.cursor)
+            conditions = ["(ro.resultado_final IS NOT NULL OR ro.ticket_mt5 = 999999)", "ro.version_id >= %s"]
+            params: list = [min_ver]
             if desde:
                 conditions.append("(ro.tiempo_entrada AT TIME ZONE 'America/Santiago')::date >= %s::date")
                 params.append(desde)
@@ -700,11 +720,10 @@ async def get_activos(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
                 FROM activos a
                 LEFT JOIN registro_operaciones ro ON ro.activo_id = a.id
                 LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
-                WHERE ro.id IS NULL
-                   OR vs.numero_version IN ('V17.0', '17.2')
+                WHERE ro.id IS NULL OR ro.version_id >= %s
                 GROUP BY a.id, a.simbolo, a.nombre, a.categoria, a.estado_operativo
                 ORDER BY a.estado_operativo, a.simbolo
-            """)
+            """, (_version_min_id(db.cursor),))
             rows = db.cursor.fetchall()
         except Exception as e:
             db.conn.rollback()
@@ -760,10 +779,10 @@ async def get_rendimiento_activo(simbolo: str, token: str = Depends(oauth2_schem
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
                 LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
-                WHERE a.simbolo = %s AND ro.resultado_final IS NOT NULL
+                WHERE a.simbolo = %s AND ro.resultado_final IS NOT NULL AND ro.version_id >= %s
                 GROUP BY COALESCE(vs.nombre, 'Sin versión')
                 ORDER BY pnl DESC
-            """, (simbolo.upper(),))
+            """, (simbolo.upper(), _version_min_id(db.cursor)))
             por_version = db.cursor.fetchall()
 
             # Últimos 10 trades
@@ -774,9 +793,9 @@ async def get_rendimiento_activo(simbolo: str, token: str = Depends(oauth2_schem
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
                 LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
-                WHERE a.simbolo = %s
+                WHERE a.simbolo = %s AND ro.version_id >= %s
                 ORDER BY ro.tiempo_entrada DESC LIMIT 10
-            """, (simbolo.upper(),))
+            """, (simbolo.upper(), _version_min_id(db.cursor)))
             ultimos = db.cursor.fetchall()
         except Exception as e:
             db.conn.rollback()
