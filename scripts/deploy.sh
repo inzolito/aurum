@@ -27,7 +27,8 @@ if [ -z "$ZONE" ]; then
 fi
 echo "[Deploy] VM encontrado en zona: $ZONE"
 
-SSH_FLAGS="--project=$PROJECT --zone=$ZONE"
+SSH_FLAGS="--project=$PROJECT --zone=$ZONE --ssh-flag=-o --ssh-flag=StrictHostKeyChecking=no --ssh-flag=-o --ssh-flag=UserKnownHostsFile=/dev/null"
+SCP_FLAGS="--project=$PROJECT --zone=$ZONE --ssh-flag=-o --ssh-flag=StrictHostKeyChecking=no --ssh-flag=-o --ssh-flag=UserKnownHostsFile=/dev/null"
 
 vm_run() {
     gcloud compute ssh "$VM_NAME" $SSH_FLAGS -- "$@"
@@ -36,7 +37,7 @@ vm_run() {
 # ─── MODO: Solo .env ─────────────────────────────────────────────────────────
 if [[ "$1" == "--env" ]]; then
     echo "[Deploy] Subiendo .env..."
-    gcloud compute scp $SSH_FLAGS "$LOCAL_DIR/.env" "$VM_NAME:$REMOTE_DIR/.env"
+    gcloud compute scp $SCP_FLAGS "$LOCAL_DIR/.env" "$VM_NAME:$REMOTE_DIR/.env"
     vm_run "sudo chown aurum_bot:root $REMOTE_DIR/.env && sudo chmod 600 $REMOTE_DIR/.env"
     echo "[Deploy] .env actualizado."
     exit 0
@@ -59,7 +60,7 @@ if [[ "$1" == "--setup" ]]; then
 
     if [ -f "$LOCAL_DIR/.env" ]; then
         echo "[Deploy] Subiendo .env..."
-        gcloud compute scp $SSH_FLAGS "$LOCAL_DIR/.env" "$VM_NAME:$REMOTE_DIR/.env"
+        gcloud compute scp $SCP_FLAGS "$LOCAL_DIR/.env" "$VM_NAME:$REMOTE_DIR/.env"
     fi
 
     echo "[Deploy] Ejecutando setup_vm.sh..."
@@ -69,14 +70,14 @@ fi
 
 # ─── MODO NORMAL: git pull + reinicio ────────────────────────────────────────
 echo "[Deploy] Actualizando codigo via git pull..."
-vm_run "cd $REMOTE_DIR && git pull origin master"
+vm_run "cd $REMOTE_DIR && git pull origin main"
 
 echo "[Deploy] Actualizando dependencias..."
 vm_run "cd $REMOTE_DIR && venv/bin/pip install --quiet -r requirements_linux.txt"
 
 if [ -f "$LOCAL_DIR/.env" ]; then
     echo "[Deploy] Subiendo .env..."
-    gcloud compute scp $SSH_FLAGS "$LOCAL_DIR/.env" "$VM_NAME:$REMOTE_DIR/.env"
+    gcloud compute scp $SCP_FLAGS "$LOCAL_DIR/.env" "$VM_NAME:$REMOTE_DIR/.env"
     vm_run "sudo chown aurum_bot:root $REMOTE_DIR/.env && sudo chmod 600 $REMOTE_DIR/.env"
 fi
 
