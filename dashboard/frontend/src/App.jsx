@@ -38,7 +38,7 @@ function App() {
 
   return (
     <Router>
-      {isAuthenticated && <MacroBar />}
+      {isAuthenticated && <div className="macro-bar-wrapper"><MacroBar /></div>}
       <Routes>
         <Route
           path="/login"
