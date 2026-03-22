@@ -32,19 +32,29 @@ GEMINI_MODEL_PRO  = "gemini-flash-latest"        # Modelo estándar para alertas
 _MAX_CALLS_PER_DAY = int(os.getenv("NLP_MAX_CALLS_DAY", "1500"))  # D5 V14: límite diario de API
 
 
+_GEMINI_TIMEOUT_S = int(os.getenv("NLP_GEMINI_TIMEOUT", "30"))  # segundos máximos esperando Gemini
+
+
 def _llamar_gemini_api(prompt: str, model: str = GEMINI_MODEL_LITE) -> str:
     """
-    Llama a Gemini usando el SDK google.genai.
-    Retorna el texto de la respuesta o string vacio si falla.
+    Llama a Gemini usando el SDK google.genai con timeout de 30s.
+    Retorna el texto de la respuesta o string vacio si falla/timeout.
     """
-    try:
+    import concurrent.futures
+
+    def _call():
         from google import genai
         client = genai.Client(api_key=GEMINI_API_KEY)
-        respuesta = client.models.generate_content(
-            model=model,
-            contents=prompt
-        )
+        respuesta = client.models.generate_content(model=model, contents=prompt)
         return respuesta.text.strip()
+
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+            future = ex.submit(_call)
+            return future.result(timeout=_GEMINI_TIMEOUT_S)
+    except concurrent.futures.TimeoutError:
+        print(f"[NLP] TIMEOUT en API Gemini ({model}) tras {_GEMINI_TIMEOUT_S}s. Abortando llamada.")
+        return ""
     except Exception as e:
         print(f"[NLP] ERROR en API Gemini ({model}): {e}")
         return ""
