@@ -315,7 +315,7 @@ class DBConnector:
         "US30":  "DJIUSD",  "US500": "SPXUSD",  "USTEC": "NDXUSD",
         "GER40": "GEREUR",
         "XTIUSD": "XTIUSD_i", "XAUUSD": "XAUUSD_i",
-        "XAGUSD": "XAGUSD_i", "XBRUSD": "XBRUSD_i",
+        "XAGUSD": "XAGUSD_i", "XBRUSD": "XBRUSD_i", "XPTUSD": "XPTUSD_i",
     }
 
     def obtener_impactos_por_activo(self, id_activo: int) -> list:
