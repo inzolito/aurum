@@ -1311,7 +1311,10 @@ if os.path.exists(_dist):
 
     @app.get("/{full_path:path}")
     async def spa_handler(full_path: str):
-        return FileResponse(os.path.join(_dist, "index.html"))
+        return FileResponse(
+            os.path.join(_dist, "index.html"),
+            headers={"Cache-Control": "no-store"}
+        )
 else:
     print("[PRISM] Frontend no compilado. Corre: cd dashboard/frontend && npm run build")
 

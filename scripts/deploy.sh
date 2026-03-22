@@ -83,7 +83,7 @@ fi
 
 if [[ "$1" != "--no-restart" ]]; then
     echo "[Deploy] Reiniciando servicios..."
-    vm_run "sudo systemctl restart aurum-core aurum-hunter aurum-telegram && sleep 2 && sudo systemctl status aurum-core aurum-hunter aurum-telegram --no-pager"
+    vm_run "sudo systemctl restart aurum-core aurum-hunter aurum-telegram aurum-dashboard && sleep 2 && sudo systemctl status aurum-core aurum-hunter aurum-telegram aurum-dashboard --no-pager"
 fi
 
 echo ""
