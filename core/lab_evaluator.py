@@ -362,7 +362,7 @@ class LabEvaluator:
 
             if resultado and precio_salida:
                 pnl, roe = self._calcular_pnl(
-                    op["tipo_orden"], precio_entrada, precio_salida, lotes, capital_usado, sl=sl
+                    op["tipo_orden"], precio_entrada, precio_salida, lotes, capital_usado, sl=sl, tp=tp
                 )
                 self.db.cerrar_lab_operacion(
                     op_id=op["id"],
@@ -376,7 +376,7 @@ class LabEvaluator:
                 # Posición abierta — actualizar P&L flotante con precio actual
                 precio_mid = (bid + ask) / 2.0
                 pnl_float, roe_float = self._calcular_pnl(
-                    op["tipo_orden"], precio_entrada, precio_mid, lotes, capital_usado, sl=sl
+                    op["tipo_orden"], precio_entrada, precio_mid, lotes, capital_usado, sl=sl, tp=tp
                 )
                 self.db.actualizar_pnl_flotante_lab(op["id"], pnl_float, roe_float)
 
@@ -385,12 +385,14 @@ class LabEvaluator:
     # ------------------------------------------------------------------
 
     def _calcular_pnl(self, tipo: str, precio_entrada: float, precio_salida: float,
-                      lotes: float, capital_usado: float, sl: float = None) -> tuple:
+                      lotes: float, capital_usado: float, sl: float = None, tp: float = None) -> tuple:
         """
         Calcula PnL proporcional al capital en riesgo real.
-        Si se pasa sl: PnL = (diff / sl_distancia) * capital_usado.
-          → SL tocado = -capital_usado, TP tocado = +capital_usado * ratio_tp.
-        Fallback sin sl: porcentaje del precio (comportamiento anterior).
+        - sl_dist > 0: PnL = (diff / sl_dist) * capital_usado
+            → SL tocado = -capital_usado. TP tocado = +capital_usado * ratio_tp.
+        - sl_dist = 0 (breakeven) y tp disponible: PnL = (diff / tp_dist) * capital_usado
+            → Muestra progreso hacia el TP como fracción del capital.
+        - Fallback: porcentaje del precio.
         """
         if tipo == "BUY":
             diff = precio_salida - precio_entrada
@@ -403,6 +405,13 @@ class LabEvaluator:
                 pnl = round((diff / sl_dist) * capital_usado, 2)
                 roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
                 return pnl, roe
+            # sl_dist = 0 → breakeven: usar TP como referencia de escala
+            if tp is not None:
+                tp_dist = abs(tp - precio_entrada)
+                if tp_dist > 0:
+                    pnl = round((diff / tp_dist) * capital_usado, 2)
+                    roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
+                    return pnl, roe
 
         # Fallback: porcentaje del precio (sin SL disponible)
         notional = lotes * 1000.0
