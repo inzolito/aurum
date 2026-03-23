@@ -265,9 +265,9 @@ class DBConnector:
         fallback_list = [
             {"id": 1, "simbolo": "XAUUSD", "nombre": "Oro", "categoria": "COMMODITIES", "simbolo_broker": "XAUUSD_i"},
             {"id": 2, "simbolo": "XAGUSD", "nombre": "Plata", "categoria": "COMMODITIES", "simbolo_broker": "XAGUSD_i"},
-            {"id": 3, "simbolo": "US30", "nombre": "Dow Jones", "categoria": "INDICES", "simbolo_broker": "US30_i"},
-            {"id": 4, "simbolo": "US500", "nombre": "S&P 500", "categoria": "INDICES", "simbolo_broker": "US500_i"},
-            {"id": 5, "simbolo": "USTEC", "nombre": "Nasdaq 100", "categoria": "INDICES", "simbolo_broker": "USTEC_i"},
+            {"id": 3, "simbolo": "US30", "nombre": "Dow Jones", "categoria": "INDICES", "simbolo_broker": "DJIUSD"},
+            {"id": 4, "simbolo": "US500", "nombre": "S&P 500", "categoria": "INDICES", "simbolo_broker": "SPXUSD"},
+            {"id": 5, "simbolo": "USTEC", "nombre": "Nasdaq 100", "categoria": "INDICES", "simbolo_broker": "NDXUSD"},
             {"id": 6, "simbolo": "EURUSD", "nombre": "Euro/Dolar", "categoria": "FOREX", "simbolo_broker": "EURUSD_i"},
             {"id": 7, "simbolo": "GBPUSD", "nombre": "Libra/Dolar", "categoria": "FOREX", "simbolo_broker": "GBPUSD_i"},
             {"id": 8, "simbolo": "USDJPY", "nombre": "Dolar/Yen", "categoria": "FOREX", "simbolo_broker": "USDJPY_i"},
@@ -314,7 +314,7 @@ class DBConnector:
         "EURUSD": "EURUSD_i", "GBPUSD": "GBPUSD_i", "USDJPY": "USDJPY_i",
         "GBPJPY": "GBPJPY_i", "USDCAD": "USDCAD_i",
         "US30":  "DJIUSD",  "US500": "SPXUSD",  "USTEC": "NDXUSD",
-        "GER40": "GEREUR",
+        "GER40": "GEREUR", "UK100": "FTSGBP", "JP225": "JPXJPY",
         "XTIUSD": "XTIUSD_i", "XAUUSD": "XAUUSD_i",
         "XAGUSD": "XAGUSD_i", "XBRUSD": "XBRUSD_i", "XPTUSD": "XPTUSD_i",
     }
