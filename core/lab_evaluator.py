@@ -325,18 +325,22 @@ class LabEvaluator:
             lotes = float(op["volumen_lotes"] or 1.0)
             capital_usado = float(op["capital_usado"] or 1000.0)
 
-            # ── Breakeven: igual que producción — si el precio recorrió 50%
-            # del camino al TP, mover SL a precio de entrada
+            # ── Breakeven: mover SL a entrada cuando ganancia >= 50% del capital en riesgo
             sl_en_be = (op["tipo_orden"] == "BUY" and sl >= precio_entrada) or \
                        (op["tipo_orden"] == "SELL" and sl <= precio_entrada and sl != 0)
             if not sl_en_be:
-                distancia_tp = abs(tp - precio_entrada)
-                if distancia_tp > 0:
-                    progreso = abs(precio_actual - precio_entrada) / distancia_tp
-                    if progreso >= 0.50:
+                sl_dist = abs(precio_entrada - sl)
+                if sl_dist > 0:
+                    if op["tipo_orden"] == "BUY":
+                        diff_actual = precio_actual - precio_entrada
+                    else:
+                        diff_actual = precio_entrada - precio_actual
+                    pnl_flotante = (diff_actual / sl_dist) * capital_usado
+                    roe_flotante = pnl_flotante / capital_usado if capital_usado else 0
+                    if roe_flotante >= 0.50:  # ganancia >= 50% del capital en riesgo
                         self.db.actualizar_sl_lab(op["id"], precio_entrada)
-                        sl = precio_entrada  # usar el SL actualizado en la verificación de cierre
-                        print(f"[LAB] Breakeven: Lab {op['lab_id']} | {simbolo} | SL movido a {precio_entrada:.4f} (progreso {progreso*100:.1f}%)")
+                        sl = precio_entrada
+                        print(f"[LAB] Breakeven: Lab {op['lab_id']} | {simbolo} | SL movido a {precio_entrada:.4f} (ROE flotante {roe_flotante*100:.1f}%)")
 
             resultado = None
             precio_salida = None
