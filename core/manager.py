@@ -472,8 +472,7 @@ class Manager:
         # 8. Ejecutar o simular
         if modo_simulacion:
             print(f"\n[GERENTE] Simulando ejecucion de {direccion} con {lotes} lotes")
-            
-            # Obtener balance actual para la notificación
+
             import MetaTrader5 as mt5_api
             acc_info = mt5_api.account_info()
             balance = acc_info.balance if acc_info else 0.0
