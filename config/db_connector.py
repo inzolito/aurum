@@ -371,18 +371,36 @@ class DBConnector:
 
     @survival_shield
     def get_global_regimenes(self) -> list:
-        """Atomic fetch of global market regimes."""
+        """Atomic fetch of global market regimes.
+        Combina regimenes_mercado (legado) y regimenes_macro (MacroSensor V18).
+        """
         with self._lock:
-            self.cursor.execute(
-                """
-                SELECT titulo, clasificacion, estado
-                FROM regimenes_mercado
-                WHERE estado IN ('ACTIVO', 'FORMANDOSE')
-                ORDER BY id;
-                """
-            )
-            cols = ["titulo", "clasificacion", "estado"]
-            return [dict(zip(cols, row)) for row in self.cursor.fetchall()]
+            rows = []
+            # Tabla legado
+            try:
+                self.cursor.execute(
+                    "SELECT titulo, clasificacion, estado FROM regimenes_mercado "
+                    "WHERE estado IN ('ACTIVO', 'FORMANDOSE') ORDER BY id"
+                )
+                cols = ["titulo", "clasificacion", "estado"]
+                rows += [dict(zip(cols, r)) for r in self.cursor.fetchall()]
+            except Exception:
+                pass
+            # MacroSensor V18 — los regímenes reales
+            try:
+                self.cursor.execute(
+                    "SELECT nombre, tipo, fase, direccion, peso FROM regimenes_macro "
+                    "WHERE activo = TRUE ORDER BY peso DESC"
+                )
+                for r in self.cursor.fetchall():
+                    rows.append({
+                        "titulo": f"{r[0]} [{r[3]}, peso={r[4]}]",
+                        "clasificacion": r[1],
+                        "estado": r[2],
+                    })
+            except Exception:
+                pass
+            return rows
 
 
     # ------------------------------------------------------------------

@@ -318,12 +318,22 @@ class NewsHunter:
         else:
             lista_regimenes = "  (ninguno activo actualmente)"
 
+        # Obtener lista completa de activos operativos para que Gemini evalúe TODOS
+        try:
+            activos_db = self.db.get_activos()
+            activos_lab = self.db.get_activos_lab_only()
+            todos_activos = [a["simbolo"] for a in activos_db + activos_lab]
+        except Exception:
+            todos_activos = []
+        lista_activos_str = ", ".join(todos_activos) if todos_activos else "(sin activos)"
+
         prompt = (
             f"Eres el MacroSensor del sistema de trading Aurum. Analiza si este titular "
             f"crea, modifica o disipa un régimen macro de mercado.\n\n"
             f"TITULAR: {titulo}\n"
             f"IMPACTO EVALUADO: {impacto}/10\n\n"
             f"REGÍMENES MACRO ACTIVOS AHORA:\n{lista_regimenes}\n\n"
+            f"ACTIVOS EN OPERACIÓN (debes evaluar TODOS):\n{lista_activos_str}\n\n"
             f"INSTRUCCIONES:\n"
             f"- Solo crear régimen si impacto >= 6 (ya verificado).\n"
             f"- Nunca duplicar conceptos — si ya existe uno similar, ACTUALIZAR ese ID.\n"
@@ -334,8 +344,10 @@ class NewsHunter:
             f"- Fases válidas: RUMOR, ACTIVO, DATOS, POST_CLIMAX.\n"
             f"- Direcciones válidas: RISK_ON, RISK_OFF, VOLATIL.\n"
             f"- peso: float entre 0.1 y 1.0 (intensidad del régimen).\n"
-            f"- activos_afectados: JSON string. Ejemplo: "
-            f'[{{"simbolo":"XAUUSD","dir":"UP"}},{{"simbolo":"USTEC","dir":"DOWN"}}]\n'
+            f"- activos_afectados: JSON con TODOS los activos de la lista anterior. "
+            f'Ejemplo: [{{"simbolo":"XAUUSD","dir":"UP"}},{{"simbolo":"AUDCAD","dir":"DOWN"}}]\n'
+            f"  Reglas de dirección: RISK_OFF→AUD/EUR/GBP/cripto=DOWN, JPY/XAU/XAG=UP, USD pares mixto según lado.\n"
+            f"  RISK_ON→lo opuesto. Incluir TODOS los activos aunque el impacto sea neutral (dir=NEUTRAL).\n"
             f"- expira_horas: número entero de horas hasta que expira (null si indefinido).\n"
             f"- nombre: conciso y único como concepto (ej: 'FOMC Marzo 2026').\n\n"
             f"Responde SOLO en JSON (sin markdown):\n"
