@@ -172,7 +172,8 @@ class NLPWorker:
             return voto_cache
 
         # Caché inválido o refresco forzado: llamar a Gemini para TODOS los activos
-        activos_db = self.db.obtener_activos_patrullaje()
+        # V18.1: Incluir activos lab-only (FTSGBP, JPXJPY, GER40...) además de producción
+        activos_db = self.db.get_activos_para_evaluar()
         resultados = self._llamar_gemini(regimenes, activos_db, technical_verdict, velas_recientes)
 
         if resultados:
@@ -207,6 +208,8 @@ class NLPWorker:
         Llama a Gemini con un prompt multi-activo (Dual: Clasificación + Correlación).
         """
         simbolos = [a["simbolo"] for a in activos]
+        # Mapa simbolo -> nombre legible para que Gemini entienda activos de broker (FTSGBP, JPXJPY...)
+        nombres_legibles = {a["simbolo"]: a.get("nombre", a["simbolo"]) for a in activos}
         fallback  = {}  # Vacío para que NO se guarde en caché (evita propagar 0.0 por fallo API)
 
         # D5 V14: Control de límite diario de llamadas API
@@ -245,8 +248,12 @@ class NLPWorker:
                 v_lines.append(f"Vela: O:{v['apertura']} H:{v['maximo']} L:{v['minimo']} C:{v['cierre']}")
             velas_str = "\n".join(v_lines)
 
-        activos_str  = ", ".join(simbolos)
-        
+        # Lista "SIMBOLO (Nombre)" para que Gemini entienda activos con nombres de broker
+        activos_str = ", ".join(
+            f"{s} ({nombres_legibles[s]})" if nombres_legibles.get(s) != s else s
+            for s in simbolos
+        )
+
         prompt = (
             "Eres un Analista Macro Senior con memoria de largo plazo (V13.0).\n\n"
             "🧠 MEMORIA DE LARGO PLAZO (Catalizadores Activos):\n"
