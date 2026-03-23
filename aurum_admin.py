@@ -375,9 +375,11 @@ def estado_activos(db: DBConnector):
     t.add_column("Estado",  justify="center", width=16)
 
     colores = {
-        "ACTIVO":       "green",
-        "PAUSADO":      "yellow",
-        "SOLO_CIERRAR": "red",
+        "ACTIVO":        "green",
+        "LABORATORIO":   "magenta",
+        "INACTIVO":      "dim",
+        "SOLO_LECTURA":  "cyan",
+        "SOLO_CIERRAR":  "red",
     }
     for row in activos:
         id_, simbolo, nombre, estado = row
@@ -398,7 +400,7 @@ def estado_activos(db: DBConnector):
 
     nuevo_estado = Prompt.ask(
         "Nuevo estado",
-        choices=["ACTIVO", "PAUSADO", "SOLO_CIERRAR"],
+        choices=["ACTIVO", "LABORATORIO", "INACTIVO", "SOLO_LECTURA", "SOLO_CIERRAR"],
         default="ACTIVO"
     )
     try:

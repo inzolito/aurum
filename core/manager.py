@@ -840,7 +840,8 @@ class Manager:
                 try:
                     self.db.cursor.execute("""
                         UPDATE registro_operaciones
-                        SET resultado_final = %s, divergencia_precision = %s, pnl_usd = %s
+                        SET resultado_final = %s, divergencia_precision = %s, pnl_usd = %s,
+                            estado = 'CERRADA'
                         WHERE ticket_mt5 = %s
                     """, (resultado, divergencia, ganancia, ticket))
                     self.db.conn.commit()

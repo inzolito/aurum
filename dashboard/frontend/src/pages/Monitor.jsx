@@ -164,9 +164,10 @@ const Monitor = ({ setAuth, botVersion }) => {
     const todosLong     = votos_workers?.length > 3 && votos_workers.every(w => w.trend > 0.3);
 
     // Clasificación de activos no-ACTIVO
-    const activosLab     = (activos_estado || []).filter(a => a.labs);
-    const activosPausados = (activos_estado || []).filter(a => !a.labs && a.estado === 'PAUSADO');
-    const activosError   = (activos_estado || []).filter(a => !a.labs && a.estado !== 'PAUSADO');
+    const activosLab        = (activos_estado || []).filter(a => a.estado === 'LABORATORIO');
+    const activosInactivo   = (activos_estado || []).filter(a => a.estado === 'INACTIVO');
+    const activosSoloLectura = (activos_estado || []).filter(a => a.estado === 'SOLO_LECTURA');
+    const activosError      = (activos_estado || []).filter(a => !['LABORATORIO','INACTIVO','SOLO_LECTURA'].includes(a.estado));
 
     return (
         <div className="dashboard-layout">
@@ -332,17 +333,33 @@ const Monitor = ({ setAuth, botVersion }) => {
                                 </>
                             )}
 
-                            {/* Pausados sin lab */}
-                            {activosPausados.length > 0 && (
+                            {/* Inactivos */}
+                            {activosInactivo.length > 0 && (
                                 <>
-                                    <div style={{ fontSize: 10, color: '#f59e0b', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <PauseCircle size={11} /> Pausados
+                                    <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <PauseCircle size={11} /> Inactivos
                                     </div>
-                                    {activosPausados.map(a => (
+                                    {activosInactivo.map(a => (
                                         <div key={a.simbolo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-primary)' }}>
-                                            <Dot status="warn" size={8} />
+                                            <Dot status="info" size={8} />
                                             <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, flex: 1 }}>{a.simbolo}</span>
-                                            <Badge status="warn">Pausado</Badge>
+                                            <Badge status="info">Inactivo</Badge>
+                                        </div>
+                                    ))}
+                                </>
+                            )}
+
+                            {/* Solo lectura */}
+                            {activosSoloLectura.length > 0 && (
+                                <>
+                                    <div style={{ fontSize: 10, color: '#3b82f6', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <Activity size={11} /> Solo lectura
+                                    </div>
+                                    {activosSoloLectura.map(a => (
+                                        <div key={a.simbolo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-primary)' }}>
+                                            <Dot status="info" size={8} />
+                                            <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, flex: 1 }}>{a.simbolo}</span>
+                                            <Badge status="info">Solo lectura</Badge>
                                         </div>
                                     ))}
                                 </>

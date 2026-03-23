@@ -239,8 +239,9 @@ class DBConnector:
         """
         cols = ["id", "simbolo", "nombre", "categoria", "simbolo_broker"]
         # El filtrado de activos se controla exclusivamente via estado_operativo en la BD.
-        # Para pausar un activo: UPDATE activos SET estado_operativo = 'PAUSADO' WHERE simbolo = 'XAUUSD';
-        # Para reactivarlo:      UPDATE activos SET estado_operativo = 'ACTIVO'  WHERE simbolo = 'XAUUSD';
+        # Para mover a lab:    UPDATE activos SET estado_operativo = 'LABORATORIO' WHERE simbolo = 'XAUUSD';
+        # Para desactivar:     UPDATE activos SET estado_operativo = 'INACTIVO'   WHERE simbolo = 'XAUUSD';
+        # Para reactivar:      UPDATE activos SET estado_operativo = 'ACTIVO'     WHERE simbolo = 'XAUUSD';
 
         with self._lock:
             try:

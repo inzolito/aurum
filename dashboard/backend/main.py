@@ -743,7 +743,7 @@ async def update_activo(simbolo: str, body: ActivoUpdate, token: str = Depends(o
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    estados_validos = ("ACTIVO", "PAUSADO", "INACTIVO", "SOLO_LECTURA")
+    estados_validos = ("ACTIVO", "LABORATORIO", "INACTIVO", "SOLO_LECTURA")
     if body.estado not in estados_validos:
         raise HTTPException(status_code=422, detail=f"Estado inválido. Opciones: {estados_validos}")
     with db._lock:
@@ -1306,7 +1306,7 @@ async def update_lab_estado(lab_id: int, body: LabEstadoUpdate,
     payload = decode_access_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Token inválido o expirado")
-    estados_validos = ("ACTIVO", "PAUSADO", "GRADUADO")
+    estados_validos = ("ACTIVO", "INACTIVO", "GRADUADO")
     if body.estado not in estados_validos:
         raise HTTPException(status_code=422, detail=f"Estado inválido. Opciones: {estados_validos}")
     with db._lock:
