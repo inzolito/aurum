@@ -201,6 +201,8 @@ const Config = ({ setAuth, botVersion }) => {
     const [activos, setActivos] = useState([]);
     const [togglingActivo, setTogglingActivo] = useState({});
     const [modalActivo, setModalActivo] = useState(null);
+    const [deploying, setDeploying] = useState(false);
+    const [deployResult, setDeployResult] = useState(null);
 
     const token = localStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
@@ -442,9 +444,50 @@ const Config = ({ setAuth, botVersion }) => {
                     </div>
                 </section>
 
-                <p style={{ color: 'var(--text-secondary)', fontSize: 11, padding: '0 0 20px', textAlign: 'center' }}>
+                <p style={{ color: 'var(--text-secondary)', fontSize: 11, padding: '0 0 12px', textAlign: 'center' }}>
                     Los cambios se aplican en el próximo ciclo del bot (máx. 5 min por caché).
                 </p>
+
+                {/* Deploy */}
+                <section className="section" style={{ marginBottom: 24 }}>
+                    <h2 className="section-title">Actualizar servidor</h2>
+                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
+                        Ejecuta <code>git pull</code> en el servidor y reinicia los servicios con el código más reciente.
+                    </p>
+                    <button
+                        onClick={async () => {
+                            setDeploying(true);
+                            setDeployResult(null);
+                            try {
+                                const res = await axios.post('/api/control/deploy', {}, { headers });
+                                setDeployResult({ ok: res.data.returncode === 0, msg: res.data.output });
+                            } catch (e) {
+                                setDeployResult({ ok: false, msg: e.response?.data?.detail || e.message });
+                            } finally {
+                                setDeploying(false);
+                            }
+                        }}
+                        disabled={deploying}
+                        style={{
+                            background: deploying ? 'var(--bg-primary)' : 'var(--accent-primary)',
+                            color: deploying ? 'var(--text-secondary)' : '#fff',
+                            border: 'none', borderRadius: 7, padding: '8px 20px',
+                            fontWeight: 700, fontSize: 13, cursor: deploying ? 'not-allowed' : 'pointer',
+                        }}
+                    >
+                        {deploying ? 'Desplegando...' : 'Deploy'}
+                    </button>
+                    {deployResult && (
+                        <pre style={{
+                            marginTop: 12, padding: 12, borderRadius: 6, fontSize: 11,
+                            background: deployResult.ok ? '#14532d33' : '#7f1d1d33',
+                            color: deployResult.ok ? '#4ade80' : '#f87171',
+                            whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflowY: 'auto',
+                        }}>
+                            {deployResult.msg}
+                        </pre>
+                    )}
+                </section>
 
                 {/* Modal rendimiento */}
                 {modalActivo && (
