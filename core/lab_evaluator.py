@@ -358,7 +358,7 @@ class LabEvaluator:
 
             if resultado and precio_salida:
                 pnl, roe = self._calcular_pnl(
-                    op["tipo_orden"], precio_entrada, precio_salida, lotes, capital_usado
+                    op["tipo_orden"], precio_entrada, precio_salida, lotes, capital_usado, sl=sl
                 )
                 self.db.cerrar_lab_operacion(
                     op_id=op["id"],
@@ -372,7 +372,7 @@ class LabEvaluator:
                 # Posición abierta — actualizar P&L flotante con precio actual
                 precio_mid = (bid + ask) / 2.0
                 pnl_float, roe_float = self._calcular_pnl(
-                    op["tipo_orden"], precio_entrada, precio_mid, lotes, capital_usado
+                    op["tipo_orden"], precio_entrada, precio_mid, lotes, capital_usado, sl=sl
                 )
                 self.db.actualizar_pnl_flotante_lab(op["id"], pnl_float, roe_float)
 
@@ -381,17 +381,29 @@ class LabEvaluator:
     # ------------------------------------------------------------------
 
     def _calcular_pnl(self, tipo: str, precio_entrada: float, precio_salida: float,
-                      lotes: float, capital_usado: float) -> tuple:
+                      lotes: float, capital_usado: float, sl: float = None) -> tuple:
         """
-        Calcula PnL y ROE de forma consistente con cómo se calculan los lotes.
-        Lotes = capital_riesgo / 1000 → 1 lote = $1000 de nocional.
-        PnL = retorno_pct * notional = (diff/entrada) * (lotes * 1000).
+        Calcula PnL proporcional al capital en riesgo real.
+        Si se pasa sl: PnL = (diff / sl_distancia) * capital_usado.
+          → SL tocado = -capital_usado, TP tocado = +capital_usado * ratio_tp.
+        Fallback sin sl: porcentaje del precio (comportamiento anterior).
         """
-        diff = precio_salida - precio_entrada
-        if tipo == "SELL":
-            diff = -diff
+        if tipo == "BUY":
+            diff = precio_salida - precio_entrada
+        else:
+            diff = precio_entrada - precio_salida  # positivo = ganancia para SELL
+
+        if sl is not None and precio_entrada > 0:
+            sl_dist = abs(precio_entrada - sl)
+            if sl_dist > 0:
+                pnl = round((diff / sl_dist) * capital_usado, 2)
+                roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
+                return pnl, roe
+
+        # Fallback: porcentaje del precio (sin SL disponible)
         notional = lotes * 1000.0
-        pnl = round((diff / precio_entrada) * notional, 2) if precio_entrada else 0.0
+        pnl_diff = precio_salida - precio_entrada if tipo == "BUY" else precio_entrada - precio_salida
+        pnl = round((pnl_diff / precio_entrada) * notional, 2) if precio_entrada else 0.0
         roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
         return pnl, roe
 
