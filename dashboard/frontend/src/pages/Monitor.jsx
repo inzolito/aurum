@@ -67,18 +67,25 @@ const Card = ({ title, icon, children, alerta, style = {} }) => (
 );
 
 const FilaProceso = ({ nombre, data }) => {
-    const vivo = data?.vivo;
+    const vivo   = data?.vivo;
     const uptime = data?.uptime_s || 0;
-    const horas = Math.floor(uptime / 3600);
-    const mins  = Math.floor((uptime % 3600) / 60);
+    const horas  = Math.floor(uptime / 3600);
+    const mins   = Math.floor((uptime % 3600) / 60);
     const uptimeStr = uptime > 0 ? (horas > 0 ? `${horas}h ${mins}m` : `${mins}m`) : '—';
+    // Estado systemd (activating, failed, inactive, etc.)
+    const svcEstado = data?.estado_svc || '';
+    const isActivating = svcEstado.includes('activating');
+    const isFailed     = svcEstado.includes('failed');
+    const dotStatus    = vivo ? 'ok' : isActivating ? 'warn' : 'fail';
     return (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 0', borderBottom: '1px solid var(--border-color)' }}>
-            <Dot status={vivo ? 'ok' : 'fail'} />
+            <Dot status={dotStatus} />
             <span style={{ flex: 1, fontSize: 12, fontFamily: 'monospace' }}>{nombre}</span>
             {vivo
                 ? <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>PID {data.pid} · {uptimeStr}</span>
-                : <Badge status="fail">Caído</Badge>
+                : <Badge status={isActivating ? 'warn' : 'fail'}>
+                    {isActivating ? 'Iniciando' : isFailed ? 'Failed' : svcEstado || 'Caído'}
+                  </Badge>
             }
         </div>
     );

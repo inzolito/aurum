@@ -891,28 +891,57 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
         ],
     }
 
-    # ── 2. Procesos ───────────────────────────────────────────────────────────
-    _scripts = {"core": "main.py", "shield": "heartbeat.py", "hunter": "news_hunter.py", "telegram": "telegram_daemon.py"}
-    procesos = {k: {"pid": None, "vivo": False, "uptime_s": 0} for k in _scripts}
-    for proc in psutil.process_iter(['pid', 'name', 'cmdline', 'create_time']):
+    # ── 2. Procesos — via systemctl (fuente de verdad, no psutil) ────────────
+    _servicios = {
+        "core":     "aurum-core",
+        "shield":   "aurum-shield",
+        "hunter":   "aurum-hunter",
+        "telegram": "aurum-telegram",
+    }
+
+    def _systemctl_info(svc):
         try:
-            cmd = " ".join(proc.info.get('cmdline') or [])
-            if "python" not in proc.info.get('name', '').lower():
-                continue
-            for key, script in _scripts.items():
-                if script in cmd and "dashboard" not in cmd:
-                    if not procesos[key]["vivo"]:
-                        procesos[key] = {"pid": proc.info['pid'], "vivo": True, "uptime_s": int(_time.time() - proc.info['create_time'])}
-        except (psutil.NoSuchProcess, psutil.AccessDenied):
-            continue
+            p = subprocess.run(
+                ["systemctl", "show", svc,
+                 "--property=ActiveState,SubState,MainPID,ExecMainStartTimestamp,NRestarts"],
+                capture_output=True, text=True, timeout=5
+            )
+            info = {}
+            for line in p.stdout.strip().splitlines():
+                if '=' in line:
+                    k, v = line.split('=', 1)
+                    info[k] = v
+            active = info.get('ActiveState', 'unknown')
+            sub    = info.get('SubState', '')
+            pid    = int(info.get('MainPID', 0)) or None
+            ts     = info.get('ExecMainStartTimestamp', '')
+            uptime_s = 0
+            if ts and ts not in ('', 'n/a'):
+                try:
+                    # Formato: "Sun 2026-03-22 23:52:37 UTC"
+                    from datetime import datetime as _dt
+                    partes = ts.split()
+                    dt_str = f"{partes[1]} {partes[2]}"
+                    start  = _dt.strptime(dt_str, "%Y-%m-%d %H:%M:%S")
+                    uptime_s = max(0, int((_dt.utcnow() - start).total_seconds()))
+                except Exception:
+                    pass
+            nreinicios = int(info.get('NRestarts', 0))
+            return {
+                "vivo":      active == "active" and sub == "running",
+                "estado_svc": f"{active}/{sub}",
+                "pid":       pid,
+                "uptime_s":  uptime_s,
+                "reinicios": nreinicios,
+            }
+        except Exception:
+            return {"vivo": False, "estado_svc": "error", "pid": None, "uptime_s": 0, "reinicios": 0}
+
+    procesos = {k: _systemctl_info(svc) for k, svc in _servicios.items()}
     result["procesos"] = procesos
 
     # ── 3. Reinicios del servicio aurum-core ──────────────────────────────────
-    try:
-        p = subprocess.run(["systemctl", "show", "aurum-core", "--property=NRestarts"], capture_output=True, text=True, timeout=5)
-        result["reinicios"] = int(p.stdout.strip().split("=")[-1])
-    except Exception:
-        result["reinicios"] = -1
+    result["reinicios"] = procesos.get("core", {}).get("reinicios", -1)
 
     # ── 4. Estado bot (heartbeat + balance) ───────────────────────────────────
     with db._lock:
