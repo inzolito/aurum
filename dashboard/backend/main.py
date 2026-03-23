@@ -933,16 +933,19 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
     else:
         result["bot"] = None
 
-    # ── 5. Últimas 25 señales ─────────────────────────────────────────────────
+    # ── 5. Últimas 25 señales (V17.01+) ──────────────────────────────────────
+    min_ver = _version_min_id(db.cursor)
     with db._lock:
         try:
             db.cursor.execute("""
                 SELECT rs.tiempo, a.simbolo, rs.decision_gerente, rs.voto_final_ponderado,
-                       rs.motivo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper
+                       rs.motivo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper,
+                       rs.voto_hurst, rs.voto_macro
                 FROM registro_senales rs
                 JOIN activos a ON a.id = rs.activo_id
+                WHERE rs.version_id >= %s
                 ORDER BY rs.tiempo DESC LIMIT 25
-            """)
+            """, (min_ver,))
             rows = db.cursor.fetchall()
         except Exception:
             db.conn.rollback()
@@ -950,7 +953,8 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
     result["senales"] = [{"tiempo": r[0].isoformat(), "simbolo": r[1], "decision": r[2],
                            "veredicto": round(float(r[3] or 0), 3), "motivo": r[4],
                            "trend": round(float(r[5] or 0), 2), "nlp": round(float(r[6] or 0), 2),
-                           "sniper": round(float(r[7] or 0), 2)} for r in rows]
+                           "sniper": round(float(r[7] or 0), 2),
+                           "hurst": round(float(r[8] or 0), 2), "macro": round(float(r[9] or 0), 2)} for r in rows]
 
     # ── 6. Último voto por activo activo + umbral ─────────────────────────────
     with db._lock:
@@ -959,7 +963,7 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
                 SELECT DISTINCT ON (a.simbolo)
                     a.simbolo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper,
                     rs.voto_volume, rs.voto_cross, rs.decision_gerente, rs.tiempo,
-                    rs.voto_final_ponderado
+                    rs.voto_final_ponderado, rs.voto_hurst, rs.voto_macro
                 FROM registro_senales rs
                 JOIN activos a ON a.id = rs.activo_id
                 WHERE a.estado_operativo = 'ACTIVO'
@@ -986,7 +990,8 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
                                   "nlp": round(float(r[2] or 0), 2), "sniper": round(float(r[3] or 0), 2),
                                   "volumen": round(float(r[4] or 0), 2), "cross": round(float(r[5] or 0), 2),
                                   "decision": r[6], "tiempo": r[7].isoformat(),
-                                  "veredicto": round(float(r[8] or 0), 3)} for r in rows]
+                                  "veredicto": round(float(r[8] or 0), 3),
+                                  "hurst": round(float(r[9] or 0), 2), "macro": round(float(r[10] or 0), 2)} for r in rows]
 
     # ── 7. Rendimiento hoy (hora Chile) ───────────────────────────────────────
     with db._lock:
@@ -1009,15 +1014,26 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
             db.conn.rollback()
             result["hoy"] = {"total": 0, "ganados": 0, "perdidos": 0, "pnl": 0.0, "abiertas": 0}
 
-    # ── 8. Activos con problemas ───────────────────────────────────────────────
+    # ── 8. Estado activos no-ACTIVO (labs voluntarios + pausados reales) ────────
     with db._lock:
         try:
-            db.cursor.execute("SELECT simbolo, estado_operativo FROM activos WHERE estado_operativo NOT IN ('ACTIVO') ORDER BY simbolo")
+            db.cursor.execute("""
+                SELECT a.simbolo, a.estado_operativo,
+                       STRING_AGG(DISTINCT l.nombre, ', ') AS labs
+                FROM activos a
+                LEFT JOIN lab_activos la ON la.activo_id = a.id AND la.estado = 'ACTIVO'
+                LEFT JOIN laboratorios l ON l.id = la.lab_id
+                WHERE a.estado_operativo != 'ACTIVO'
+                GROUP BY a.simbolo, a.estado_operativo
+                ORDER BY a.simbolo
+            """)
             rows = db.cursor.fetchall()
-            result["activos_problema"] = [{"simbolo": r[0], "estado": r[1]} for r in rows]
+            result["activos_estado"] = [{"simbolo": r[0], "estado": r[1], "labs": r[2]} for r in rows]
         except Exception:
             db.conn.rollback()
-            result["activos_problema"] = []
+            result["activos_estado"] = []
+    # Alias de compatibilidad
+    result["activos_problema"] = result["activos_estado"]
 
     return result
 
