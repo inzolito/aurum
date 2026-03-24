@@ -49,10 +49,10 @@ const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
     const fills = [];
     if (profitable) {
         if (pastTp1) {
-            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: 'rgba(16,185,129,0.20)' });
-            fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: 'rgba(16,185,129,0.12)' });
+            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: '#1f6b52' });
+            fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: '#163d2f' });
         } else {
-            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(16,185,129,0.20)' });
+            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: '#1f6b52' });
         }
     } else {
         fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(244,63,94,0.65)' });
@@ -76,7 +76,6 @@ const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
                 {tp1Pct != null && (
                     <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: 2, background: '#10b981', opacity: 0.95 }} />
                 )}
-                <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${entryPct}%`, width: 2, background: '#374151', transform: 'translateX(-50%)', zIndex: 2 }} />
             </div>
             <div style={{ position: 'relative', height: 11 }}>
                 <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
