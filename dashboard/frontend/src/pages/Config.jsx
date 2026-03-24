@@ -8,11 +8,13 @@ const DESCRIPCIONES = {
     'GERENTE.riesgo_trade_pct': '% del balance arriesgado por trade en SL (ej: 1.0 = 1%)',
     'GERENTE.ratio_tp':         'Multiplicador R:R — TP = SL × ratio (ej: 2.0 = 1:2)',
     'GERENTE.sl_atr_mult':      'Distancia del SL en múltiplos de ATR H1 (ej: 1.5)',
-    'GERENTE.max_drawdown_pct': '% del balance como pérdida flotante máxima antes de bloquear nuevas órdenes (ej: 6.7 = $200 en cuenta $3k)',
+    'GERENTE.max_drawdown_pct': '% del balance como pérdida flotante máxima antes de bloquear nuevas órdenes',
     'TENDENCIA.peso_voto':      'Peso del TrendWorker en el veredicto ensemble',
+    'TENDENCIA.ema_rapida':     'Período de la EMA rápida del TrendWorker (ej: 9)',
+    'TENDENCIA.ema_lenta':      'Período de la EMA lenta del TrendWorker (ej: 21)',
     'NLP.peso_voto':            'Peso del NLPWorker (Gemini) en el veredicto ensemble',
-    'ORDER_FLOW.peso_voto':     'Peso del OrderFlowWorker en el veredicto ensemble',
     'SNIPER.peso_voto':         'Peso del StructureWorker (SMC) en el veredicto ensemble',
+    'MACRO.peso_voto':          'Peso del MacroWorker (regímenes macro) en el veredicto',
 };
 
 // Rangos válidos por parámetro: [min, max]
@@ -23,9 +25,11 @@ const RANGOS = {
     'GERENTE.sl_atr_mult':      [0.50, 4.00],
     'GERENTE.max_drawdown_pct': [1.0,  20.0],
     'TENDENCIA.peso_voto':      [0.05, 0.80],
+    'TENDENCIA.ema_rapida':     [3,    50  ],
+    'TENDENCIA.ema_lenta':      [10,   100 ],
     'NLP.peso_voto':            [0.05, 0.80],
-    'ORDER_FLOW.peso_voto':     [0.00, 0.80],
     'SNIPER.peso_voto':         [0.00, 0.80],
+    'MACRO.peso_voto':          [0.00, 0.50],
 };
 
 const validar = (nombre, valor) => {
@@ -38,7 +42,7 @@ const validar = (nombre, valor) => {
     return null;
 };
 
-const GRUPOS_ORDEN = ['GERENTE', 'TENDENCIA', 'NLP', 'ORDER_FLOW', 'SNIPER'];
+const GRUPOS_ORDEN = ['GERENTE', 'TENDENCIA', 'NLP', 'SNIPER'];
 
 // ── Estado chip ───────────────────────────────────────────────────────────────
 const estadoStyle = {
@@ -285,85 +289,83 @@ const Config = ({ setAuth, botVersion }) => {
                 {loading && <p style={{ color: 'var(--text-secondary)', padding: 20 }}>Cargando parámetros...</p>}
                 {error && <p style={{ color: 'var(--danger)', padding: 20 }}>{error}</p>}
 
-                {modulosOrdenados.map(modulo => (
-                    <section className="section" key={modulo}>
-                        <h2 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Settings size={16} /> {modulo}
-                        </h2>
-                        <div className="table-container">
-                            <table className="prism-table">
-                                <thead>
-                                    <tr>
-                                        <th>Parámetro</th>
-                                        <th>Descripción</th>
-                                        <th style={{ width: 140 }}>Valor</th>
-                                        <th style={{ width: 100 }}></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(grupos[modulo] || []).map(p => (
-                                        <tr key={p.nombre}>
-                                            <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--accent-primary)' }}>
-                                                {p.nombre}
-                                            </td>
-                                            <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                                                {DESCRIPCIONES[p.nombre] || p.descripcion || '—'}
-                                            </td>
-                                            <td>
-                                                {(() => {
-                                                    const fb = feedback[p.nombre];
-                                                    const valErr = fb?.type === 'validation';
-                                                    return (
-                                                        <div>
-                                                            <input
-                                                                type="number"
-                                                                step="0.01"
-                                                                value={editValues[p.nombre] ?? p.valor}
-                                                                onChange={e => {
-                                                                    setEditValues(v => ({ ...v, [p.nombre]: e.target.value }));
-                                                                    if (feedback[p.nombre]?.type === 'validation')
-                                                                        setFeedback(f => ({ ...f, [p.nombre]: null }));
-                                                                }}
-                                                                style={{
-                                                                    width: '100%', background: 'var(--bg-primary)',
-                                                                    border: `1px solid ${valErr ? 'var(--danger)' : 'var(--border-color)'}`,
-                                                                    borderRadius: 4, color: 'var(--text-primary)',
-                                                                    padding: '4px 8px', fontSize: 13, fontFamily: 'monospace',
-                                                                }}
-                                                            />
-                                                            {valErr && (
-                                                                <span style={{ fontSize: 10, color: 'var(--danger)' }}>
-                                                                    {fb.msg}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                    );
-                                                })()}
-                                            </td>
-                                            <td style={{ textAlign: 'center' }}>
-                                                {feedback[p.nombre]?.type === 'ok' ? (
-                                                    <CheckCircle size={16} color="var(--success)" />
-                                                ) : feedback[p.nombre]?.type === 'error' ? (
-                                                    <AlertCircle size={16} color="var(--danger)" />
-                                                ) : (
-                                                    <button
-                                                        className="action-btn"
-                                                        onClick={() => handleSave(p.nombre)}
-                                                        disabled={saving[p.nombre]}
-                                                        style={{ padding: '4px 10px', fontSize: 12 }}
-                                                    >
-                                                        <Save size={12} />
-                                                        <span>{saving[p.nombre] ? '...' : 'Guardar'}</span>
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </section>
-                ))}
+                {/* ── Sección Parámetros del Sistema (grid compacto) ─────────── */}
+                <section className="section">
+                    <h2 className="section-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                        <Settings size={16} /> Parámetros del Sistema
+                        <span style={{ fontSize: 10, fontWeight: 400, color: 'var(--text-secondary)', marginLeft: 4 }}>
+                            — los cambios aplican en el próximo ciclo (máx. 5 min)
+                        </span>
+                    </h2>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+                        {modulosOrdenados.map(modulo => (
+                            <div key={modulo}>
+                                {/* Group label */}
+                                <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.5, textTransform: 'uppercase', color: 'var(--text-secondary)', marginBottom: 8, paddingBottom: 4, borderBottom: '1px solid var(--border-color)' }}>
+                                    {modulo}
+                                </div>
+                                {/* Params grid */}
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 8 }}>
+                                    {(grupos[modulo] || []).map(p => {
+                                        const fb = feedback[p.nombre];
+                                        const valErr = fb?.type === 'validation';
+                                        return (
+                                            <div key={p.nombre} style={{
+                                                background: 'var(--bg-primary)', border: `1px solid ${valErr ? 'var(--danger)' : 'var(--border-color)'}`,
+                                                borderRadius: 8, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6,
+                                            }}>
+                                                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+                                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                                        <span style={{ fontFamily: 'monospace', fontSize: 11, color: 'var(--accent-primary)', display: 'block', wordBreak: 'break-all' }}>
+                                                            {p.nombre}
+                                                        </span>
+                                                        <span style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.4, display: 'block', marginTop: 2 }}>
+                                                            {DESCRIPCIONES[p.nombre] || p.descripcion || '—'}
+                                                        </span>
+                                                        {valErr && <span style={{ fontSize: 10, color: 'var(--danger)' }}>{fb.msg}</span>}
+                                                    </div>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                                                    <input
+                                                        type="number" step="0.01"
+                                                        value={editValues[p.nombre] ?? p.valor}
+                                                        onChange={e => {
+                                                            setEditValues(v => ({ ...v, [p.nombre]: e.target.value }));
+                                                            if (feedback[p.nombre]?.type === 'validation')
+                                                                setFeedback(f => ({ ...f, [p.nombre]: null }));
+                                                        }}
+                                                        style={{
+                                                            flex: 1, background: 'var(--bg-secondary)',
+                                                            border: `1px solid ${valErr ? 'var(--danger)' : 'var(--border-color)'}`,
+                                                            borderRadius: 5, color: 'var(--text-primary)',
+                                                            padding: '5px 8px', fontSize: 13, fontFamily: 'monospace',
+                                                        }}
+                                                    />
+                                                    {fb?.type === 'ok'
+                                                        ? <CheckCircle size={18} color="var(--success)" />
+                                                        : fb?.type === 'error'
+                                                        ? <AlertCircle size={18} color="var(--danger)" />
+                                                        : (
+                                                            <button
+                                                                className="action-btn"
+                                                                onClick={() => handleSave(p.nombre)}
+                                                                disabled={saving[p.nombre]}
+                                                                style={{ padding: '5px 10px', fontSize: 12, whiteSpace: 'nowrap' }}
+                                                            >
+                                                                <Save size={12} />
+                                                                <span>{saving[p.nombre] ? '...' : 'Guardar'}</span>
+                                                            </button>
+                                                        )
+                                                    }
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
 
                 {/* ── Sección Activos ─────────────────────────────────── */}
                 <section className="section">
@@ -443,10 +445,6 @@ const Config = ({ setAuth, botVersion }) => {
                         </table>
                     </div>
                 </section>
-
-                <p style={{ color: 'var(--text-secondary)', fontSize: 11, padding: '0 0 12px', textAlign: 'center' }}>
-                    Los cambios se aplican en el próximo ciclo del bot (máx. 5 min por caché).
-                </p>
 
                 {/* Deploy */}
                 <section className="section" style={{ marginBottom: 24 }}>

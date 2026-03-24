@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Activity, Cpu, Server, Zap, TrendingUp, AlertTriangle, CheckCircle, RefreshCw, PauseCircle, FlaskConical } from 'lucide-react';
+import { Activity, Cpu, Server, Zap, TrendingUp, AlertTriangle, CheckCircle, RefreshCw, PauseCircle, FlaskConical, Bell } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import { tiempoRelativo } from '../utils/time';
 
@@ -114,21 +114,65 @@ const CeldaVoto = ({ voto }) => {
 };
 
 // ── Página principal ──────────────────────────────────────────────────────────
+const LOG_COLORS = { ERROR: '#ef4444', WARN: '#f59e0b', WARNING: '#f59e0b', INFO: '#94a3b8', DEBUG: '#64748b' };
+
 const Monitor = ({ setAuth, botVersion }) => {
     const [data, setData]       = useState(null);
     const [loading, setLoading] = useState(true);
     const [lastUpdate, setLastUpdate] = useState('');
+    const [logs, setLogs]       = useState([]);
+    const [notifStatus, setNotifStatus] = useState(null); // 'sending' | 'ok' | 'error'
+    const alertaNotificadaRef   = useRef({});
     const token = localStorage.getItem('token');
+    const headers = { Authorization: `Bearer ${token}` };
 
     const fetchData = async () => {
         try {
-            const res = await axios.get('/api/monitor', { headers: { Authorization: `Bearer ${token}` } });
-            setData(res.data);
+            const [resMonitor, resLogs] = await Promise.all([
+                axios.get('/api/monitor', { headers }),
+                axios.get('/api/control/logs', { headers }),
+            ]);
+            setData(resMonitor.data);
+            setLogs(resLogs.data.logs || []);
             setLastUpdate(new Date().toLocaleTimeString('es-CL'));
+
+            // Auto-notificar alertas críticas (máx 1 vez por tipo por hora)
+            const d = resMonitor.data;
+            const procesos = d?.procesos;
+            const sistema  = d?.sistema;
+            const now = Date.now();
+            const COOLDOWN = 3600 * 1000; // 1 hora
+
+            const alertas = [];
+            if (procesos && !Object.values(procesos).every(p => p.vivo)) alertas.push('procesos_caidos');
+            if (sistema?.ram?.pct  > 85) alertas.push('ram_critica');
+            if (sistema?.disco?.pct > 90) alertas.push('disco_critico');
+            const errores = d?.senales?.filter(s => s.decision === 'ERROR_BROKER').length || 0;
+            if (errores > 0) alertas.push('errores_broker');
+
+            for (const tipo of alertas) {
+                const ultima = alertaNotificadaRef.current[tipo] || 0;
+                if (now - ultima > COOLDOWN) {
+                    alertaNotificadaRef.current[tipo] = now;
+                    axios.post('/api/monitor/notificar-alerta', { tipo }, { headers }).catch(() => {});
+                }
+            }
         } catch (err) {
             if (err.response?.status === 401) { localStorage.removeItem('token'); setAuth(false); }
         } finally {
             setLoading(false);
+        }
+    };
+
+    const testNotificacion = async () => {
+        setNotifStatus('sending');
+        try {
+            await axios.post('/api/monitor/notificar-alerta', { tipo: 'test' }, { headers });
+            setNotifStatus('ok');
+        } catch {
+            setNotifStatus('error');
+        } finally {
+            setTimeout(() => setNotifStatus(null), 3000);
         }
     };
 
@@ -178,9 +222,17 @@ const Monitor = ({ setAuth, botVersion }) => {
                         <h1>Monitor del Sistema</h1>
                         <p className="subtitle">Estado en tiempo real · actualiza cada 15s</p>
                     </div>
-                    <div className="status-badge" style={{ cursor: 'pointer' }} onClick={fetchData}>
-                        <RefreshCw size={14} />
-                        <span>{lastUpdate}</span>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <button onClick={testNotificacion} disabled={notifStatus === 'sending'}
+                            title="Enviar notificación de prueba a Telegram"
+                            style={{ display: 'flex', alignItems: 'center', gap: 5, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '5px 10px', cursor: 'pointer', fontSize: 11, color: notifStatus === 'ok' ? '#22c55e' : notifStatus === 'error' ? '#ef4444' : 'var(--text-secondary)' }}>
+                            <Bell size={13} />
+                            {notifStatus === 'sending' ? 'Enviando...' : notifStatus === 'ok' ? 'Enviado ✓' : notifStatus === 'error' ? 'Error' : 'Test'}
+                        </button>
+                        <div className="status-badge" style={{ cursor: 'pointer' }} onClick={fetchData}>
+                            <RefreshCw size={14} />
+                            <span>{lastUpdate}</span>
+                        </div>
                     </div>
                 </header>
 
@@ -560,6 +612,30 @@ const Monitor = ({ setAuth, botVersion }) => {
                                     </div>
                                 </>
                             ) : <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Sin señales recientes</p>}
+                        </Card>
+                    </div>
+
+                    {/* ── Log del Sistema ──────────────────────────────────── */}
+                    <div style={{ gridColumn: '1 / -1' }}>
+                        <Card title="Log del Sistema" icon={<Server size={15} />}>
+                            <div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                {logs.length === 0
+                                    ? <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Sin logs disponibles</p>
+                                    : logs.map((log, i) => {
+                                        const color = LOG_COLORS[log.nivel] || '#94a3b8';
+                                        return (
+                                            <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'baseline', padding: '3px 6px', borderRadius: 4, background: log.nivel === 'ERROR' ? '#7f1d1d22' : log.nivel === 'WARN' || log.nivel === 'WARNING' ? '#78350f11' : 'transparent' }}>
+                                                <span style={{ fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                                                    {log.tiempo ? new Date(log.tiempo).toLocaleTimeString('es-CL') : '—'}
+                                                </span>
+                                                <span style={{ fontSize: 10, fontWeight: 700, color, width: 42, flexShrink: 0 }}>{log.nivel}</span>
+                                                <span style={{ fontSize: 10, color: 'var(--accent-primary)', fontFamily: 'monospace', flexShrink: 0, opacity: 0.7 }}>[{log.modulo}]</span>
+                                                <span style={{ fontSize: 11, color: 'var(--text-primary)', lineHeight: 1.4 }}>{log.mensaje}</span>
+                                            </div>
+                                        );
+                                    })
+                                }
+                            </div>
                         </Card>
                     </div>
 

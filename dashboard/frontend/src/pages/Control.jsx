@@ -156,15 +156,13 @@ const Control = ({ setAuth, botVersion }) => {
     const fetchAll = async () => {
         try {
             const headers = { Authorization: `Bearer ${token}` };
-            const [resEstado, resPosiciones, resLogs, resPulso] = await Promise.all([
+            const [resEstado, resPosiciones, resPulso] = await Promise.all([
                 axios.get('/api/control/estado', { headers }),
                 axios.get('/api/control/posiciones', { headers }),
-                axios.get('/api/control/logs', { headers }),
                 axios.get('/api/mercado/pulso', { headers }),
             ]);
             setEstado(resEstado.data);
             setPosiciones(resPosiciones.data.posiciones || []);
-            setLogs(resLogs.data.logs || []);
             setPulso(resPulso.data.activos || []);
         } catch (err) {
             if (err.response?.status === 401) handleLogout();
@@ -495,24 +493,6 @@ const Control = ({ setAuth, botVersion }) => {
                     </div>
                 </section>
 
-                {/* Log del Sistema */}
-                <section className="section">
-                    <h2 className="section-title">Log del Sistema</h2>
-                    <div className="log-feed">
-                        {logs.length === 0 ? (
-                            <p className="text-center" style={{ color: 'var(--text-secondary)', padding: '20px' }}>Sin logs disponibles</p>
-                        ) : (
-                            logs.map((log, i) => (
-                                <div key={i} className={getLogClass(log.nivel)}>
-                                    <span className="log-time">{toChileTime(log.tiempo, 'time')}</span>
-                                    <span className="log-nivel">{log.nivel}</span>
-                                    <span className="log-modulo">[{log.modulo}]</span>
-                                    <span className="log-msg">{log.mensaje}</span>
-                                </div>
-                            ))
-                        )}
-                    </div>
-                </section>
             </main>
         </div>
 

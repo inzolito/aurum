@@ -13,6 +13,7 @@ from typing import List, Optional
 # Añadir el root del proyecto al path para importar DBConnector
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from config.db_connector import DBConnector
+from config.notifier import _enviar_telegram as _notifier_enviar
 from dashboard.backend.auth import verify_password, create_access_token, decode_access_token
 from dotenv import load_dotenv
 
@@ -820,6 +821,29 @@ async def get_rendimiento_activo(simbolo: str, token: str = Depends(oauth2_schem
             for r in ultimos
         ],
     }
+
+
+class AlertaPayload(BaseModel):
+    tipo: str
+
+@app.post("/api/monitor/notificar-alerta")
+async def notificar_alerta(payload: AlertaPayload, token: str = Depends(oauth2_scheme)):
+    """Envía una alerta de salud a Telegram."""
+    if not decode_access_token(token):
+        raise HTTPException(status_code=401, detail="Token inválido")
+    mensajes = {
+        'procesos_caidos': '🔴 <b>ALERTA SALUD</b> — Uno o más procesos de Aurum están caídos. Revisar Monitor.',
+        'ram_critica':     '🔴 <b>ALERTA SALUD</b> — RAM del servidor por encima del 85%. Riesgo OOM.',
+        'disco_critico':   '🔴 <b>ALERTA SALUD</b> — Disco por encima del 90%. Limpiar o ampliar urgente.',
+        'errores_broker':  '⚠️ <b>ALERTA BROKER</b> — Se detectaron errores de conexión con el broker en el último ciclo.',
+        'test':            '✅ <b>Test de notificaciones Aurum</b> — Sistema de alertas funcionando correctamente.',
+    }
+    msg = mensajes.get(payload.tipo, f'⚠️ Alerta del sistema: <code>{payload.tipo}</code>')
+    try:
+        _notifier_enviar(msg)
+        return {"ok": True}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/monitor")
