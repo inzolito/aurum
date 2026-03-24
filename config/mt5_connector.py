@@ -265,6 +265,39 @@ class MT5Connector:
             return False
         return True
 
+    def cerrar_parcial(self, ticket: int, simbolo: str, tipo: int, volumen_total: float) -> bool:
+        """
+        Cierra el 50% de una posicion abierta (TP1 parcial).
+        tipo: mt5.POSITION_TYPE_BUY o POSITION_TYPE_SELL
+        """
+        volumen_parcial = round(volumen_total / 2.0, 2)
+        if volumen_parcial <= 0:
+            return False
+        tipo_cierre = mt5.ORDER_TYPE_SELL if tipo == mt5.POSITION_TYPE_BUY else mt5.ORDER_TYPE_BUY
+        tick = mt5.symbol_info_tick(simbolo)
+        if not tick:
+            return False
+        precio = tick.bid if tipo == mt5.POSITION_TYPE_BUY else tick.ask
+        request = {
+            "action":       mt5.TRADE_ACTION_DEAL,
+            "position":     ticket,
+            "symbol":       simbolo,
+            "volume":       volumen_parcial,
+            "type":         tipo_cierre,
+            "price":        precio,
+            "deviation":    20,
+            "magic":        20250101,
+            "comment":      "Aurum TP1 parcial",
+            "type_time":    mt5.ORDER_TIME_GTC,
+            "type_filling": mt5.ORDER_FILLING_IOC,
+        }
+        resultado = mt5.order_send(request)
+        if resultado is None or resultado.retcode != mt5.TRADE_RETCODE_DONE:
+            print(f"[MT5] Error cerrando parcial #{ticket}: {getattr(resultado, 'retcode', 'None')}")
+            return False
+        print(f"[MT5] TP1 parcial ejecutado #{ticket} {simbolo}: {volumen_parcial} lotes @ {precio:.4f}")
+        return True
+
     def cerrar_todas_las_posiciones(self):
         """
         Cierra TODAS las posiciones abiertas por mercado.

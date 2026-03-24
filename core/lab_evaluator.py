@@ -246,6 +246,9 @@ class LabEvaluator:
                 sl = round(precio_entrada + sl_distancia, 4)
                 tp = round(precio_entrada - tp_distancia, 4)
 
+            # TP1: punto medio entre entrada y TP2 (objetivo parcial al 50%)
+            tp1 = round((precio_entrada + tp) / 2.0, 4)
+
             # Capital virtual del lab (leer balance actual)
             capital_lab = self._get_balance_virtual(lab_id)
             capital_riesgo = capital_lab * (riesgo_pct / 100.0)
@@ -262,9 +265,10 @@ class LabEvaluator:
                 tp=tp,
                 lotes=lotes,
                 capital=capital_riesgo,
-                justificacion=justificacion
+                justificacion=justificacion,
+                tp1=tp1,
             )
-            print(f"[LAB] Lab {lab_id} | {simbolo} | {tipo_orden} @ {precio_entrada:.4f} | SL={sl:.4f} TP={tp:.4f}")
+            print(f"[LAB] Lab {lab_id} | {simbolo} | {tipo_orden} @ {precio_entrada:.4f} | SL={sl:.4f} TP1={tp1:.4f} TP={tp:.4f}")
 
         except Exception as e:
             print(f"[LAB] Error en _simular_entrada para {simbolo} (lab={lab_id}): {e}")
@@ -288,8 +292,9 @@ class LabEvaluator:
                 self.db.cursor.execute("""
                     SELECT lo.id, lo.lab_id, lo.activo_id, a.simbolo,
                            lo.tipo_orden, lo.precio_entrada,
-                           lo.stop_loss, lo.take_profit,
-                           lo.volumen_lotes, lo.capital_usado
+                           lo.stop_loss, lo.take_profit, lo.take_profit_1,
+                           lo.volumen_lotes, lo.capital_usado,
+                           lo.tp1_alcanzado
                     FROM lab_operaciones lo
                     JOIN activos a ON a.id = lo.activo_id
                     WHERE lo.estado = 'ABIERTA'
@@ -304,8 +309,8 @@ class LabEvaluator:
             return
 
         cols = ["id", "lab_id", "activo_id", "simbolo", "tipo_orden",
-                "precio_entrada", "stop_loss", "take_profit",
-                "volumen_lotes", "capital_usado"]
+                "precio_entrada", "stop_loss", "take_profit", "take_profit_1",
+                "volumen_lotes", "capital_usado", "tp1_alcanzado"]
 
         for row in ops:
             op = dict(zip(cols, row))
@@ -321,9 +326,31 @@ class LabEvaluator:
 
             sl = float(op["stop_loss"])
             tp = float(op["take_profit"])
+            tp1 = float(op["take_profit_1"]) if op["take_profit_1"] is not None else None
+            tp1_alcanzado = bool(op["tp1_alcanzado"])
             precio_entrada = float(op["precio_entrada"])
             lotes = float(op["volumen_lotes"] or 1.0)
             capital_usado = float(op["capital_usado"] or 1000.0)
+
+            # ── TP1: cerrar 50% de la posición cuando precio alcanza el primer objetivo
+            if tp1 is not None and not tp1_alcanzado:
+                tp1_hit = (op["tipo_orden"] == "BUY" and precio_actual >= tp1) or \
+                          (op["tipo_orden"] == "SELL" and precio_actual <= tp1)
+                if tp1_hit:
+                    tp1_dist = abs(tp1 - precio_entrada)
+                    sl_dist_actual = abs(precio_entrada - sl)
+                    capital_half = capital_usado / 2.0
+                    if sl_dist_actual > 0:
+                        pnl_parcial = round((tp1_dist / sl_dist_actual) * capital_half, 2)
+                    else:
+                        tp_dist = abs(tp - precio_entrada)
+                        pnl_parcial = round((tp1_dist / tp_dist) * capital_half, 2) if tp_dist > 0 else 0.0
+                    self.db.marcar_tp1_lab(op["id"], pnl_parcial)
+                    tp1_alcanzado = True
+                    sl = precio_entrada  # BE activo desde ahora
+                    capital_usado = capital_half  # solo queda el 50%
+                    print(f"[LAB] TP1 alcanzado: Lab {op['lab_id']} | {simbolo} | "
+                          f"Parcial +{pnl_parcial:.2f} | SL movido a BE | Resta 50%")
 
             # ── Breakeven: mover SL a entrada cuando ganancia >= 50% del capital en riesgo
             sl_en_be = (op["tipo_orden"] == "BUY" and sl >= precio_entrada) or \

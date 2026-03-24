@@ -440,11 +440,11 @@ class DBConnector:
                     """
                     INSERT INTO registro_operaciones
                         (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
-                         precio_entrada, stop_loss, take_profit,
+                         precio_entrada, stop_loss, take_profit, take_profit_1,
                          justificacion_entrada, veredicto_apertura, probabilidad_est,
                          version_id)
                     SELECT a.id, %(ticket_mt5)s, %(tipo_orden)s, %(volumen_lotes)s,
-                           %(precio_entrada)s, %(stop_loss)s, %(take_profit)s,
+                           %(precio_entrada)s, %(stop_loss)s, %(take_profit)s, %(take_profit_1)s,
                            %(justificacion_entrada)s, %(veredicto_apertura)s, %(probabilidad_est)s,
                            (SELECT id FROM versiones_sistema WHERE estado = 'ACTIVA' ORDER BY id DESC LIMIT 1)
                     FROM activos a WHERE a.simbolo = %(simbolo)s;
@@ -455,6 +455,25 @@ class DBConnector:
             except Exception as e:
                 print(f"[DB] Error guardando operacion: {e}")
                 self.conn.rollback()
+
+    def marcar_tp1_produccion(self, ticket: int, pnl_parcial: float):
+        """Registra que TP1 fue alcanzado en una operacion de produccion."""
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    UPDATE registro_operaciones
+                    SET tp1_alcanzado = TRUE, pnl_parcial = %s
+                    WHERE ticket_mt5 = %s
+                """, (pnl_parcial, ticket))
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB] Error marcando TP1 produccion ticket {ticket}: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
 
     @survival_shield
     def guardar_autopsia(self, ticket: int, simbolo: str, pnl: float,
@@ -1053,7 +1072,8 @@ class DBConnector:
 
     def guardar_lab_operacion(self, lab_id: int, activo_id: int, senal_id: int,
                                tipo: str, precio: float, sl: float, tp: float,
-                               lotes: float, capital: float, justificacion: str) -> int | None:
+                               lotes: float, capital: float, justificacion: str,
+                               tp1: float = None) -> int | None:
         """Inserta una operación virtual en lab_operaciones. Retorna id."""
         if not self.cursor:
             return None
@@ -1062,15 +1082,15 @@ class DBConnector:
                 self.cursor.execute("""
                     INSERT INTO lab_operaciones
                         (lab_id, activo_id, lab_senal_id, tipo_orden,
-                         precio_entrada, stop_loss, take_profit,
+                         precio_entrada, stop_loss, take_profit, take_profit_1,
                          volumen_lotes, capital_usado, justificacion_entrada,
                          version_id)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             (SELECT id FROM versiones_sistema WHERE estado = 'ACTIVA' ORDER BY id DESC LIMIT 1))
                     RETURNING id
                 """, (
                     lab_id, activo_id, senal_id, tipo,
-                    precio, sl, tp, lotes, capital, justificacion
+                    precio, sl, tp, tp1, lotes, capital, justificacion
                 ))
                 row = self.cursor.fetchone()
                 self.conn.commit()
@@ -1096,6 +1116,40 @@ class DBConnector:
                 self.conn.commit()
             except Exception as e:
                 print(f"[DB-LAB] Error actualizando SL lab_operacion {op_id}: {e}")
+                try:
+                    self.conn.rollback()
+                except Exception:
+                    pass
+
+    def marcar_tp1_lab(self, op_id: int, pnl_parcial: float):
+        """
+        Registra que TP1 fue alcanzado en una operacion de lab:
+        - Guarda pnl_parcial (ganancia del 50% cerrado)
+        - Marca tp1_alcanzado = True
+        - Mueve SL a precio de entrada (breakeven)
+        - Reduce capital_usado a la mitad (solo queda el 50% restante)
+        - Suma pnl_parcial al balance_virtual del lab
+        """
+        if not self.cursor:
+            return
+        with self._lock:
+            try:
+                self.cursor.execute("""
+                    UPDATE lab_operaciones
+                    SET tp1_alcanzado = TRUE,
+                        pnl_parcial   = %s,
+                        stop_loss     = precio_entrada,
+                        capital_usado = capital_usado / 2.0
+                    WHERE id = %s AND estado = 'ABIERTA'
+                """, (pnl_parcial, op_id))
+                self.cursor.execute("""
+                    UPDATE laboratorios
+                    SET balance_virtual = balance_virtual + %s
+                    WHERE id = (SELECT lab_id FROM lab_operaciones WHERE id = %s)
+                """, (pnl_parcial, op_id))
+                self.conn.commit()
+            except Exception as e:
+                print(f"[DB-LAB] Error marcando TP1 en op {op_id}: {e}")
                 try:
                     self.conn.rollback()
                 except Exception:

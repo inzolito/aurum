@@ -648,6 +648,7 @@ class Manager:
                     "balance": balance_real,
                     "equity": equity_real,
                 }
+                tp1_prod = round((precio_real + tp) / 2.0, 4)
                 self.db.guardar_operacion({
                     "simbolo": simbolo_interno,
                     "ticket_mt5": ticket,
@@ -656,6 +657,7 @@ class Manager:
                     "precio_entrada": precio_real,
                     "stop_loss": sl,
                     "take_profit": tp,
+                    "take_profit_1": tp1_prod,
                     "justificacion_entrada": _json.dumps(_analisis, ensure_ascii=False),
                     "veredicto_apertura": veredicto,
                     "probabilidad_est": prob_exito,
@@ -736,18 +738,36 @@ class Manager:
 
     def gestionar_posiciones_abiertas(self):
         """
-        Cicla por las posiciones abiertas y aplica la logica de Breakeven.
-        Si el precio recorrio el 50% del camino al TP, mueve SL a BE.
+        Cicla por las posiciones abiertas y aplica:
+        1. TP1 parcial: cuando precio alcanza la mitad del camino al TP →
+           cierra 50% de la posicion, mueve SL a BE.
+        2. Breakeven: cuando progreso >= 50% del camino al TP (si TP1 ya fue alcanzado
+           o no habia TP1 disponible), mueve SL a BE.
         """
         import MetaTrader5 as mt5_api
         posiciones = mt5_api.positions_get()
         if not posiciones:
             return
 
-        for pos in posiciones:
-            # Solo gestionamos posiciones del bot (opcional: filtrar por magic number)
-            # if pos.magic != 20250101: continue
+        # Cargar estado tp1 de todas las posiciones abiertas de la BD
+        tp1_data = {}
+        try:
+            self.db.cursor.execute("""
+                SELECT ticket_mt5, take_profit_1, tp1_alcanzado, precio_entrada, volumen_lotes
+                FROM registro_operaciones
+                WHERE resultado_final IS NULL AND ticket_mt5 != 999999
+            """)
+            for row in self.db.cursor.fetchall():
+                tp1_data[row[0]] = {
+                    "tp1": float(row[1]) if row[1] is not None else None,
+                    "tp1_alcanzado": bool(row[2]),
+                    "precio_entrada": float(row[3]) if row[3] else None,
+                    "volumen": float(row[4]) if row[4] else None,
+                }
+        except Exception:
+            pass
 
+        for pos in posiciones:
             # Usar price_current del objeto (MetaAPI lo provee directamente, más fiable que tick)
             precio_actual = getattr(pos, 'price_current', None)
             if not precio_actual:
@@ -766,19 +786,44 @@ class Manager:
                 except Exception:
                     pass
 
-            # Si el SL ya esta en el precio de entrada (o mejor), ignorar breakeven
-            if (pos.type == mt5_api.POSITION_TYPE_BUY and pos.sl >= pos.price_open) or \
-               (pos.type == mt5_api.POSITION_TYPE_SELL and pos.sl <= pos.price_open and pos.sl != 0):
+            if not precio_actual:
                 continue
 
-            # Calcular progreso hacia el TP
+            info = tp1_data.get(pos.ticket, {})
+            tp1          = info.get("tp1")
+            tp1_alcanzado = info.get("tp1_alcanzado", False)
+
+            # ── TP1: cierre parcial 50% cuando precio alcanza el primer objetivo
+            if tp1 is not None and not tp1_alcanzado:
+                tp1_hit = (pos.type == mt5_api.POSITION_TYPE_BUY  and precio_actual >= tp1) or \
+                          (pos.type == mt5_api.POSITION_TYPE_SELL and precio_actual <= tp1)
+                if tp1_hit:
+                    print(f"[GERENTE] TP1 alcanzado #{pos.ticket} ({pos.symbol}) @ {precio_actual:.4f} (TP1={tp1:.4f})")
+                    ok = self.mt5.cerrar_parcial(pos.ticket, pos.symbol, pos.type, pos.volume)
+                    if ok:
+                        # Mover SL a entrada en la posicion restante
+                        self.mt5.mover_sl(pos.ticket, pos.price_open)
+                        # Registrar en BD
+                        pnl_parcial = round(pos.profit / 2.0, 2)  # estimacion: mitad del profit actual
+                        self.db.marcar_tp1_produccion(pos.ticket, pnl_parcial)
+                        self.db.registrar_log("INFO", "MANAGER",
+                            f"TP1 parcial: #{pos.ticket} {pos.symbol} | pnl_parcial={pnl_parcial:.2f}")
+                        tp1_alcanzado = True  # no re-procesar en esta misma vuelta
+
+            # ── Breakeven: mover SL a entrada cuando progreso >= 50% (solo si TP1 no aplica o ya fue tomado)
+            sl_en_be = (pos.type == mt5_api.POSITION_TYPE_BUY  and pos.sl >= pos.price_open) or \
+                       (pos.type == mt5_api.POSITION_TYPE_SELL and pos.sl <= pos.price_open and pos.sl != 0)
+            if sl_en_be:
+                continue
+
             distancia_total = abs(pos.tp - pos.price_open)
-            if distancia_total == 0: continue
+            if distancia_total == 0:
+                continue
 
             progreso = abs(precio_actual - pos.price_open) / distancia_total
 
             if progreso >= 0.50:
-                print(f"[GERENTE] 🛡️ Aplicando Breakeven a #{pos.ticket} ({pos.symbol}). Progreso: {progreso*100:.1f}%")
+                print(f"[GERENTE] Breakeven #{pos.ticket} ({pos.symbol}). Progreso: {progreso*100:.1f}%")
                 if self.mt5.mover_sl(pos.ticket, pos.price_open):
                     self.db.registrar_log("INFO", "MANAGER", f"Breakeven aplicado a #{pos.ticket} ({pos.symbol})")
 
