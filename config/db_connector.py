@@ -1242,6 +1242,7 @@ class DBConnector:
                            activos_afectados, razonamiento, expira_en
                     FROM regimenes_macro
                     WHERE activo = TRUE
+                      AND (expira_en IS NULL OR expira_en > NOW())
                     ORDER BY peso DESC, creado_en DESC
                 """)
                 cols = ["id", "tipo", "nombre", "fase", "direccion", "peso",

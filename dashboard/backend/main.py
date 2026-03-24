@@ -1273,6 +1273,7 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                        activos_afectados, razonamiento, expira_en, creado_en
                 FROM regimenes_macro
                 WHERE activo = TRUE
+                  AND (expira_en IS NULL OR expira_en > NOW())
                 ORDER BY peso DESC, creado_en DESC
             """)
             cols_rm = ["id", "tipo", "nombre", "fase", "direccion", "peso",
