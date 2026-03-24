@@ -209,33 +209,98 @@ _symbol_specs_cache = {}
 _symbol_specs_ttl   = {}
 _SPEC_TTL = 300
 
-# Caché del rate USDJPY para conversión de tick_value en pares JPY
-_usdjpy_rate_cache = 150.0   # valor inicial conservador (aprox)
-_usdjpy_rate_ts    = 0.0
-_USDJPY_RATE_TTL   = 60      # refrescar cada 60s
+# ── Conversión tick_value a USD ───────────────────────────────────────────────
+# Caché de tasas FX: quote_ccy → (multiplier_to_usd, timestamp)
+_fx_rate_cache: dict = {}
+_FX_RATE_TTL = 60   # segundos
+
+# Moneda de cotización para índices (nombres Weltrade / MetaAPI comunes)
+_INDEX_QUOTE_CCY = {
+    'GER40': 'EUR', 'GER30': 'EUR', 'DAX': 'EUR', 'DAX40': 'EUR', 'DE40': 'EUR',
+    'UK100': 'GBP', 'FTSE':  'GBP', 'GB100': 'GBP',
+    'JP225': 'JPY', 'NI225': 'JPY', 'JPN225': 'JPY',
+    'AUS200': 'AUD', 'AU200': 'AUD',
+    'FRA40': 'EUR', 'FR40': 'EUR',
+    'EUSTX50': 'EUR', 'EU50': 'EUR',
+    # Cotizados en USD — sin conversión necesaria
+    'US30': 'USD', 'US500': 'USD', 'USTEC': 'USD',
+    'NAS100': 'USD', 'SPX500': 'USD', 'NDX': 'USD',
+}
+
+# Fallbacks conservadores si MetaAPI falla al buscar el rate
+_FX_FALLBACK = {
+    'EUR': 1.08, 'GBP': 1.26, 'AUD': 0.65, 'NZD': 0.60,
+    'JPY': 1/150.0, 'CHF': 1/0.90, 'CAD': 1/1.36,
+}
 
 
-def _get_usdjpy_rate_safe() -> float:
+def _get_rate_to_usd(quote_ccy: str) -> float:
     """
-    Retorna el rate USDJPY mid-price. Usa caché de 60s.
-    Si falla, retorna el último valor conocido (mínimo 150.0).
+    Retorna el multiplicador para convertir 1 unidad de quote_ccy a USD.
+    Ejemplos: EUR→1.08, JPY→0.0067, GBP→1.26, USD→1.0.
+    Usa caché de 60s; si falla, usa el último valor conocido o el fallback.
     """
-    global _usdjpy_rate_cache, _usdjpy_rate_ts
+    quote_ccy = quote_ccy.upper()
+    if quote_ccy == 'USD':
+        return 1.0
     now = time.time()
-    if now - _usdjpy_rate_ts < _USDJPY_RATE_TTL:
-        return _usdjpy_rate_cache
+    cached = _fx_rate_cache.get(quote_ccy)
+    if cached and now - cached[1] < _FX_RATE_TTL:
+        return cached[0]
+    rate = None
     try:
-        price = _run(_get_price_async('USDJPY'), timeout=5)
-        if price:
-            bid = float(_g(price, 'bid', 0) or 0)
-            ask = float(_g(price, 'ask', 0) or 0)
-            mid = (bid + ask) / 2.0
-            if mid > 50:   # sanity check
-                _usdjpy_rate_cache = mid
-                _usdjpy_rate_ts    = now
+        if quote_ccy in ('EUR', 'GBP', 'AUD', 'NZD'):
+            # Par directo XXXUSD
+            price = _run(_get_price_async(quote_ccy + 'USD'), timeout=5)
+            if price:
+                bid = float(_g(price, 'bid', 0) or 0)
+                ask = float(_g(price, 'ask', 0) or 0)
+                mid = (bid + ask) / 2.0
+                if mid > 0.1:
+                    rate = mid
+        elif quote_ccy == 'JPY':
+            price = _run(_get_price_async('USDJPY'), timeout=5)
+            if price:
+                bid = float(_g(price, 'bid', 0) or 0)
+                ask = float(_g(price, 'ask', 0) or 0)
+                mid = (bid + ask) / 2.0
+                if mid > 50:
+                    rate = 1.0 / mid
+        elif quote_ccy in ('CHF', 'CAD'):
+            price = _run(_get_price_async('USD' + quote_ccy), timeout=5)
+            if price:
+                bid = float(_g(price, 'bid', 0) or 0)
+                ask = float(_g(price, 'ask', 0) or 0)
+                mid = (bid + ask) / 2.0
+                if mid > 0.5:
+                    rate = 1.0 / mid
     except Exception:
         pass
-    return _usdjpy_rate_cache
+    if rate is None:
+        rate = cached[0] if cached else _FX_FALLBACK.get(quote_ccy, 1.0)
+    _fx_rate_cache[quote_ccy] = (rate, now)
+    return rate
+
+
+def _detect_quote_currency(symbol: str, spec=None) -> str:
+    """
+    Detecta la moneda de cotización de un símbolo para convertir tick_value a USD.
+    Prioridad: campo spec → lookup índices → último trigrama del símbolo.
+    """
+    if spec:
+        for field in ('quoteAsset', 'quoteCurrency', 'quoteCcy'):
+            val = str(_g(spec, field, '') or '')
+            if len(val) == 3 and val.isalpha():
+                return val.upper()
+    sym = symbol.upper().replace('_I', '').replace('_i', '')
+    for key, ccy in _INDEX_QUOTE_CCY.items():
+        if sym == key or sym.startswith(key):
+            return ccy
+    # Forex estándar de 6 letras XXXYYY
+    if len(sym) == 6 and sym.isalpha():
+        return sym[-3:]
+    # Metales como XAUUSD, XAGUSD → USD
+    return 'USD'
 
 
 async def _get_spec_async(symbol):
@@ -264,12 +329,12 @@ def symbol_info(symbol):
         if tick_value == 0:
             # Fallback: tick_value = tick_size × contract_size (en moneda de cotización)
             tick_value = tick_size * contract_size_raw
-            # Para pares cotizados en JPY (USDJPY, GBPJPY, AUDJPY, EURJPY…),
-            # el resultado está en JPY, no USD. Convertir dividiendo por tasa USDJPY.
-            sym_clean = symbol.upper().replace('_I', '').replace('_i', '')
-            if len(sym_clean) >= 6 and sym_clean[-3:] == 'JPY':
-                usdjpy_rate = _get_usdjpy_rate_safe()
-                tick_value = tick_value / usdjpy_rate
+            # Convertir a USD si la moneda de cotización no es USD
+            quote_ccy = _detect_quote_currency(symbol, spec)
+            if quote_ccy != 'USD':
+                rate_to_usd = _get_rate_to_usd(quote_ccy)
+                tick_value = tick_value * rate_to_usd
+                print(f"[SHIM] tick_value_conv {symbol} quote={quote_ccy} rate={rate_to_usd:.5f} tv={tick_value:.6f}", flush=True)
         return SimpleNamespace(
             symbol=symbol,
             digits=int(_g(spec, 'digits', 5)),
