@@ -4,7 +4,7 @@ import { FlaskConical, ChevronDown, ChevronUp, ToggleLeft, ToggleRight, History,
 import SideNav from '../components/SideNav';
 
 // ── PriceBar ──────────────────────────────────────────────────────────────────
-const PriceBar = ({ sl, tp, entry, current, pnl }) => {
+const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
     const lo  = Math.min(sl, tp);
     const hi  = Math.max(sl, tp);
     const rng = hi - lo || 1;
@@ -14,6 +14,7 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
     const fillLeft = Math.min(entryPct, currentPct);
     const fillWidth = Math.abs(currentPct - entryPct);
     const barColor  = pnl >= 0 ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
+    const tp1Pct = tp1 != null ? clamp(tp1) : null;
     return (
         <div style={{ marginTop: 4, width: '100%' }}>
             <div style={{ position: 'relative', height: 12 }}>
@@ -23,9 +24,18 @@ const PriceBar = ({ sl, tp, entry, current, pnl }) => {
             </div>
             <div style={{ position: 'relative', height: 8, background: 'var(--bg-primary)', borderRadius: 999, overflow: 'hidden' }}>
                 <div style={{ position: 'absolute', top: 0, height: '100%', left: `${fillLeft}%`, width: `${Math.max(fillWidth, 0)}%`, background: barColor, borderRadius: 5, transition: 'left 0.8s, width 0.8s' }} />
+                {/* Marca TP1 en la barra */}
+                {tp1Pct != null && (
+                    <div style={{ position: 'absolute', top: 0, left: `${tp1Pct}%`, width: 2, height: '100%', background: tp1_alcanzado ? '#10b981' : '#f59e0b', opacity: 0.9 }} />
+                )}
             </div>
             <div style={{ position: 'relative', height: 12 }}>
                 <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
+                {tp1Pct != null && (
+                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: tp1_alcanzado ? '#10b981' : '#f59e0b', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                        TP1
+                    </span>
+                )}
                 <span style={{ position: 'absolute', left: `${clamp(tp)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
             </div>
         </div>
@@ -195,8 +205,38 @@ const TablaVotos = ({ votos, umbral = 0.55 }) => {
 const LabTradeDetail = ({ op }) => {
     const pesos = op.pesos_usados || {};
     const tieneVotos = op.v_trend != null || op.v_nlp != null;
+    const fmt = v => v == null ? '—' : v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
     return (
         <div style={{ background: 'var(--bg-tertiary)', borderTop: '1px solid var(--border-color)' }}>
+            {/* Fila TP1 / TP2 */}
+            <div style={{ display: 'flex', gap: 24, padding: '12px 24px', borderBottom: '1px solid var(--border-color)', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1, flexShrink: 0 }}>Niveles</span>
+                <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 12 }}>
+                        <span style={{ color: '#ef4444', fontWeight: 700, marginRight: 4 }}>SL</span>
+                        <span style={{ fontFamily: 'monospace' }}>{fmt(op.sl)}</span>
+                    </span>
+                    <span style={{ fontSize: 12 }}>
+                        <span style={{ color: op.tp1_alcanzado ? '#10b981' : '#f59e0b', fontWeight: 700, marginRight: 4 }}>
+                            TP1 {op.tp1_alcanzado ? '✓' : ''}
+                        </span>
+                        <span style={{ fontFamily: 'monospace' }}>{fmt(op.tp1)}</span>
+                        {op.tp1_alcanzado && op.pnl_parcial != null && (
+                            <span style={{ marginLeft: 6, fontSize: 11, color: '#16a34a', fontFamily: 'monospace' }}>
+                                (+${op.pnl_parcial?.toFixed(2)} parcial)
+                            </span>
+                        )}
+                    </span>
+                    <span style={{ fontSize: 12 }}>
+                        <span style={{ color: '#10b981', fontWeight: 700, marginRight: 4 }}>TP2</span>
+                        <span style={{ fontFamily: 'monospace' }}>{fmt(op.tp)}</span>
+                    </span>
+                    <span style={{ fontSize: 12 }}>
+                        <span style={{ color: 'var(--text-secondary)', marginRight: 4 }}>Entrada</span>
+                        <span style={{ fontFamily: 'monospace' }}>{fmt(op.precio_entrada)}</span>
+                    </span>
+                </div>
+            </div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, padding: '18px 24px' }}>
                 <div>
                     <p className="section-title" style={{ marginBottom: 12 }}>Votación de Entrada</p>
@@ -240,6 +280,7 @@ const TablaOps = ({ ops }) => {
                         <th>Activo</th>
                         <th>Tipo</th>
                         <th>Estado</th>
+                        <th>TP1</th>
                         <th>Precio actual</th>
                         <th>PnL</th>
                         <th>ROE%</th>
@@ -269,7 +310,7 @@ const TablaOps = ({ ops }) => {
                                     <td style={{ minWidth: 160 }}>
                                         <span className="symbol">{op.simbolo}</span>
                                         {op.sl != null && op.tp != null && op.precio_entrada != null && (
-                                            <PriceBar sl={op.sl} tp={op.tp} entry={op.precio_entrada} current={precioActual ?? op.precio_entrada} pnl={pnl ?? 0} />
+                                            <PriceBar sl={op.sl} tp={op.tp} entry={op.precio_entrada} current={precioActual ?? op.precio_entrada} pnl={pnl ?? 0} tp1={op.tp1} tp1_alcanzado={op.tp1_alcanzado} />
                                         )}
                                     </td>
                                     <td style={{ fontWeight: 700, color: tipoColor }}>{op.tipo}</td>
@@ -277,6 +318,14 @@ const TablaOps = ({ ops }) => {
                                         {op.estado === 'ABIERTA' ? <Badge status="blue">Abierta</Badge>
                                             : op.resultado === 'TP' ? <Badge status="ok">TP</Badge>
                                             : <Badge status="fail">SL</Badge>}
+                                    </td>
+                                    <td style={{ whiteSpace: 'nowrap' }}>
+                                        {op.tp1_alcanzado
+                                            ? <><Badge status="ok">TP1 ✓</Badge>{op.pnl_parcial != null && <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 5, fontFamily: 'monospace' }}>+${op.pnl_parcial?.toFixed(2)}</span>}</>
+                                            : op.tp1 != null
+                                                ? <span style={{ fontSize: 11, color: '#f59e0b', fontFamily: 'monospace' }}>{fmt(op.tp1)}</span>
+                                                : <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                                        }
                                     </td>
                                     <td className="time">{fmt(precioActual)}</td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 700, color: pnlColor }}>
@@ -289,7 +338,7 @@ const TablaOps = ({ ops }) => {
                                 </tr>
                                 {isOpen && (
                                     <tr>
-                                        <td colSpan="8" style={{ padding: 0 }}>
+                                        <td colSpan="9" style={{ padding: 0 }}>
                                             <LabTradeDetail op={op} />
                                         </td>
                                     </tr>

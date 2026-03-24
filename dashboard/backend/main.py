@@ -549,6 +549,7 @@ async def get_historial(
             db.cursor.execute(f"""
                 SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
+                       ro.take_profit_1, ro.tp1_alcanzado, ro.pnl_parcial,
                        ro.pnl_usd, ro.tiempo_entrada, ro.resultado_final,
                        ro.veredicto_apertura, ro.probabilidad_est, ro.divergencia_precision,
                        ro.justificacion_entrada,
@@ -567,6 +568,7 @@ async def get_historial(
                 LIMIT %s
             """, params)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
+                    "tp1", "tp1_alcanzado", "pnl_parcial",
                     "pnl_usd", "apertura", "resultado", "veredicto", "probabilidad",
                     "divergencia", "justificacion_entrada",
                     "tipo_fallo", "worker_culpable", "descripcion_fallo", "correccion",
@@ -578,8 +580,8 @@ async def get_historial(
                 d = dict(zip(cols, r))
                 if d.get("apertura"):
                     d["apertura"] = d["apertura"].isoformat()
-                for k in ["pnl_usd", "veredicto", "probabilidad", "divergencia"]:
-                    if d[k] is not None:
+                for k in ["pnl_usd", "veredicto", "probabilidad", "divergencia", "tp1", "pnl_parcial"]:
+                    if d.get(k) is not None:
                         d[k] = float(d[k])
                 raw = d.pop("justificacion_entrada", None)
                 if raw:
@@ -1171,7 +1173,8 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
             try:
                 db.cursor.execute("""
                     SELECT lo.id, a.simbolo, lo.tipo_orden, lo.precio_entrada,
-                           lo.stop_loss, lo.take_profit, lo.volumen_lotes,
+                           lo.stop_loss, lo.take_profit, lo.take_profit_1,
+                           lo.tp1_alcanzado, lo.pnl_parcial, lo.volumen_lotes,
                            lo.estado, lo.tiempo_entrada, lo.tiempo_salida,
                            lo.precio_salida, lo.resultado, lo.pnl_virtual, lo.roe_pct,
                            ls.voto_tendencia, ls.voto_nlp, ls.voto_sniper, ls.voto_macro,
@@ -1185,8 +1188,8 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                     ORDER BY lo.tiempo_entrada DESC
                     LIMIT 10
                 """, (lab_id,))
-                cols_op = ["id", "simbolo", "tipo", "precio_entrada", "sl", "tp",
-                           "lotes", "estado", "entrada", "salida",
+                cols_op = ["id", "simbolo", "tipo", "precio_entrada", "sl", "tp", "tp1",
+                           "tp1_alcanzado", "pnl_parcial", "lotes", "estado", "entrada", "salida",
                            "precio_salida", "resultado", "pnl_virtual", "roe_pct",
                            "v_trend", "v_nlp", "v_sniper", "v_macro",
                            "v_hurst", "v_volume", "v_cross",
@@ -1196,7 +1199,8 @@ async def get_lab(token: str = Depends(oauth2_scheme), db: DBConnector = Depends
                     op = dict(zip(cols_op, op_row))
                     op["entrada"] = op["entrada"].isoformat() if op["entrada"] else None
                     op["salida"]  = op["salida"].isoformat()  if op["salida"]  else None
-                    for k in ["precio_entrada", "sl", "tp", "lotes", "pnl_virtual", "roe_pct",
+                    for k in ["precio_entrada", "sl", "tp", "tp1", "pnl_parcial",
+                              "lotes", "pnl_virtual", "roe_pct",
                               "v_trend", "v_nlp", "v_sniper", "v_macro",
                               "v_hurst", "v_volume", "v_cross", "veredicto"]:
                         if op[k] is not None:

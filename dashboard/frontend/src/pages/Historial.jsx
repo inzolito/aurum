@@ -50,11 +50,21 @@ const TradeDetail = ({ t }) => {
     const a = t.analisis || {};
     return (
         <div style={{ background: 'var(--bg-primary)', borderTop: '1px solid var(--border-color)' }}>
-            {t.ticket && (
-                <p style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '10px 24px 0', margin: 0 }}>
-                    Ticket MT5: <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>#{t.ticket}</span>
-                </p>
-            )}
+            {/* Info de ticket y niveles TP1/TP2 */}
+            <div style={{ display: 'flex', gap: 24, padding: '10px 24px 0', flexWrap: 'wrap', alignItems: 'center' }}>
+                {t.ticket && (
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+                        Ticket MT5: <span style={{ color: 'var(--text-primary)', fontFamily: 'monospace' }}>#{t.ticket}</span>
+                    </span>
+                )}
+                <span style={{ fontSize: 11, color: '#ef4444' }}>SL <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{t.sl}</span></span>
+                <span style={{ fontSize: 11, color: t.tp1_alcanzado ? '#10b981' : '#f59e0b' }}>
+                    TP1 {t.tp1_alcanzado ? '✓' : ''}
+                    <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)', marginLeft: 3 }}>{t.tp1 ?? '—'}</span>
+                    {t.tp1_alcanzado && t.pnl_parcial != null && <span style={{ color: '#16a34a', marginLeft: 4 }}>(+${t.pnl_parcial?.toFixed(2)} parcial)</span>}
+                </span>
+                <span style={{ fontSize: 11, color: '#10b981' }}>TP2 <span style={{ fontFamily: 'monospace', color: 'var(--text-primary)' }}>{t.tp}</span></span>
+            </div>
             {/* Fila 1: misma vista que posiciones abiertas */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 24, padding: '16px 24px' }}>
                 {/* Votación workers */}
@@ -285,7 +295,8 @@ const Historial = ({ setAuth, botVersion }) => {
                                     <th>Lotes</th>
                                     <th>Entrada</th>
                                     <th>SL</th>
-                                    <th>TP</th>
+                                    <th>TP1</th>
+                                    <th>TP2</th>
                                     <th>Veredicto</th>
                                     <th>Prob.</th>
                                     <th>Resultado</th>
@@ -297,7 +308,7 @@ const Historial = ({ setAuth, botVersion }) => {
                                 {loading ? (
                                     <tr><td colSpan="13" className="text-center" style={{ padding: 32 }}>Cargando...</td></tr>
                                 ) : trades.length === 0 ? (
-                                    <tr><td colSpan="13" className="text-center" style={{ padding: 32, color: 'var(--text-secondary)' }}>Sin trades en el período seleccionado</td></tr>
+                                    <tr><td colSpan="14" className="text-center" style={{ padding: 32, color: 'var(--text-secondary)' }}>Sin trades en el período seleccionado</td></tr>
                                 ) : trades.map((t, i) => {
                                     const hasDetail = t.tipo_fallo || t.analisis;
                                     return (
@@ -315,6 +326,14 @@ const Historial = ({ setAuth, botVersion }) => {
                                                 <td>{t.lotes?.toFixed(2)}</td>
                                                 <td>{t.precio_entrada}</td>
                                                 <td>{t.sl}</td>
+                                                <td style={{ whiteSpace: 'nowrap' }}>
+                                                    {t.tp1_alcanzado
+                                                        ? <><span style={{ color: '#16a34a', fontWeight: 700, fontSize: 11 }}>✓ </span><span style={{ fontFamily: 'monospace', fontSize: 12 }}>{t.tp1}</span>{t.pnl_parcial != null && <span style={{ fontSize: 10, color: '#16a34a', marginLeft: 4 }}>+${t.pnl_parcial?.toFixed(2)}</span>}</>
+                                                        : t.tp1 != null
+                                                            ? <span style={{ color: '#f59e0b', fontFamily: 'monospace', fontSize: 12 }}>{t.tp1}</span>
+                                                            : <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                                                    }
+                                                </td>
                                                 <td>{t.tp}</td>
                                                 <td className={(t.veredicto ?? 0) >= 0 ? 'verdict bullish' : 'verdict bearish'}>
                                                     {t.veredicto != null ? `${t.veredicto >= 0 ? '+' : ''}${t.veredicto?.toFixed(4)}` : '---'}
@@ -334,7 +353,7 @@ const Historial = ({ setAuth, botVersion }) => {
                                             </tr>
                                             {expandedRow === i && hasDetail && (
                                                 <tr>
-                                                    <td colSpan="13" style={{ padding: 0 }}>
+                                                    <td colSpan="14" style={{ padding: 0 }}>
                                                         <TradeDetail t={t} />
                                                     </td>
                                                 </tr>
