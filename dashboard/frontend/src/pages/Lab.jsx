@@ -15,6 +15,9 @@ const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
     const fillWidth = Math.abs(currentPct - entryPct);
     const barColor  = pnl >= 0 ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
     const tp1Pct = tp1 != null ? clamp(tp1) : null;
+    const tpPct  = clamp(tp);
+    const tp1ZoneLeft  = tp1Pct != null ? Math.min(tp1Pct, tpPct) : null;
+    const tp1ZoneWidth = tp1Pct != null ? Math.abs(tpPct - tp1Pct) : 0;
     return (
         <div style={{ marginTop: 4, width: '100%' }}>
             <div style={{ position: 'relative', height: 12 }}>
@@ -23,16 +26,21 @@ const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
                 </span>
             </div>
             <div style={{ position: 'relative', height: 8, background: 'var(--bg-primary)', borderRadius: 999, overflow: 'hidden' }}>
-                <div style={{ position: 'absolute', top: 0, height: '100%', left: `${fillLeft}%`, width: `${Math.max(fillWidth, 0)}%`, background: barColor, borderRadius: 5, transition: 'left 0.8s, width 0.8s' }} />
-                {/* Marca TP1 en la barra */}
+                {/* Zona suave TP1→TP2 */}
                 {tp1Pct != null && (
-                    <div style={{ position: 'absolute', top: 0, left: `${tp1Pct}%`, width: 2, height: '100%', background: tp1_alcanzado ? '#10b981' : '#f59e0b', opacity: 0.9 }} />
+                    <div style={{ position: 'absolute', top: 0, height: '100%', left: `${tp1ZoneLeft}%`, width: `${tp1ZoneWidth}%`, background: 'rgba(16,185,129,0.22)' }} />
+                )}
+                {/* Fill principal entrada→actual */}
+                <div style={{ position: 'absolute', top: 0, height: '100%', left: `${fillLeft}%`, width: `${Math.max(fillWidth, 0)}%`, background: barColor, borderRadius: 5, transition: 'left 0.8s, width 0.8s' }} />
+                {/* Línea TP1 — siempre verde */}
+                {tp1Pct != null && (
+                    <div style={{ position: 'absolute', top: 0, left: `${tp1Pct}%`, width: 2, height: '100%', background: '#10b981', opacity: 0.95 }} />
                 )}
             </div>
             <div style={{ position: 'relative', height: 12 }}>
                 <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
                 {tp1Pct != null && (
-                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: tp1_alcanzado ? '#10b981' : '#f59e0b', whiteSpace: 'nowrap', fontWeight: 700 }}>
+                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap', fontWeight: 700 }}>
                         TP1
                     </span>
                 )}
@@ -280,9 +288,9 @@ const TablaOps = ({ ops }) => {
                         <th>Activo</th>
                         <th>Tipo</th>
                         <th>Estado</th>
-                        <th>TP1</th>
                         <th>Precio actual</th>
-                        <th>PnL</th>
+                        <th>TP1</th>
+                        <th>PnL Total</th>
                         <th>ROE%</th>
                         <th>Ticket</th>
                     </tr>
@@ -319,15 +327,13 @@ const TablaOps = ({ ops }) => {
                                             : op.resultado === 'TP' ? <Badge status="ok">TP</Badge>
                                             : <Badge status="fail">SL</Badge>}
                                     </td>
-                                    <td style={{ whiteSpace: 'nowrap' }}>
-                                        {op.tp1_alcanzado
-                                            ? <><Badge status="ok">TP1 ✓</Badge>{op.pnl_parcial != null && <span style={{ fontSize: 11, color: '#16a34a', marginLeft: 5, fontFamily: 'monospace' }}>+${op.pnl_parcial?.toFixed(2)}</span>}</>
-                                            : op.tp1 != null
-                                                ? <span style={{ fontSize: 11, color: '#f59e0b', fontFamily: 'monospace' }}>{fmt(op.tp1)}</span>
-                                                : <span style={{ color: 'var(--text-secondary)' }}>—</span>
+                                    <td className="time">{fmt(precioActual)}</td>
+                                    <td style={{ fontFamily: 'monospace', fontWeight: 700, color: '#16a34a' }}>
+                                        {op.tp1_alcanzado && op.pnl_parcial != null
+                                            ? `+$${op.pnl_parcial.toFixed(2)}`
+                                            : <span style={{ color: 'var(--text-secondary)' }}>—</span>
                                         }
                                     </td>
-                                    <td className="time">{fmt(precioActual)}</td>
                                     <td style={{ fontFamily: 'monospace', fontWeight: 700, color: pnlColor }}>
                                         {pnl !== null ? `${pnl >= 0 ? '+' : ''}${pnl?.toFixed(2)}` : '—'}
                                     </td>
