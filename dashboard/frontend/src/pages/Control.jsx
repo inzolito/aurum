@@ -28,6 +28,7 @@ const VotoBar = ({ label, voto, peso }) => {
 };
 
 const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
+    console.log('[PriceBar]', { entry, sl, tp, tp1, precioActual, pnl });
     if (!entry || !sl || !tp) return null;
     const lo    = Math.min(sl, tp);
     const hi    = Math.max(sl, tp);
