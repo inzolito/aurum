@@ -209,6 +209,34 @@ _symbol_specs_cache = {}
 _symbol_specs_ttl   = {}
 _SPEC_TTL = 300
 
+# Caché del rate USDJPY para conversión de tick_value en pares JPY
+_usdjpy_rate_cache = 150.0   # valor inicial conservador (aprox)
+_usdjpy_rate_ts    = 0.0
+_USDJPY_RATE_TTL   = 60      # refrescar cada 60s
+
+
+def _get_usdjpy_rate_safe() -> float:
+    """
+    Retorna el rate USDJPY mid-price. Usa caché de 60s.
+    Si falla, retorna el último valor conocido (mínimo 150.0).
+    """
+    global _usdjpy_rate_cache, _usdjpy_rate_ts
+    now = time.time()
+    if now - _usdjpy_rate_ts < _USDJPY_RATE_TTL:
+        return _usdjpy_rate_cache
+    try:
+        price = _run(_get_price_async('USDJPY'), timeout=5)
+        if price:
+            bid = float(_g(price, 'bid', 0) or 0)
+            ask = float(_g(price, 'ask', 0) or 0)
+            mid = (bid + ask) / 2.0
+            if mid > 50:   # sanity check
+                _usdjpy_rate_cache = mid
+                _usdjpy_rate_ts    = now
+    except Exception:
+        pass
+    return _usdjpy_rate_cache
+
 
 async def _get_spec_async(symbol):
     return await _ws.get_symbol_specification(_account_id, symbol)
@@ -234,8 +262,14 @@ def symbol_info(symbol):
         tick_size = float(_g(spec, 'tickSize', 0) or _g(spec, 'tick_size', 0)) or point
         tick_value = float(_g(spec, 'TickValue', 0) or _g(spec, 'tickValue', 0) or _g(spec, 'tick_value', 0))
         if tick_value == 0:
-            # Fallback para instrumentos cotizados en USD (forex directo, metales, índices)
+            # Fallback: tick_value = tick_size × contract_size (en moneda de cotización)
             tick_value = tick_size * contract_size_raw
+            # Para pares cotizados en JPY (USDJPY, GBPJPY, AUDJPY, EURJPY…),
+            # el resultado está en JPY, no USD. Convertir dividiendo por tasa USDJPY.
+            sym_clean = symbol.upper().replace('_I', '').replace('_i', '')
+            if len(sym_clean) >= 6 and sym_clean[-3:] == 'JPY':
+                usdjpy_rate = _get_usdjpy_rate_safe()
+                tick_value = tick_value / usdjpy_rate
         return SimpleNamespace(
             symbol=symbol,
             digits=int(_g(spec, 'digits', 5)),
