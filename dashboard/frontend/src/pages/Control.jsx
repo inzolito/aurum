@@ -27,64 +27,58 @@ const VotoBar = ({ label, voto, peso }) => {
     );
 };
 
-const PriceBar = ({ tipo, entry, sl, tp, precioActual }) => {
+const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
     if (!entry || !sl || !tp) return null;
-    const isLong = tipo === 'COMP';
-
-    // Izquierda = SL (lado perdedor), derecha = TP (lado ganador)
-    const lo = isLong ? sl : tp;
-    const hi = isLong ? tp : sl;
-    const range = hi - lo;
-    if (range <= 0) return null;
-
-    const toPct = (p) => Math.max(1, Math.min(99, (p - lo) / range * 100));
-    const entryPct  = toPct(entry);
-    const needlePct = precioActual != null ? toPct(precioActual) : null;
-    const isWinning = precioActual != null && (isLong ? precioActual >= entry : precioActual <= entry);
-
-    const fmt = (v) => {
-        if (v == null) return '—';
-        if (v >= 1000) return v.toFixed(1);
-        if (v >= 10)   return v.toFixed(3);
-        return v.toFixed(5);
-    };
-
+    const lo    = Math.min(sl, tp);
+    const hi    = Math.max(sl, tp);
+    const rng   = hi - lo;
+    if (rng <= 0) return null;
+    const clamp = v => Math.max(0, Math.min(100, ((v - lo) / rng) * 100));
+    const fmt   = v => v == null ? '—' : v >= 1000 ? v.toFixed(1) : v >= 10 ? v.toFixed(3) : v.toFixed(5);
+    const entryPct   = clamp(entry);
+    const currentPct = precioActual != null ? clamp(precioActual) : entryPct;
+    const tp1Pct     = tp1 != null ? clamp(tp1) : null;
+    const tpPct      = clamp(tp);
+    const profitable = (pnl ?? 0) >= 0;
+    const pastTp1 = tp1Pct != null && profitable &&
+        Math.abs(currentPct - entryPct) >= Math.abs(tp1Pct - entryPct);
+    const fills = [];
+    if (profitable) {
+        if (pastTp1) {
+            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: 'rgba(16,185,129,0.70)' });
+            fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: 'rgba(16,185,129,0.32)' });
+        } else {
+            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(16,185,129,0.70)' });
+        }
+    } else {
+        fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(244,63,94,0.65)' });
+    }
+    const showTp1Zone = tp1Pct != null && profitable;
     return (
         <div style={{ minWidth: 150, width: '100%' }}>
-            {/* Precio de entrada encima */}
             <div style={{ position: 'relative', height: 13, marginBottom: 2 }}>
-                <span style={{
-                    position: 'absolute', left: `${entryPct}%`,
-                    fontSize: 9, color: '#6b7280', lineHeight: 1,
-                    transform: 'translateX(-50%)', whiteSpace: 'nowrap',
-                }}>
+                <span style={{ position: 'absolute', left: `${entryPct}%`, fontSize: 9, color: '#6b7280', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
                     {fmt(entry)}
                 </span>
             </div>
-
-            {/* Barra uniforme */}
-            <div style={{ position: 'relative', height: 11, borderRadius: 2,
-                background: 'rgb(243 244 246)', overflow: 'hidden' }}>
-
-                {/* Fill: desde entry hasta precio actual */}
-                {needlePct != null && (
-                    <div style={{
-                        position: 'absolute', top: 0, bottom: 0,
-                        left: `${Math.min(entryPct, needlePct)}%`,
-                        width: `${Math.abs(needlePct - entryPct)}%`,
-                        background: isWinning ? '#16a34a' : '#dc2626',
-                        transition: 'left 0.5s ease, width 0.5s ease',
-                    }} />
+            <div style={{ position: 'relative', height: 11, borderRadius: 2, background: 'var(--bg-primary)', overflow: 'hidden' }}>
+                {showTp1Zone && (
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${Math.min(tp1Pct, tpPct)}%`, width: `${Math.abs(tpPct - tp1Pct)}%`, background: 'rgba(16,185,129,0.18)' }} />
                 )}
-
-                {/* Marcador de entrada */}
-                <div style={{
-                    position: 'absolute', top: 0, bottom: 0,
-                    left: `${entryPct}%`, width: 2,
-                    background: '#374151',
-                    transform: 'translateX(-50%)',
-                    zIndex: 2,
-                }} />
+                {fills.map((f, i) => (
+                    <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${f.left}%`, width: `${Math.max(f.width, 0)}%`, background: f.color, transition: 'left 0.5s, width 0.5s' }} />
+                ))}
+                {tp1Pct != null && (
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: 2, background: '#10b981', opacity: 0.95 }} />
+                )}
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${entryPct}%`, width: 2, background: '#374151', transform: 'translateX(-50%)', zIndex: 2 }} />
+            </div>
+            <div style={{ position: 'relative', height: 11 }}>
+                <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
+                {tp1Pct != null && (
+                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 8, color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap' }}>TP1</span>
+                )}
+                <span style={{ position: 'absolute', left: `${tpPct}%`, transform: 'translateX(-50%)', fontSize: 8, color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
             </div>
         </div>
     );
@@ -461,11 +455,12 @@ const Control = ({ setAuth, botVersion }) => {
                                             <td>{p.lotes?.toFixed(2)}</td>
                                             <td style={{ padding: '6px 12px' }}>
                                                 <PriceBar
-                                                    tipo={p.tipo}
                                                     entry={p.precio_entrada}
                                                     sl={p.sl}
                                                     tp={p.tp}
+                                                    tp1={p.tp1}
                                                     precioActual={p.precio_actual}
+                                                    pnl={p.pnl_usd}
                                                 />
                                             </td>
                                             <td className={(p.veredicto ?? 0) >= 0 ? 'verdict bullish' : 'verdict bearish'}>

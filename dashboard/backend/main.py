@@ -300,6 +300,7 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
             db.cursor.execute("""
                 SELECT a.simbolo, ro.ticket_mt5, ro.tipo_orden, ro.volumen_lotes,
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
+                       ro.take_profit_1, ro.tp1_alcanzado, ro.pnl_parcial,
                        ro.pnl_usd, ro.tiempo_entrada, ro.justificacion_entrada,
                        ro.veredicto_apertura, ro.probabilidad_est,
                        ro.precio_actual
@@ -309,6 +310,7 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
                 ORDER BY ro.tiempo_entrada DESC
             """)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
+                    "tp1", "tp1_alcanzado", "pnl_parcial",
                     "pnl_usd", "apertura", "justificacion_entrada", "veredicto", "probabilidad",
                     "precio_actual"]
             rows = db.cursor.fetchall()
@@ -318,6 +320,9 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
                 d = dict(zip(cols, r))
                 if d.get("apertura"):
                     d["apertura"] = d["apertura"].isoformat()
+                for k in ["precio_entrada", "sl", "tp", "tp1", "pnl_parcial", "pnl_usd", "precio_actual", "veredicto", "probabilidad"]:
+                    if d.get(k) is not None:
+                        d[k] = float(d[k])
                 # Parsear justificacion JSON si existe
                 raw = d.pop("justificacion_entrada", None)
                 if raw:
