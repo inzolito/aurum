@@ -10,29 +10,51 @@ const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
     const rng = hi - lo || 1;
     const clamp = v => Math.max(0, Math.min(100, ((v - lo) / rng) * 100));
     const fmt   = v => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
-    const entryPct = clamp(entry), currentPct = clamp(current);
-    const fillLeft = Math.min(entryPct, currentPct);
-    const fillWidth = Math.abs(currentPct - entryPct);
-    const barColor  = pnl >= 0 ? 'rgba(16,185,129,0.65)' : 'rgba(244,63,94,0.65)';
-    const tp1Pct = tp1 != null ? clamp(tp1) : null;
-    const tpPct  = clamp(tp);
-    const tp1ZoneLeft  = tp1Pct != null ? Math.min(tp1Pct, tpPct) : null;
-    const tp1ZoneWidth = tp1Pct != null ? Math.abs(tpPct - tp1Pct) : 0;
+    const entryPct   = clamp(entry);
+    const currentPct = clamp(current);
+    const tp1Pct     = tp1 != null ? clamp(tp1) : null;
+    const tpPct      = clamp(tp);
+    const profitable = pnl >= 0;
+
+    // ¿El precio actual ya pasó el TP1?
+    const pastTp1 = tp1Pct != null && profitable &&
+        Math.abs(currentPct - entryPct) >= Math.abs(tp1Pct - entryPct);
+
+    // Fill verde: si pasó TP1 se divide en oscuro (entry→tp1) + claro (tp1→current)
+    // Fill rojo: simple entrada→actual
+    const fills = [];
+    if (profitable) {
+        if (pastTp1) {
+            // Tramo oscuro: entrada → TP1
+            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: 'rgba(16,185,129,0.70)' });
+            // Tramo claro: TP1 → actual
+            fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: 'rgba(16,185,129,0.32)' });
+        } else {
+            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(16,185,129,0.70)' });
+        }
+    } else {
+        fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(244,63,94,0.65)' });
+    }
+
+    // Zona de fondo suave TP1→TP2: solo cuando la operación va en positivo
+    const showTp1Zone = tp1Pct != null && profitable;
     return (
         <div style={{ marginTop: 4, width: '100%' }}>
             <div style={{ position: 'relative', height: 12 }}>
-                <span style={{ position: 'absolute', left: `${clamp(entry)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
+                <span style={{ position: 'absolute', left: `${entryPct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>
                     {fmt(entry)}
                 </span>
             </div>
             <div style={{ position: 'relative', height: 8, background: 'var(--bg-primary)', borderRadius: 999, overflow: 'hidden' }}>
-                {/* Zona suave TP1→TP2 */}
-                {tp1Pct != null && (
-                    <div style={{ position: 'absolute', top: 0, height: '100%', left: `${tp1ZoneLeft}%`, width: `${tp1ZoneWidth}%`, background: 'rgba(16,185,129,0.22)' }} />
+                {/* Fondo suave zona TP1→TP final (solo si va bien) */}
+                {showTp1Zone && (
+                    <div style={{ position: 'absolute', top: 0, height: '100%', left: `${Math.min(tp1Pct, tpPct)}%`, width: `${Math.abs(tpPct - tp1Pct)}%`, background: 'rgba(16,185,129,0.18)' }} />
                 )}
-                {/* Fill principal entrada→actual */}
-                <div style={{ position: 'absolute', top: 0, height: '100%', left: `${fillLeft}%`, width: `${Math.max(fillWidth, 0)}%`, background: barColor, borderRadius: 5, transition: 'left 0.8s, width 0.8s' }} />
-                {/* Línea TP1 — siempre verde */}
+                {/* Fills de precio */}
+                {fills.map((f, i) => (
+                    <div key={i} style={{ position: 'absolute', top: 0, height: '100%', left: `${f.left}%`, width: `${Math.max(f.width, 0)}%`, background: f.color, transition: 'left 0.8s, width 0.8s' }} />
+                ))}
+                {/* Línea TP1 */}
                 {tp1Pct != null && (
                     <div style={{ position: 'absolute', top: 0, left: `${tp1Pct}%`, width: 2, height: '100%', background: '#10b981', opacity: 0.95 }} />
                 )}
@@ -40,11 +62,9 @@ const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
             <div style={{ position: 'relative', height: 12 }}>
                 <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
                 {tp1Pct != null && (
-                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap', fontWeight: 700 }}>
-                        TP1
-                    </span>
+                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap', fontWeight: 700 }}>TP1</span>
                 )}
-                <span style={{ position: 'absolute', left: `${clamp(tp)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
+                <span style={{ position: 'absolute', left: `${tpPct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
             </div>
         </div>
     );
