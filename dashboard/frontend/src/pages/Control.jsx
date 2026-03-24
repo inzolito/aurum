@@ -39,7 +39,11 @@ const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
     const currentPct = precioActual != null ? clamp(precioActual) : entryPct;
     const tp1Pct     = tp1 != null ? clamp(tp1) : null;
     const tpPct      = clamp(tp);
-    const profitable = (pnl ?? 0) >= 0;
+    // Para posiciones abiertas, pnl_usd puede ser null → usar precio vs entrada
+    const isLongDir  = tp > sl;  // TP mayor que SL = dirección BUY
+    const profitable = precioActual != null
+        ? (isLongDir ? precioActual >= entry : precioActual <= entry)
+        : (pnl ?? 0) >= 0;
     const pastTp1 = tp1Pct != null && profitable &&
         Math.abs(currentPct - entryPct) >= Math.abs(tp1Pct - entryPct);
     const fills = [];
