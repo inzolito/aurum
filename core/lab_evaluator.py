@@ -346,6 +346,7 @@ class LabEvaluator:
                         tp_dist = abs(tp - precio_entrada)
                         pnl_parcial = round((tp1_dist / tp_dist) * capital_half, 2) if tp_dist > 0 else 0.0
                     self.db.marcar_tp1_lab(op["id"], pnl_parcial)
+                    self.db.actualizar_sl_lab(op["id"], precio_entrada)  # persiste BE en BD
                     tp1_alcanzado = True
                     sl = precio_entrada  # BE activo desde ahora
                     capital_usado = capital_half  # solo queda el 50%

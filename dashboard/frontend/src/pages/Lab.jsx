@@ -5,8 +5,10 @@ import SideNav from '../components/SideNav';
 
 // ── PriceBar ──────────────────────────────────────────────────────────────────
 const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
-    const lo  = Math.min(sl, tp);
-    const hi  = Math.max(sl, tp);
+    // Si SL == entry (BE activo) reconstruir SL visual para que la barra mantenga rango original
+    const displaySl = (sl === entry && tp1 != null) ? entry - (tp1 - entry) : sl;
+    const lo  = Math.min(displaySl, tp);
+    const hi  = Math.max(displaySl, tp);
     const rng = hi - lo || 1;
     const clamp = v => Math.max(0, Math.min(100, ((v - lo) / rng) * 100));
     const fmt   = v => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
@@ -58,7 +60,7 @@ const PriceBar = ({ sl, tp, entry, current, pnl, tp1, tp1_alcanzado }) => {
                 )}
             </div>
             <div style={{ position: 'relative', height: 12 }}>
-                <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
+                <span style={{ position: 'absolute', left: `${clamp(displaySl)}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: sl === entry ? '#f59e0b' : '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
                 <span style={{ position: 'absolute', left: `${tpPct}%`, transform: 'translateX(-50%)', fontSize: 8, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
             </div>
         </div>
