@@ -552,6 +552,7 @@ async def get_historial(
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
                        ro.take_profit_1, ro.tp1_alcanzado, ro.pnl_parcial,
                        ro.pnl_usd, ro.tiempo_entrada, ro.resultado_final,
+                       ro.precio_salida,
                        ro.veredicto_apertura, ro.probabilidad_est, ro.divergencia_precision,
                        ro.justificacion_entrada,
                        ap.tipo_fallo, ap.worker_culpable, ap.descripcion, ap.correccion_sugerida,
@@ -570,7 +571,8 @@ async def get_historial(
             """, params)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
                     "tp1", "tp1_alcanzado", "pnl_parcial",
-                    "pnl_usd", "apertura", "resultado", "veredicto", "probabilidad",
+                    "pnl_usd", "apertura", "resultado", "precio_salida",
+                    "veredicto", "probabilidad",
                     "divergencia", "justificacion_entrada",
                     "tipo_fallo", "worker_culpable", "descripcion_fallo", "correccion",
                     "version"]
@@ -581,7 +583,7 @@ async def get_historial(
                 d = dict(zip(cols, r))
                 if d.get("apertura"):
                     d["apertura"] = d["apertura"].isoformat()
-                for k in ["pnl_usd", "veredicto", "probabilidad", "divergencia", "tp1", "pnl_parcial"]:
+                for k in ["pnl_usd", "veredicto", "probabilidad", "divergencia", "tp1", "pnl_parcial", "precio_salida", "precio_entrada", "sl", "tp"]:
                     if d.get(k) is not None:
                         d[k] = float(d[k])
                 raw = d.pop("justificacion_entrada", None)

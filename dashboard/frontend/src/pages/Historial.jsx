@@ -8,6 +8,57 @@ const FALLO_COLOR = {
     TECNICO: '#dc2626', MACRO: '#d97706', TIMING: '#7c3aed', RIESGO: '#db2777'
 };
 
+// ── PriceBar (igual lógica que Lab) ───────────────────────────────────────────
+const PriceBar = ({ sl, tp, entry, current, pnl, tp1 }) => {
+    if (sl == null || tp == null || entry == null || current == null) return null;
+    const lo    = Math.min(sl, tp);
+    const hi    = Math.max(sl, tp);
+    const rng   = hi - lo || 1;
+    const clamp = v => Math.max(0, Math.min(100, ((v - lo) / rng) * 100));
+    const fmt   = v => v >= 1000 ? v.toFixed(2) : v >= 1 ? v.toFixed(4) : v.toFixed(5);
+    const entryPct   = clamp(entry);
+    const currentPct = clamp(current);
+    const tp1Pct     = tp1 != null ? clamp(tp1) : null;
+    const tpPct      = clamp(tp);
+    const profitable = pnl >= 0;
+    const pastTp1 = tp1Pct != null && profitable &&
+        Math.abs(currentPct - entryPct) >= Math.abs(tp1Pct - entryPct);
+    const fills = [];
+    if (profitable) {
+        if (pastTp1) {
+            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: 'rgba(16,185,129,0.70)' });
+            fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: 'rgba(16,185,129,0.32)' });
+        } else {
+            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(16,185,129,0.70)' });
+        }
+    } else {
+        fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(244,63,94,0.65)' });
+    }
+    const showTp1Zone = tp1Pct != null && profitable;
+    return (
+        <div style={{ marginTop: 4, width: '100%', minWidth: 120 }}>
+            <div style={{ position: 'relative', height: 8, background: 'var(--bg-primary)', borderRadius: 999, overflow: 'hidden' }}>
+                {showTp1Zone && (
+                    <div style={{ position: 'absolute', top: 0, height: '100%', left: `${Math.min(tp1Pct, tpPct)}%`, width: `${Math.abs(tpPct - tp1Pct)}%`, background: 'rgba(16,185,129,0.18)' }} />
+                )}
+                {fills.map((f, i) => (
+                    <div key={i} style={{ position: 'absolute', top: 0, height: '100%', left: `${f.left}%`, width: `${Math.max(f.width, 0)}%`, background: f.color }} />
+                ))}
+                {tp1Pct != null && (
+                    <div style={{ position: 'absolute', top: 0, left: `${tp1Pct}%`, width: 2, height: '100%', background: '#10b981', opacity: 0.95 }} />
+                )}
+            </div>
+            <div style={{ position: 'relative', height: 10 }}>
+                <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 7, fontFamily: 'monospace', color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
+                {tp1Pct != null && (
+                    <span style={{ position: 'absolute', left: `${tp1Pct}%`, transform: 'translateX(-50%)', fontSize: 7, fontFamily: 'monospace', color: '#10b981', fontWeight: 700, whiteSpace: 'nowrap' }}>TP1</span>
+                )}
+                <span style={{ position: 'absolute', left: `${tpPct}%`, transform: 'translateX(-50%)', fontSize: 7, fontFamily: 'monospace', color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
+            </div>
+        </div>
+    );
+};
+
 const QUICK_FILTERS = [
     { label: 'Hoy',        days: 0 },
     { label: 'Ayer',       days: 1 },
@@ -319,7 +370,15 @@ const Historial = ({ setAuth, botVersion }) => {
                                                     {hasDetail ? (expandedRow === i ? <ChevronDown size={14}/> : <ChevronRight size={14}/>) : null}
                                                 </td>
                                                 <td className="time">{toChileTime(t.apertura, 'datetime')}</td>
-                                                <td className="symbol">{t.simbolo}</td>
+                                                <td style={{ minWidth: 140 }}>
+                                                    <span className="symbol">{t.simbolo}</span>
+                                                    <PriceBar
+                                                        sl={t.sl} tp={t.tp} entry={t.precio_entrada}
+                                                        current={t.precio_salida ?? (t.resultado === 'GANADO' ? t.tp : t.sl)}
+                                                        pnl={t.pnl_usd ?? 0}
+                                                        tp1={t.tp1}
+                                                    />
+                                                </td>
                                                 <td className={`verdict ${t.tipo === 'COMP' ? 'bullish' : 'bearish'}`}>
                                                     {t.tipo === 'COMP' ? 'BUY' : 'SELL'}
                                                 </td>
