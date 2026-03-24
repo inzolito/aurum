@@ -49,10 +49,10 @@ const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
     const fills = [];
     if (profitable) {
         if (pastTp1) {
-            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: 'rgba(16,185,129,0.70)' });
+            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: 'rgba(16,185,129,0.42)' });
             fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: 'rgba(16,185,129,0.32)' });
         } else {
-            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(16,185,129,0.70)' });
+            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(16,185,129,0.42)' });
         }
     } else {
         fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(244,63,94,0.65)' });
