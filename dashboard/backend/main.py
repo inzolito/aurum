@@ -286,6 +286,42 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
     balance = cuenta.get("balance", 0) or 0
     result["pnl_flotante"] = round(equity - balance, 2)
 
+    # Último voto por activo activo + umbral
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT DISTINCT ON (a.simbolo)
+                    a.simbolo, rs.voto_tendencia, rs.voto_nlp, rs.voto_sniper,
+                    rs.voto_volume, rs.voto_cross, rs.decision_gerente, rs.tiempo,
+                    rs.voto_final_ponderado, rs.voto_hurst, rs.voto_macro
+                FROM registro_senales rs
+                JOIN activos a ON a.id = rs.activo_id
+                WHERE a.estado_operativo = 'ACTIVO'
+                ORDER BY a.simbolo, rs.tiempo DESC
+            """)
+            rows = db.cursor.fetchall()
+        except Exception:
+            db.conn.rollback()
+            rows = []
+
+    umbral = 0.45
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT valor FROM parametros_sistema WHERE nombre_parametro = 'GERENTE.umbral_disparo'")
+            r = db.cursor.fetchone()
+            if r:
+                umbral = round(float(r[0]), 3)
+        except Exception:
+            db.conn.rollback()
+
+    result["umbral_disparo"] = umbral
+    result["votos_workers"] = [{"simbolo": r[0], "trend": round(float(r[1] or 0), 2),
+                                  "nlp": round(float(r[2] or 0), 2), "sniper": round(float(r[3] or 0), 2),
+                                  "volumen": round(float(r[4] or 0), 2), "cross": round(float(r[5] or 0), 2),
+                                  "decision": r[6], "tiempo": r[7].isoformat() if r[7] else None,
+                                  "veredicto": round(float(r[8] or 0), 3),
+                                  "hurst": round(float(r[9] or 0), 2), "macro": round(float(r[10] or 0), 2)} for r in rows]
+
     return result
 
 
