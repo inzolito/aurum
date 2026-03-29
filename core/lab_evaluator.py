@@ -110,14 +110,14 @@ class LabEvaluator:
                       f"sin datos de noticias. Entrada bloqueada universalmente.")
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
-                "IGNORADO", motivo, umbral, pesos_usados
+                "CONFIANZA_BAJA", motivo, umbral, pesos_usados
             )
             return
 
         # 3. Decidir
         if abs(veredicto) < umbral:
             motivo = f"[LAB] Veredicto {veredicto:+.4f} insuficiente (umbral: {umbral})"
-            decision = "IGNORADO"
+            decision = "CONFIANZA_BAJA"
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
                 decision, motivo, umbral, pesos_usados
@@ -130,7 +130,7 @@ class LabEvaluator:
             motivo = f"[LAB] Sin precio disponible para {simbolo}"
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
-                "CANCELADO_RIESGO", motivo, umbral, pesos_usados
+                "BLOQUEO_EXPOSICION", motivo, umbral, pesos_usados
             )
             return
 
@@ -146,7 +146,7 @@ class LabEvaluator:
                       f"Trend={v_trend:+.2f} indica tendencia bajista.")
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
-                "IGNORADO", motivo, umbral, pesos_usados
+                "CONFIANZA_BAJA", motivo, umbral, pesos_usados
             )
             return
         if tipo_orden == "SELL" and v_trend > +0.10:
@@ -154,7 +154,7 @@ class LabEvaluator:
                       f"Trend={v_trend:+.2f} indica tendencia alcista.")
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
-                "IGNORADO", motivo, umbral, pesos_usados
+                "CONFIANZA_BAJA", motivo, umbral, pesos_usados
             )
             return
 
@@ -165,7 +165,7 @@ class LabEvaluator:
             motivo = f"[LAB] Posicion ya abierta en {simbolo} — anti-duplicado activo"
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
-                "CANCELADO_RIESGO", motivo, umbral, pesos_usados
+                "BLOQUEO_EXPOSICION", motivo, umbral, pesos_usados
             )
             return
 
@@ -177,7 +177,7 @@ class LabEvaluator:
                       f"en este lab. Pausando entradas 4h.")
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
-                "CANCELADO_RIESGO", motivo, umbral, pesos_usados
+                "BLOQUEO_EXPOSICION", motivo, umbral, pesos_usados
             )
             return
 

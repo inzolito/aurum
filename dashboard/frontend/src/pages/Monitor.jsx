@@ -93,11 +93,18 @@ const FilaProceso = ({ nombre, data }) => {
 
 const ChipDecision = ({ decision }) => {
     const map = {
-        EJECUTADO:        { s: 'ok',   label: 'TRADE' },
-        IGNORADO:         { s: 'info', label: 'IGNORADO' },
-        CANCELADO_RIESGO: { s: 'warn', label: 'RIESGO' },
-        BLOQUEADO_HORARIO:{ s: 'info', label: 'HORARIO' },
-        ERROR_BROKER:     { s: 'fail', label: 'ERROR' },
+        EJECUTADO:          { s: 'ok',   label: 'TRADE' },
+        CONFIANZA_BAJA:     { s: 'info', label: 'CONFIANZA BAJA' },
+        BLOQUEO_EXPOSICION: { s: 'warn', label: 'EXPOSICIÓN' },
+        BLOQUEO_DRAWDOWN:   { s: 'warn', label: 'DRAWDOWN' },
+        ACTIVO_PAUSADO:     { s: 'warn', label: 'PAUSADO' },
+        SEÑALES_DIVIDIDAS:  { s: 'warn', label: 'DIVIDIDAS' },
+        FUERA_DE_HORARIO:   { s: 'info', label: 'HORARIO' },
+        MERCADO_VOLATIL:    { s: 'warn', label: 'VOLÁTIL' },
+        MERCADO_LATERAL:    { s: 'info', label: 'LATERAL' },
+        MERCADO_TENDENCIA:  { s: 'info', label: 'TENDENCIA' },
+        RECHAZO_MT5:        { s: 'fail', label: 'RECHAZO MT5' },
+        ERROR_NO_CATALOGADO:{ s: 'fail', label: 'ERROR' },
     };
     const d = map[decision] || { s: 'info', label: decision };
     return <Badge status={d.s}>{d.label}</Badge>;
@@ -147,7 +154,7 @@ const Monitor = ({ setAuth, botVersion }) => {
             if (procesos && !Object.values(procesos).every(p => p.vivo)) alertas.push('procesos_caidos');
             if (sistema?.ram?.pct  > 85) alertas.push('ram_critica');
             if (sistema?.disco?.pct > 90) alertas.push('disco_critico');
-            const errores = d?.senales?.filter(s => s.decision === 'ERROR_BROKER').length || 0;
+            const errores = d?.senales?.filter(s => s.decision === 'RECHAZO_MT5').length || 0;
             if (errores > 0) alertas.push('errores_broker');
 
             for (const tipo of alertas) {
@@ -204,7 +211,7 @@ const Monitor = ({ setAuth, botVersion }) => {
     const discoStatus   = sistema?.disco?.pct > 90 ? 'fail' : sistema?.disco?.pct > 80 ? 'warn' : 'ok';
     const winRateHoy    = hoy?.total > 0 ? Math.round((hoy.ganados / hoy.total) * 100) : null;
     const winRateStatus = winRateHoy === null ? 'info' : winRateHoy >= 50 ? 'ok' : winRateHoy >= 30 ? 'warn' : 'fail';
-    const erroresRecientes = senales?.filter(s => s.decision === 'ERROR_BROKER').length || 0;
+    const erroresRecientes = senales?.filter(s => s.decision === 'RECHAZO_MT5').length || 0;
     const todosLong     = votos_workers?.length > 3 && votos_workers.every(w => w.trend > 0.3);
 
     // Clasificación de activos por estado
@@ -580,7 +587,7 @@ const Monitor = ({ setAuth, botVersion }) => {
                         <Card title="Últimas 25 Señales (V17.01+)" icon={<Zap size={15} />} alerta={erroresRecientes > 0}>
                             {senales?.length > 0 ? (
                                 <>
-                                    {senales.filter(s => s.decision === 'IGNORADO').length === senales.length && (
+                                    {senales.filter(s => s.decision === 'CONFIANZA_BAJA').length === senales.length && (
                                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#f59e0b', fontSize: 12 }}>
                                             <AlertTriangle size={13} /> Todas ignoradas — bot no está operando
                                         </div>
@@ -596,7 +603,7 @@ const Monitor = ({ setAuth, botVersion }) => {
                                             </thead>
                                             <tbody>
                                                 {senales.map((s, i) => (
-                                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', opacity: s.decision === 'IGNORADO' ? 0.5 : 1 }}>
+                                                    <tr key={i} style={{ borderBottom: '1px solid var(--border-color)', opacity: s.decision === 'CONFIANZA_BAJA' ? 0.5 : 1 }}>
                                                         <td style={{ padding: '5px 8px', color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{tiempoRelativo(s.tiempo)}</td>
                                                         <td style={{ padding: '5px 8px', fontFamily: 'monospace', fontWeight: 600 }}>{s.simbolo}</td>
                                                         <td style={{ padding: '5px 8px' }}><ChipDecision decision={s.decision} /></td>

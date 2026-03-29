@@ -213,7 +213,7 @@ const TablaVotos = ({ votos, umbral = 0.55 }) => {
                                     )}
                                 </td>
                                 <td>
-                                    <Badge status={w.decision === 'EJECUTADO' ? 'ok' : w.decision === 'IGNORADO' ? 'info' : 'warn'}>
+                                    <Badge status={w.decision === 'EJECUTADO' ? 'ok' : w.decision === 'CONFIANZA_BAJA' ? 'info' : 'warn'}>
                                         {w.decision}
                                     </Badge>
                                 </td>

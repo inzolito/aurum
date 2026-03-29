@@ -383,7 +383,7 @@ const Control = ({ setAuth, botVersion }) => {
                                             const barColor = dispara ? '#16a34a' : cerca ? '#d97706' : '#6366f1';
                                             const dir    = v > 0 ? '▲' : v < 0 ? '▼' : '—';
                                             const decColor = w.decision === 'EJECUTADO' ? '#16a34a'
-                                                           : w.decision === 'IGNORADO'  ? 'var(--text-secondary)'
+                                                           : w.decision === 'CONFIANZA_BAJA'  ? 'var(--text-secondary)'
                                                            : '#d97706';
                                             return (
                                                 <tr key={i} style={{ background: dispara ? 'rgba(16,185,129,0.04)' : undefined }}>

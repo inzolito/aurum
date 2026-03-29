@@ -99,7 +99,7 @@ class Manager:
             error_msg = f"FALLO CRITICO en evaluacion de {simbolo_interno}: {e}"
             print(f"[GERENTE] 🚨 {error_msg}")
             self.db.registrar_log("ERROR", "MANAGER", error_msg)
-            return {"decision": "ERROR_INTERNO", "motivo": str(e)}
+            return {"decision": "ERROR_NO_CATALOGADO", "motivo": str(e)}
 
     def _evaluar_internamente(self, simbolo_interno: str, modo_simulacion: bool = True,
                              id_activo: int = None) -> dict:
@@ -125,16 +125,19 @@ class Manager:
             _pos = mt5.positions_get(symbol=_sb) if _sb else None
             if _pos is not None and len(_pos) > 0:
                 motivo = f"Posición abierta en {_sb} ({len(_pos)} pos.). Anti-duplicado activo."
+                _decision_seg = "BLOQUEO_EXPOSICION"
             else:
                 _acc = mt5.account_info()
                 _max_dd = float(self.db.get_parametros().get("GERENTE.max_drawdown_usd", 1000.0))
                 if _acc and _acc.profit < -_max_dd:
                     motivo = f"Límite de pérdida flotante alcanzado ({_acc.profit:.2f} USD)."
+                    _decision_seg = "BLOQUEO_DRAWDOWN"
                 else:
                     motivo = f"Activo bloqueado: estado no operativo o sin mapeo en BD."
+                    _decision_seg = "ACTIVO_PAUSADO"
             self._guardar_auditoria(simbolo_interno, 0.0, 0.0, 0.0, 0.0,
-                                    "CANCELADO_RIESGO", motivo)
-            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+                                    _decision_seg, motivo)
+            return {"decision": _decision_seg, "motivo": motivo}
 
         # 2. Obtener pesos desde BD (Solo para compatibilidad, V6 usa balance dinámico)
         params    = self.db.get_parametros()
@@ -143,7 +146,7 @@ class Manager:
         simbolo_broker = self.db.obtener_simbolo_broker(simbolo_interno)
         if not simbolo_broker:
             print(f"[GERENTE] Activo {simbolo_interno} no tiene mapeo en el broker.")
-            return {"decision": "ERROR_CONFIG"}
+            return {"decision": "ERROR_NO_CATALOGADO"}
 
         # --- PROTOCOLO GATEKEEPER V13.0: Hibernación por Error 10018 ---
         if simbolo_interno in self._hibernacion_activos:
@@ -151,7 +154,7 @@ class Manager:
             if time.time() - inicio_hib < 3600: # 1 hora
                 min_restantes = int((3600 - (time.time() - inicio_hib)) / 60)
                 print(f"[GATEKEEPER] {simbolo_interno} en HIBERNACIÓN (10018). Faltan {min_restantes} min.")
-                return {"decision": "HIBERNACION_10018", "motivo": f"Pausa automatica por 1 hora. Restan {min_restantes} min."}
+                return {"decision": "RECHAZO_MT5", "motivo": f"Pausa automatica por 1 hora. Restan {min_restantes} min."}
             else:
                 del self._hibernacion_activos[simbolo_interno]
                 print(f"[GATEKEEPER] {simbolo_interno} ha despertado de la hibernacion.")
@@ -163,7 +166,7 @@ class Manager:
             if info_simbolo.trade_mode in (mt5.SYMBOL_TRADE_MODE_DISABLED, mt5.SYMBOL_TRADE_MODE_CLOSEONLY):
                 print(f"[GATEKEEPER] {simbolo_interno} en modo {info_simbolo.trade_mode} (Cerrado). Abortando.")
                 notificar_mercado_cerrado(simbolo_interno)
-                return {"decision": "MERCADO_CERRADO", "motivo": "Trade mode deshabilitado por el broker."}
+                return {"decision": "FUERA_DE_HORARIO", "motivo": "Trade mode deshabilitado por el broker."}
             
         # Hardened check for Market Watch (V6.1)
         mt5.symbol_select(simbolo_broker, True)
@@ -171,7 +174,7 @@ class Manager:
         if tick is None:
             notificar_error_market_watch(simbolo_broker)
             print(f"[GERENTE] ⚠️ {simbolo_broker} no responde en el Market Watch.")
-            return {"decision": "ERROR_CONEXION", "motivo": "Market Watch invisible"}
+            return {"decision": "ERROR_NO_CATALOGADO", "motivo": "Market Watch invisible"}
 
         # 3. Reflejo de Combate: Trigger de Volatilidad y Veto ATR (V12.0)
         volatil_ahora = self._medir_volatilidad(simbolo_broker)
@@ -181,8 +184,8 @@ class Manager:
         if volatil_ahora >= 2.0:
             print(f"[GERENTE] ⚡ VOLATILIDAD EXTREMA DETECTADA ({volatil_ahora:.1f}x)")
             motivo = f"Veto de Seguridad: Volatilidad explosiva ({volatil_ahora:.1f}x) superior al 200% de la media."
-            self._guardar_auditoria(simbolo_interno, 0.0, 0.0, 0.0, 0.0, "VOLATILIDAD_EXTREMA", motivo)
-            return {"decision": "VOLATILIDAD_EXTREMA", "motivo": motivo}
+            self._guardar_auditoria(simbolo_interno, 0.0, 0.0, 0.0, 0.0, "MERCADO_VOLATIL", motivo)
+            return {"decision": "MERCADO_VOLATIL", "motivo": motivo}
 
         forzar_nlp = False
         # (V12.0: El bloque de alerta de volatilidad quirurgica fue removido para priorizar el veto de seguridad)
@@ -254,11 +257,11 @@ class Manager:
         if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
             motivo = f"Bloqueado por DIVERGENCIA extrema entre Trend e IA."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                    0.0, "CANCELADO_RIESGO", motivo,
+                                    0.0, "SEÑALES_DIVIDIDAS", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
-            result = {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+            result = {"decision": "SEÑALES_DIVIDIDAS", "motivo": motivo}
             if modo_simulacion:
                 result["votos"] = {
                     "trend": round(float(v_trend), 4), "nlp": round(float(v_nlp), 4),
@@ -350,11 +353,11 @@ class Manager:
                       f"({h_val:.4f}). Entrada tardia en tendencia agotada.")
             print(f"[GERENTE] 🚫 F1 Trend+Persistente: Trend={v_trend:.2f} H={h_val:.4f} — BLOQUEADO")
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                    veredicto, "BLOQUEADO_TENDENCIA_PERSISTENTE", motivo,
+                                    veredicto, "MERCADO_TENDENCIA", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
-            return {"decision": "BLOQUEADO_TENDENCIA_PERSISTENTE", "veredicto": veredicto, "motivo": motivo}
+            return {"decision": "MERCADO_TENDENCIA", "veredicto": veredicto, "motivo": motivo}
 
         # 6. Decisión y Telemetría Extra
         # Black Swan Emergency
@@ -421,12 +424,12 @@ class Manager:
                 motivo = f"Veredicto {veredicto:+.4f} insufficiente (Umbral: {umbral})"
             
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                    veredicto, "IGNORADO", motivo,
+                                    veredicto, "CONFIANZA_BAJA", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
             return {
-                "decision": "IGNORADO",
+                "decision": "CONFIANZA_BAJA",
                 "veredicto": veredicto,
                 "motivo": motivo,
                 "votos": {
@@ -451,12 +454,12 @@ class Manager:
                       f"en zona bloqueada ({hora_bloqueo_inicio}-{hora_bloqueo_fin}h).")
             print(f"[GERENTE] 🕐 F3 Horario bloqueado: {hora_santiago}h Santiago")
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                    veredicto, "BLOQUEADO_HORARIO_SANTIAGO", motivo,
+                                    veredicto, "FUERA_DE_HORARIO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
             return {
-                "decision": "BLOQUEADO_HORARIO_SANTIAGO",
+                "decision": "FUERA_DE_HORARIO",
                 "veredicto": veredicto,
                 "motivo": motivo,
                 "votos": {
@@ -475,12 +478,12 @@ class Manager:
         if not self.risk.verificar_ventana_ejecucion(simbolo_interno):
             motivo = f"Veredicto {veredicto:+.4f} aprobado pero ejecucion bloqueada (horario/arranque de sesion)."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                    veredicto, "BLOQUEADO_HORARIO", motivo,
+                                    veredicto, "FUERA_DE_HORARIO", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
             return {
-                "decision": "BLOQUEADO_HORARIO",
+                "decision": "FUERA_DE_HORARIO",
                 "veredicto": veredicto,
                 "motivo": motivo,
                 "votos": {
@@ -504,11 +507,11 @@ class Manager:
         if lotes is None:
             motivo = "Error calculando riesgo unificado (lotes/SL/TP). Orden abortada."
             self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                    veredicto, "CANCELADO_RIESGO", motivo,
+                                    veredicto, "BLOQUEO_EXPOSICION", motivo,
                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                     v_hurst=h_val, v_sniper=v_struct['voto'],
                                     v_macro=v_macro)
-            return {"decision": "CANCELADO_RIESGO", "motivo": motivo}
+            return {"decision": "BLOQUEO_EXPOSICION", "motivo": motivo}
 
         print(f"[GERENTE] Riesgo V16 -> Conviccion: {abs(veredicto)*100:.1f}% | Lotes: {lotes} | SL: {sl:.4f} | TP: {tp:.4f}")
 
@@ -597,7 +600,7 @@ class Manager:
                 err_msg = f"Rechazo de Seguridad: Intento de operar en cuenta {info_oc.login if info_oc else 'Desconocida'} en vez de {cuenta_esperada}"
                 print(f"[GERENTE] 🚨 {err_msg}")
                 notificar_error_critico("SEGURIDAD_PRE_TRADE", err_msg)
-                return {"decision": "ERROR_BROKER", "motivo": err_msg}
+                return {"decision": "RECHAZO_MT5", "motivo": err_msg}
 
             obj_ticket = self.mt5.enviar_orden(
                 self.db.obtener_simbolo_broker(simbolo_interno),
@@ -628,11 +631,11 @@ class Manager:
                 notificar_rechazo_broker(simbolo_interno, retcode, causa)
                 
                 self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
-                                        veredicto, "ERROR_BROKER", err_msg,
+                                        veredicto, "RECHAZO_MT5", err_msg,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                         v_hurst=h_val, v_sniper=v_struct['voto'],
                                         v_macro=v_macro)
-                return {"decision": "ERROR_BROKER", "motivo": err_msg}
+                return {"decision": "RECHAZO_MT5", "motivo": err_msg}
             else:
                 ticket = obj_ticket.get("ticket")
                 print(f"\n[GERENTE] ORDEN RECIBIDA (10009) — Ticket: {ticket}")
@@ -644,11 +647,11 @@ class Manager:
                     err_msg = f"Discrepancia MT5: Ticket {ticket} reportado como DONE pero no aparece en posiciones abiertas."
                     print(f"[GERENTE] 🚨 {err_msg}")
                     notificar_error_critico("DISCREPANCIA_BROKER", err_msg)
-                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0, veredicto, "ERROR_BROKER", err_msg,
+                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0, veredicto, "RECHAZO_MT5", err_msg,
                                             v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                             v_hurst=h_val, v_sniper=v_struct['voto'],
                                             v_macro=v_macro)
-                    return {"decision": "ERROR_BROKER", "motivo": err_msg}
+                    return {"decision": "RECHAZO_MT5", "motivo": err_msg}
                 
                 # Obtener detalles reales
                 pos          = posiciones[0]
