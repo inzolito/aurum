@@ -207,11 +207,12 @@ const Monitor = ({ setAuth, botVersion }) => {
     const erroresRecientes = senales?.filter(s => s.decision === 'ERROR_BROKER').length || 0;
     const todosLong     = votos_workers?.length > 3 && votos_workers.every(w => w.trend > 0.3);
 
-    // Clasificación de activos no-ACTIVO
-    const activosLab        = (activos_estado || []).filter(a => a.estado === 'LABORATORIO');
-    const activosInactivo   = (activos_estado || []).filter(a => a.estado === 'INACTIVO');
+    // Clasificación de activos por estado
+    const activosProduccion  = (activos_estado || []).filter(a => a.estado === 'ACTIVO');
+    const activosLab         = (activos_estado || []).filter(a => a.estado === 'LABORATORIO');
+    const activosInactivo    = (activos_estado || []).filter(a => a.estado === 'INACTIVO');
     const activosSoloLectura = (activos_estado || []).filter(a => a.estado === 'SOLO_LECTURA');
-    const activosError      = (activos_estado || []).filter(a => !['LABORATORIO','INACTIVO','SOLO_LECTURA'].includes(a.estado));
+    const activosError       = (activos_estado || []).filter(a => !['ACTIVO','LABORATORIO','INACTIVO','SOLO_LECTURA'].includes(a.estado));
 
     return (
         <div className="dashboard-layout">
@@ -366,13 +367,31 @@ const Monitor = ({ setAuth, botVersion }) => {
                     <Card title="Estado de Activos" icon={<PauseCircle size={15} />}
                           alerta={activosError.length > 0}
                           style={{ alignSelf: 'stretch' }}>
-                        <div style={{ overflowY: 'auto', maxHeight: 220, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                        <div style={{ overflowY: 'auto', maxHeight: 280, display: 'flex', flexDirection: 'column', gap: 2 }}>
 
-                            {/* Lab-only (voluntarios) */}
+                            {/* Producción — activos operando */}
+                            {activosProduccion.length > 0 && (
+                                <>
+                                    <div style={{ fontSize: 10, color: '#22c55e', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '4px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                        <CheckCircle size={11} /> Producción ({activosProduccion.length})
+                                    </div>
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 6 }}>
+                                        {activosProduccion.map(a => (
+                                            <span key={a.simbolo} style={{
+                                                fontSize: 11, fontFamily: 'monospace', fontWeight: 700,
+                                                background: '#14532d33', color: '#4ade80',
+                                                border: '1px solid #22c55e33', borderRadius: 5, padding: '2px 8px',
+                                            }}>{a.simbolo}</span>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+
+                            {/* Laboratorio */}
                             {activosLab.length > 0 && (
                                 <>
                                     <div style={{ fontSize: 10, color: '#8b5cf6', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '4px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <FlaskConical size={11} /> Laboratorio (voluntario)
+                                        <FlaskConical size={11} /> Laboratorio ({activosLab.length})
                                     </div>
                                     {activosLab.map(a => (
                                         <div key={a.simbolo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-primary)' }}>
@@ -385,39 +404,25 @@ const Monitor = ({ setAuth, botVersion }) => {
                                 </>
                             )}
 
-                            {/* Inactivos */}
+                            {/* Inactivos — colapsados en chips para no ocupar espacio */}
                             {activosInactivo.length > 0 && (
                                 <>
                                     <div style={{ fontSize: 10, color: '#6b7280', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <PauseCircle size={11} /> Inactivos
+                                        <PauseCircle size={11} /> Inactivos ({activosInactivo.length})
                                     </div>
-                                    {activosInactivo.map(a => (
-                                        <div key={a.simbolo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-primary)' }}>
-                                            <Dot status="info" size={8} />
-                                            <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, flex: 1 }}>{a.simbolo}</span>
-                                            <Badge status="info">Inactivo</Badge>
-                                        </div>
-                                    ))}
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                                        {activosInactivo.map(a => (
+                                            <span key={a.simbolo} style={{
+                                                fontSize: 10, fontFamily: 'monospace', fontWeight: 600,
+                                                background: 'var(--bg-primary)', color: 'var(--text-secondary)',
+                                                border: '1px solid var(--border-color)', borderRadius: 5, padding: '2px 7px',
+                                            }}>{a.simbolo}</span>
+                                        ))}
+                                    </div>
                                 </>
                             )}
 
-                            {/* Solo lectura */}
-                            {activosSoloLectura.length > 0 && (
-                                <>
-                                    <div style={{ fontSize: 10, color: '#3b82f6', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                        <Activity size={11} /> Solo lectura
-                                    </div>
-                                    {activosSoloLectura.map(a => (
-                                        <div key={a.simbolo} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', borderRadius: 6, background: 'var(--bg-primary)' }}>
-                                            <Dot status="info" size={8} />
-                                            <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 600, flex: 1 }}>{a.simbolo}</span>
-                                            <Badge status="info">Solo lectura</Badge>
-                                        </div>
-                                    ))}
-                                </>
-                            )}
-
-                            {/* Estados de error */}
+                            {/* Error */}
                             {activosError.length > 0 && (
                                 <>
                                     <div style={{ fontSize: 10, color: '#ef4444', fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase', padding: '6px 0 2px', display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -435,7 +440,7 @@ const Monitor = ({ setAuth, botVersion }) => {
 
                             {(!activos_estado || activos_estado.length === 0) && (
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#22c55e', fontSize: 12 }}>
-                                    <CheckCircle size={13} /> Todos los activos operativos
+                                    <CheckCircle size={13} /> Sin datos de activos
                                 </div>
                             )}
                         </div>

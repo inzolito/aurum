@@ -209,8 +209,8 @@ const Control = ({ setAuth, botVersion }) => {
             <main className="main-content">
                 <header className="main-header">
                     <div>
-                        <h1>Panel de Control</h1>
-                        <p className="subtitle">Estado operativo en tiempo real</p>
+                        <h1>AurumBot</h1>
+                        <p className="subtitle">12 pares Forex · AUD · EUR · GBP · USD · JPY · CAD · NZD · CNH</p>
                     </div>
                     <div className="header-actions">
                         <div className="status-badge">

@@ -1076,26 +1076,26 @@ async def get_monitor(token: str = Depends(oauth2_scheme), db: DBConnector = Dep
             db.conn.rollback()
             result["hoy"] = {"total": 0, "ganados": 0, "perdidos": 0, "pnl": 0.0, "abiertas": 0}
 
-    # ── 8. Estado activos no-ACTIVO (labs voluntarios + pausados reales) ────────
+    # ── 8. Estado de todos los activos (producción + lab + inactivos) ────────────
     with db._lock:
         try:
             db.cursor.execute("""
-                SELECT a.simbolo, a.estado_operativo,
+                SELECT a.simbolo, a.estado_operativo, a.categoria,
                        STRING_AGG(DISTINCT l.nombre, ', ') AS labs
                 FROM activos a
                 LEFT JOIN lab_activos la ON la.activo_id = a.id AND la.estado = 'ACTIVO'
                 LEFT JOIN laboratorios l ON l.id = la.lab_id
-                WHERE a.estado_operativo != 'ACTIVO'
-                GROUP BY a.simbolo, a.estado_operativo
-                ORDER BY a.simbolo
+                WHERE a.estado_operativo != 'SOLO_LECTURA'
+                GROUP BY a.simbolo, a.estado_operativo, a.categoria
+                ORDER BY a.estado_operativo, a.categoria, a.simbolo
             """)
             rows = db.cursor.fetchall()
-            result["activos_estado"] = [{"simbolo": r[0], "estado": r[1], "labs": r[2]} for r in rows]
+            result["activos_estado"] = [{"simbolo": r[0], "estado": r[1], "categoria": r[2], "labs": r[3]} for r in rows]
         except Exception:
             db.conn.rollback()
             result["activos_estado"] = []
     # Alias de compatibilidad
-    result["activos_problema"] = result["activos_estado"]
+    result["activos_problema"] = [a for a in result["activos_estado"] if a["estado"] not in ("ACTIVO", "LABORATORIO")]
 
     return result
 
