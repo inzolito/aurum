@@ -40,57 +40,75 @@ const VotoBar = ({ label, voto, peso }) => {
 
 const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
     if (!entry || !sl || !tp) return null;
-    const lo    = Math.min(sl, tp);
-    const hi    = Math.max(sl, tp);
-    const rng   = hi - lo;
-    if (rng <= 0) return null;
-    const clamp = v => Math.max(0, Math.min(100, ((v - lo) / rng) * 100));
-    const fmt   = v => v == null ? '—' : v >= 1000 ? v.toFixed(1) : v >= 10 ? v.toFixed(3) : v.toFixed(5);
-    const entryPct   = clamp(entry);
-    const currentPct = precioActual != null ? clamp(precioActual) : entryPct;
-    const tp1Pct     = tp1 != null ? clamp(tp1) : null;
-    const tpPct      = clamp(tp);
-    // Para posiciones abiertas, pnl_usd puede ser null → usar precio vs entrada
-    const isLongDir  = tp > sl;  // TP mayor que SL = dirección BUY
+    const isLong  = tp > sl;
+    const distSL  = Math.abs(entry - sl);
+    const distTP  = Math.abs(tp - entry);
+    const total   = distSL + distTP;
+    if (total <= 0) return null;
+    const fmt = v => v == null ? '—' : v >= 1000 ? v.toFixed(1) : v >= 10 ? v.toFixed(3) : v.toFixed(5);
+
+    // En el eje visual: SL=0% siempre izquierda, TP=100% siempre derecha
+    const entryPct = (distSL / total) * 100;
+
+    // Posición del precio actual en el eje visual (derecha = profit, izquierda = loss)
+    let currentPct = entryPct;
+    if (precioActual != null) {
+        const movimiento = isLong ? precioActual - entry : entry - precioActual;
+        currentPct = Math.max(0, Math.min(100, entryPct + (movimiento / total) * 100));
+    }
+
+    // TP1 siempre a la derecha de entry (zona de profit)
+    const tp1Pct = tp1 != null
+        ? Math.min(100, entryPct + (Math.abs(tp1 - entry) / total) * 100)
+        : null;
+
     const profitable = precioActual != null
-        ? (isLongDir ? precioActual >= entry : precioActual <= entry)
+        ? (isLong ? precioActual >= entry : precioActual <= entry)
         : (pnl ?? 0) >= 0;
-    const pastTp1 = tp1Pct != null && profitable &&
-        Math.abs(currentPct - entryPct) >= Math.abs(tp1Pct - entryPct);
+
+    const pastTp1 = tp1Pct != null && profitable && currentPct >= tp1Pct;
+
+    // Fills: profit siempre llena hacia la derecha, loss hacia la izquierda
     const fills = [];
     if (profitable) {
         if (pastTp1) {
-            fills.push({ left: Math.min(entryPct, tp1Pct), width: Math.abs(tp1Pct - entryPct), color: '#1db87a' });
-            fills.push({ left: Math.min(tp1Pct, currentPct), width: Math.abs(currentPct - tp1Pct), color: '#6ee7b7' });
+            fills.push({ left: entryPct, width: tp1Pct - entryPct, color: '#86efac' });       // entry→TP1 verde pastel
+            fills.push({ left: tp1Pct,   width: currentPct - tp1Pct, color: '#bbf7d0' });     // TP1→actual verde claro
         } else {
-            fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: '#1db87a' });
+            fills.push({ left: entryPct, width: currentPct - entryPct, color: '#86efac' });
         }
     } else {
-        fills.push({ left: Math.min(entryPct, currentPct), width: Math.abs(currentPct - entryPct), color: 'rgba(244,63,94,0.65)' });
+        fills.push({ left: currentPct, width: entryPct - currentPct, color: '#fca5a5' });     // loss rojo pastel
     }
-    // Zona suave TP1→TP solo cuando ya superó TP1 (muestra recorrido restante)
-    const showTp1Zone = pastTp1 && tp1Pct != null;
+
     return (
         <div style={{ minWidth: 150, width: '100%' }}>
+            {/* Label entrada centrado en su posición */}
             <div style={{ position: 'relative', height: 13, marginBottom: 2 }}>
                 <span style={{ position: 'absolute', left: `${entryPct}%`, fontSize: 9, color: '#6b7280', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
                     {fmt(entry)}
                 </span>
             </div>
-            <div style={{ position: 'relative', height: 11, borderRadius: 2, background: 'var(--bg-primary)', overflow: 'hidden' }}>
-                {showTp1Zone && (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${Math.min(tp1Pct, tpPct)}%`, width: `${Math.abs(tpPct - tp1Pct)}%`, background: 'rgba(16,185,129,0.18)' }} />
+            {/* Barra — mismo estilo que votaciones */}
+            <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--bg-primary)', overflow: 'hidden' }}>
+                {/* Zona suave TP1→TP cuando ya pasó TP1 */}
+                {pastTp1 && tp1Pct != null && (
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: `${100 - tp1Pct}%`, background: 'rgba(134,239,172,0.18)', borderRadius: '0 3px 3px 0' }} />
                 )}
                 {fills.map((f, i) => (
-                    <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${f.left}%`, width: `${Math.max(f.width, 0)}%`, background: f.color, transition: 'left 0.5s, width 0.5s' }} />
+                    <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${f.left}%`, width: `${Math.max(f.width, 0)}%`, background: f.color, borderRadius: 3, transition: 'left 0.5s, width 0.5s' }} />
                 ))}
+                {/* Marker entrada */}
+                <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${entryPct}%`, width: 1.5, background: '#94a3b8', opacity: 0.7 }} />
+                {/* Marker TP1 */}
                 {tp1Pct != null && (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: 2, background: '#10b981', opacity: 0.95 }} />
+                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: 2, background: '#34d399', opacity: 0.95 }} />
                 )}
             </div>
+            {/* SL siempre izquierda, TP siempre derecha */}
             <div style={{ position: 'relative', height: 11 }}>
-                <span style={{ position: 'absolute', left: `${clamp(sl)}%`, transform: 'translateX(-50%)', fontSize: 8, color: '#ef4444', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
-                <span style={{ position: 'absolute', left: `${tpPct}%`, transform: 'translateX(-50%)', fontSize: 8, color: '#10b981', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
+                <span style={{ position: 'absolute', left: 0, fontSize: 8, color: '#fca5a5', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
+                <span style={{ position: 'absolute', right: 0, fontSize: 8, color: '#86efac', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
             </div>
         </div>
     );
