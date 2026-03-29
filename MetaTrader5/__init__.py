@@ -171,6 +171,13 @@ async def _conectar_async():
         'historicalMarketDataRequestTimeout': 10,
     })
     _account = await _api.metatrader_account_api.get_account(_ACCOUNT_ID)
+    # Deploy automático si la cuenta no está desplegada — ahorra crédito cuando el bot está apagado
+    state = _account.state
+    if state not in ('DEPLOYED', 'DEPLOYING'):
+        print(f"[MetaAPI-Shim] Cuenta en estado '{state}'. Desplegando...")
+        await _account.deploy()
+        await _account.wait_deployed()
+        print("[MetaAPI-Shim] Cuenta desplegada.")
     _connection = _account.get_rpc_connection()
     await _connection.connect()
     await _connection.wait_synchronized()
@@ -180,18 +187,35 @@ async def _conectar_async():
     print("[MetaAPI-Shim] Conectado y sincronizado con MetaAPI Cloud.")
 
 
+async def _desconectar_async():
+    global _account, _connection, _connected
+    _connected = False
+    try:
+        if _connection:
+            await _connection.close()
+    except Exception:
+        pass
+    try:
+        if _account:
+            print("[MetaAPI-Shim] Retirando cuenta de MetaAPI Cloud (undeploy)...")
+            await _account.undeploy()
+            print("[MetaAPI-Shim] Cuenta retirada. Crédito pausado.")
+    except Exception as e:
+        print(f"[MetaAPI-Shim] Error en undeploy: {e}")
+
+
 def initialize(login=None, password=None, server=None) -> bool:
     global _connected
     if _connected:
         return True
     print("[MetaAPI-Shim] Conectando a MetaAPI Cloud...")
-    _run(_conectar_async(), timeout=90)
+    _run(_conectar_async(), timeout=120)
     return _connected
 
 
 def shutdown():
-    global _connected
-    _connected = False
+    print("[MetaAPI-Shim] Apagando y retirando cuenta de MetaAPI...")
+    _run(_desconectar_async(), timeout=30)
     print("[MetaAPI-Shim] Conexión cerrada.")
 
 
