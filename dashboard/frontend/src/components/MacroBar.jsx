@@ -1,5 +1,7 @@
 /**
- * MacroBar — V18.3
+ * MacroBar — V18.4
+ * Botón compacto flotante. No ocupa espacio en el layout.
+ * Click → panel con todos los regímenes. Click en régimen → detalle.
  */
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
@@ -8,6 +10,12 @@ const CHIP_COLOR = {
     RISK_OFF: 'bg-red-100 text-red-500',
     RISK_ON:  'bg-emerald-100 text-emerald-600',
     VOLATIL:  'bg-amber-100 text-amber-600',
+};
+
+const CHIP_ICON = {
+    RISK_OFF: '🔴',
+    RISK_ON:  '🟢',
+    VOLATIL:  '🟡',
 };
 
 const TAG_COLOR = {
@@ -104,6 +112,7 @@ const PanelDetalle = ({ regimen, onClose }) => {
 
 const MacroBar = () => {
     const [regimenes, setRegimenes] = useState([]);
+    const [open, setOpen] = useState(false);
     const [seleccionado, setSeleccionado] = useState(null);
     const token = localStorage.getItem('token');
 
@@ -129,28 +138,109 @@ const MacroBar = () => {
 
     return (
         <>
-            <div className="flex items-center flex-wrap bg-white border-b border-gray-100 flex-shrink-0"
-                 style={{ padding: '4px 10px', gap: 4 }}>
-                <span className="text-[9px] font-semibold text-gray-300 uppercase tracking-widest whitespace-nowrap"
-                      style={{ margin: '5px 10px 5px 0' }}>
-                    Macro
+            {/* Botón flotante compacto — posición fija, no ocupa layout */}
+            <button
+                onClick={() => setOpen(o => !o)}
+                title="Regímenes macro activos"
+                style={{
+                    position: 'fixed',
+                    bottom: 20,
+                    left: 76,
+                    zIndex: 1500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 20,
+                    padding: '6px 12px',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    color: '#374151',
+                    cursor: 'pointer',
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.10)',
+                }}
+            >
+                <span style={{ fontSize: 13 }}>🌐</span>
+                <span>Macro</span>
+                <span style={{
+                    background: '#f3f4f6',
+                    color: '#6b7280',
+                    borderRadius: 10,
+                    padding: '1px 7px',
+                    fontSize: 10,
+                    fontWeight: 700,
+                }}>
+                    {regimenes.length}
                 </span>
-                {regimenes.map(r => {
-                    const cls = CHIP_COLOR[r.direccion] || 'bg-gray-100 text-gray-400';
-                    return (
-                        <button
-                            key={r.id}
-                            onClick={() => setSeleccionado(r)}
-                            title={r.razonamiento}
-                            className={`rounded-xl text-[11px] font-semibold whitespace-nowrap border-none cursor-pointer opacity-80 ${cls}`}
-                            style={{ padding: '5px 10px', margin: '5px 0' }}
-                        >
-                            {r.nombre}
-                        </button>
-                    );
-                })}
-            </div>
+            </button>
 
+            {/* Overlay para cerrar el panel al click fuera */}
+            {open && (
+                <div
+                    style={{ position: 'fixed', inset: 0, zIndex: 1490 }}
+                    onClick={() => setOpen(false)}
+                />
+            )}
+
+            {/* Panel desplegable con todos los regímenes */}
+            {open && (
+                <div style={{
+                    position: 'fixed',
+                    bottom: 56,
+                    left: 76,
+                    zIndex: 1500,
+                    background: '#fff',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: 12,
+                    padding: '12px 14px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    minWidth: 220,
+                    maxWidth: 340,
+                }}>
+                    <p style={{
+                        margin: '0 0 10px',
+                        fontSize: 9,
+                        fontWeight: 700,
+                        textTransform: 'uppercase',
+                        letterSpacing: 1.5,
+                        color: '#9ca3af',
+                    }}>
+                        Regímenes Activos
+                    </p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                        {regimenes.map(r => {
+                            const cls = CHIP_COLOR[r.direccion] || 'bg-gray-100 text-gray-400';
+                            const icon = CHIP_ICON[r.direccion] || '⚪';
+                            return (
+                                <button
+                                    key={r.id}
+                                    onClick={() => { setSeleccionado(r); setOpen(false); }}
+                                    className={`${cls} rounded-xl text-[11px] font-semibold border-none cursor-pointer opacity-90`}
+                                    style={{
+                                        padding: '7px 10px',
+                                        textAlign: 'left',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: 7,
+                                        width: '100%',
+                                    }}
+                                >
+                                    <span>{icon}</span>
+                                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                        {r.nombre}
+                                    </span>
+                                    <span style={{ opacity: 0.55, fontSize: 9, whiteSpace: 'nowrap' }}>
+                                        {r.tipo}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal de detalle del régimen */}
             {seleccionado && (
                 <PanelDetalle
                     regimen={seleccionado}

@@ -70,6 +70,17 @@ class MacroWorker:
                         elif dir_activo == "DOWN":
                             contribucion = -peso
                         # Si dir es NEUTRAL o desconocido, no contribuye
+                    else:
+                        # Simbolo no listado explicitamente en el regimen.
+                        # Fallback: aplicar la direccion global del regimen al 40% del peso.
+                        # Garantiza que ningun activo quede con voto macro=0 cuando hay
+                        # regimenes activos (ej: indices en regimenes geopoliticos/monetarios).
+                        direccion_global = r.get("direccion", "").upper()
+                        if direccion_global == "RISK_ON":
+                            contribucion = peso * 0.4
+                        elif direccion_global == "RISK_OFF":
+                            contribucion = -peso * 0.4
+                        # VOLATIL sin match especifico → neutro (0.0), sin contribucion
                 except (json.JSONDecodeError, TypeError):
                     pass
             else:

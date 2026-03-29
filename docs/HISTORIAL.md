@@ -6,6 +6,73 @@ Log cronológico de todo lo resuelto. Las entradas más recientes van arriba.
 
 ---
 
+## 2026-03-27 (V18.2 — Filtros de Calidad de Señal)
+
+### Contexto: análisis de 94 trades (V17.2 → V18.1, últimas 2 semanas)
+
+Se realizó un análisis completo de los 94 trades ejecutados entre 2026-03-13 y 2026-03-27.
+El sistema tenía Win Rate 33% y PnL -$261 en ese período. El análisis identificó 4 patrones
+de fallo que concentraban el 88% de las pérdidas.
+
+**Documentos generados:**
+- `docs/TRADES_ANALISIS_V172_V181.md` — detalle de los 94 trades con votos, PnL, justificación IA
+- `docs/ANALISIS_DEBILIDADES_V172_V181.md` — análisis de debilidades con datos estadísticos
+- `docs/SIMULACION_FILTROS_COMBINADOS.md` — simulación retroactiva: 33% WR → 58% WR, -$261 → +$232
+
+### Hallazgos principales
+
+- **Trend≥0.6 + Hurst PERSISTENTE**: 19 trades, 15.8% WR, -$252 PnL (88% del daño total)
+- **Fuerza dominante Trend vs NLP**: Trend como fuerza dominante = 29.8% WR; NLP = 40.9% WR
+- **Activos problemáticos**: EURUSD (18.2% WR), NZDUSD (11.1%), AUDCAD (11.1%)
+- **Horario 17-20h Santiago**: 9 trades, 11.1% WR, -$88 PnL
+
+### Cambios aplicados
+
+#### F1 — Bloqueo Trend sobreextendido (`core/manager.py`)
+Nuevo bloque antes del check de umbral. Si `v_trend >= 0.6` AND `h_estado == 'PERSISTENTE'`,
+la evaluación retorna `BLOQUEADO_TENDENCIA_PERSISTENTE` sin ejecutar orden.
+Por sí solo este filtro habría cambiado el PnL de -$261 a -$8.
+
+#### F2 — Umbral elevado por activo (`core/manager.py` + BD)
+Lee `params.get(f"GERENTE.umbral_{simbolo_interno}")` desde `parametros_sistema`.
+Si el valor es mayor al umbral base (0.45), lo usa como umbral para ese activo.
+Parámetros insertados en BD:
+- `GERENTE.umbral_EURUSD = 0.60`
+- `GERENTE.umbral_NZDUSD = 0.60`
+- `GERENTE.umbral_AUDCAD = 0.60`
+Para agregar más activos en el futuro: INSERT en `parametros_sistema` con clave `GERENTE.umbral_SIMBOLO`.
+
+#### F3 — Bloqueo horario 17-20h Santiago (`core/manager.py` + BD)
+Nuevo bloque después de que los workers votan (el dashboard sigue viendo los votos) pero
+antes de la ejecución. Usa `ZoneInfo('America/Santiago')` para hora local correcta.
+Retorna `BLOQUEADO_HORARIO_SANTIAGO`. Configurable desde BD:
+- `GERENTE.hora_bloqueo_inicio = 17`
+- `GERENTE.hora_bloqueo_fin = 20`
+
+#### F4 — Rebalanceo de pesos NLP/Trend (BD)
+| Parámetro | Antes | Ahora |
+|---|---|---|
+| `TENDENCIA.peso_voto` | 0.50 | 0.35 |
+| `NLP.peso_voto` | 0.30 | 0.55 |
+| `SNIPER.peso_voto` | 0.20 | 0.20 |
+
+Nueva fórmula: `veredicto = Trend*0.35 + NLP*0.55 + Sniper*0.20`
+
+#### Import añadido
+`from zoneinfo import ZoneInfo` en línea 6 de `core/manager.py`
+
+### Resultado simulado con todos los filtros aplicados juntos
+| Escenario | Trades | Win Rate | PnL |
+|---|---|---|---|
+| Sin filtros (V18.1) | 82 | 33% | -$261 |
+| F1+F2+F3 | 36 | 55.6% | +$248 |
+| F1+F2+F3+F4 | 31 | **58.1%** | **+$232** |
+
+### Versión en BD
+`versiones_sistema` id=11, `V18.2`, estado `ACTIVA`. V18.1 marcada `OBSOLETA`.
+
+---
+
 ## 2026-03-20 (V18.0 — Laboratorio de Activos + MacroSensor)
 
 ### Laboratorio de Activos

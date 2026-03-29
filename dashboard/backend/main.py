@@ -331,12 +331,8 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
                     except Exception:
                         d["analisis"] = {"ia_texto": raw}
                 posiciones.append(d)
-            if posiciones:
-                first = posiciones[0]
-                print(f"[DEBUG posiciones] keys={list(first.keys())} tp1={first.get('tp1')} sl={first.get('sl')} tp={first.get('tp')}", flush=True)
             return {"posiciones": posiciones}
-        except Exception as _e:
-            print(f"[ERROR posiciones] {_e}", flush=True)
+        except Exception:
             db.conn.rollback()
             return {"posiciones": []}
 

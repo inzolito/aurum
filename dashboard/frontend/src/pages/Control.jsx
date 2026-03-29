@@ -1,12 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, Activity, Wallet, TrendingUp, DollarSign, Cpu, RefreshCw, DatabaseZap, ChevronDown, ChevronRight, RotateCcw, Stethoscope } from 'lucide-react';
+import { Clock, Activity, Wallet, DollarSign, Cpu, ChevronDown, ChevronRight } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import MarketPulse from '../components/MarketPulse';
 import { toChileTime } from '../utils/time';
 import { isAssetInSession } from '../utils/sessions';
 
 const WORKER_LABELS = { trend: 'Trend', nlp: 'NLP', flow: 'Flow', sniper: 'Sniper', volume: 'Volume', cross: 'Cross' };
+
+const CeldaVoto = ({ voto }) => {
+    if (voto == null) return <td style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>—</td>;
+    const v = parseFloat(voto);
+    const color = v > 0.05 ? '#16a34a' : v < -0.05 ? '#dc2626' : 'var(--text-secondary)';
+    return (
+        <td style={{ textAlign: 'center', fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color }}>
+            {v >= 0 ? '+' : ''}{v.toFixed(2)}
+        </td>
+    );
+};
 
 const VotoBar = ({ label, voto, peso }) => {
     const pct = Math.min(Math.abs(voto) * 100, 100);
@@ -134,17 +145,8 @@ const Control = ({ setAuth, botVersion }) => {
     const [logs, setLogs] = useState([]);
     const [loading, setLoading] = useState(true);
     const [tick, setTick] = useState(new Date());
-    const [deploying, setDeploying] = useState(false);
-    const [deployLog, setDeployLog] = useState(null);
-    const [syncing, setSyncing] = useState(false);
-    const [syncLog, setSyncLog] = useState(null);
-    const [restarting, setRestarting] = useState(false);
-    const [restartLog, setRestartLog] = useState(null);
-    const [testing, setTesting] = useState(false);
-    const [testLog, setTestLog] = useState(null);
     const [expandedRow, setExpandedRow] = useState(null);
     const [pulso, setPulso] = useState([]);
-    const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
     const token = localStorage.getItem('token');
 
@@ -182,75 +184,6 @@ const Control = ({ setAuth, botVersion }) => {
         return () => { clearInterval(dataInterval); clearInterval(fastInterval); clearInterval(clockInterval); };
     }, []);
 
-    const handleSync = async () => {
-        setSyncing(true);
-        setSyncLog(null);
-        try {
-            const res = await axios.post('/api/control/sync-mt5', {}, {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 130000,
-            });
-            setSyncLog({ status: res.data.status, output: res.data.output });
-            if (res.data.status === 'ok') fetchAll();
-        } catch (err) {
-            setSyncLog({ status: 'error', output: err.message });
-        } finally {
-            setSyncing(false);
-        }
-    };
-
-    const handleDeploy = async () => {
-        setDeploying(true);
-        setDeployLog(null);
-        try {
-            const res = await axios.post('/api/control/deploy', {}, {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 200000,
-            });
-            setDeployLog({ status: res.data.status, output: res.data.output });
-        } catch (err) {
-            setDeployLog({ status: 'error', output: err.message });
-        } finally {
-            setDeploying(false);
-        }
-    };
-
-    const handleRestart = async () => {
-        if (!window.confirm('¿Reiniciar los servicios del bot? (aurum-core, aurum-hunter, aurum-telegram)')) return;
-        setRestarting(true);
-        setRestartLog(null);
-        try {
-            const res = await axios.post('/api/control/restart-bot', {}, {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 35000,
-            });
-            setRestartLog({ status: res.data.status, output: res.data.output || 'Servicios reiniciados.' });
-            if (res.data.status === 'ok') setTimeout(fetchAll, 5000);
-        } catch (err) {
-            setRestartLog({ status: 'error', output: err.message });
-        } finally {
-            setRestarting(false);
-        }
-    };
-
-    const handleTest = async () => {
-        setTesting(true);
-        setTestLog(null);
-        try {
-            const res = await axios.post('/api/control/test-bot', {}, {
-                headers: { Authorization: `Bearer ${token}` },
-                timeout: 15000,
-            });
-            const svcs = res.data.services || {};
-            const lines = Object.entries(svcs).map(([k, v]) => `${k}: ${v}`).join('\n');
-            setTestLog({ status: res.data.status, output: lines || 'Sin datos.' });
-        } catch (err) {
-            setTestLog({ status: 'error', output: err.message });
-        } finally {
-            setTesting(false);
-        }
-    };
-
     const handleLogout = () => {
         localStorage.removeItem('token');
         setAuth(false);
@@ -280,89 +213,12 @@ const Control = ({ setAuth, botVersion }) => {
                         <p className="subtitle">Estado operativo en tiempo real</p>
                     </div>
                     <div className="header-actions">
-                        {/* Desktop: botones normales */}
-                        <button className={`action-btn desktop-only ${testing ? 'deploying' : ''}`} onClick={handleTest} disabled={testing}>
-                            <Stethoscope size={15} className={testing ? 'spin' : ''} />
-                            <span>{testing ? 'Testeando...' : 'Test Bot'}</span>
-                        </button>
-                        <button className={`action-btn desktop-only ${restarting ? 'deploying' : ''}`} onClick={handleRestart} disabled={restarting}>
-                            <RotateCcw size={15} className={restarting ? 'spin' : ''} />
-                            <span>{restarting ? 'Reiniciando...' : 'Reiniciar Bot'}</span>
-                        </button>
-                        <button className={`action-btn desktop-only ${syncing ? 'deploying' : ''}`} onClick={handleSync} disabled={syncing}>
-                            <DatabaseZap size={15} className={syncing ? 'spin' : ''} />
-                            <span>{syncing ? 'Sincronizando...' : 'Sync MT5'}</span>
-                        </button>
-                        <button className={`action-btn action-btn-primary desktop-only ${deploying ? 'deploying' : ''}`} onClick={handleDeploy} disabled={deploying}>
-                            <RefreshCw size={15} className={deploying ? 'spin' : ''} />
-                            <span>{deploying ? 'Impactando...' : 'El Meteorito'}</span>
-                        </button>
-
                         <div className="status-badge">
                             <Clock size={14} />
                             <span>{tick.toLocaleTimeString()}</span>
                         </div>
                     </div>
-
-                    {/* Panel mobile con todas las acciones */}
-                    {mobileMenuOpen && (
-                        <div className="mobile-action-sheet" onClick={() => setMobileMenuOpen(false)}>
-                        <div onClick={e => e.stopPropagation()}>
-                            <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10, fontWeight: 600 }}>
-                                AURUM {estadoGeneral && <span style={{ marginLeft: 8, color: 'var(--accent-primary)' }}>{estadoGeneral}</span>}
-                            </div>
-                            {[
-                                { label: 'Test Bot',       icon: <Stethoscope size={15}/>, fn: handleTest,    busy: testing,    busyLabel: 'Testeando...'    },
-                                { label: 'Reiniciar Bot',  icon: <RotateCcw size={15}/>,   fn: handleRestart, busy: restarting, busyLabel: 'Reiniciando...'  },
-                                { label: 'Sync MT5',       icon: <DatabaseZap size={15}/>, fn: handleSync,    busy: syncing,    busyLabel: 'Sincronizando...' },
-                                { label: 'El Meteorito',   icon: <RefreshCw size={15}/>,   fn: handleDeploy,  busy: deploying,  busyLabel: 'Impactando...',  primary: true },
-                            ].map(({ label, icon, fn, busy, busyLabel, primary }) => (
-                                <button key={label}
-                                    className={`action-btn${primary ? ' action-btn-primary' : ''} ${busy ? 'deploying' : ''}`}
-                                    style={{ width: '100%', justifyContent: 'flex-start', marginBottom: 8 }}
-                                    onClick={() => { fn(); setMobileMenuOpen(false); }}
-                                    disabled={busy}>
-                                    {React.cloneElement(icon, { className: busy ? 'spin' : '' })}
-                                    <span>{busy ? busyLabel : label}</span>
-                                </button>
-                            ))}
-                            <button className="action-btn" style={{ width: '100%', justifyContent: 'flex-start', color: 'var(--danger)' }} onClick={handleLogout}>
-                                <span>Cerrar sesión</span>
-                            </button>
-                        </div>
-                        </div>
-                    )}
                 </header>
-
-                {/* Logs inline de acciones */}
-                {(syncLog || deployLog || restartLog || testLog) && (
-                    <div style={{ marginBottom: 20, display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {testLog && (
-                            <div className={`deploy-log ${testLog.status === 'ok' ? 'deploy-ok' : testLog.status === 'degraded' ? 'deploy-error' : 'deploy-error'}`}>
-                                <p className="deploy-log-status">{testLog.status === 'ok' ? '✓ Todos los servicios activos' : testLog.status === 'degraded' ? '⚠ Servicios degradados' : '✗ Error de test'}</p>
-                                <pre className="deploy-log-output">{testLog.output}</pre>
-                            </div>
-                        )}
-                        {restartLog && (
-                            <div className={`deploy-log ${restartLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
-                                <p className="deploy-log-status">{restartLog.status === 'ok' ? '✓ Bot reiniciado' : '✗ Error al reiniciar'}</p>
-                                <pre className="deploy-log-output">{restartLog.output}</pre>
-                            </div>
-                        )}
-                        {syncLog && (
-                            <div className={`deploy-log ${syncLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
-                                <p className="deploy-log-status">{syncLog.status === 'ok' ? '✓ Sync exitoso' : '✗ Error sync'}</p>
-                                <pre className="deploy-log-output">{syncLog.output}</pre>
-                            </div>
-                        )}
-                        {deployLog && (
-                            <div className={`deploy-log ${deployLog.status === 'ok' ? 'deploy-ok' : 'deploy-error'}`}>
-                                <p className="deploy-log-status">{deployLog.status === 'ok' ? '✓ Deploy exitoso' : '✗ Error en deploy'}</p>
-                                <pre className="deploy-log-output">{deployLog.output}</pre>
-                            </div>
-                        )}
-                    </div>
-                )}
 
                 {/* Stat Cards */}
                 <div className="stats-grid">
@@ -489,13 +345,93 @@ const Control = ({ setAuth, botVersion }) => {
                     </div>
                 </section>
 
+                {/* Votaciones Actuales — producción */}
+                {estado?.votos_workers?.length > 0 && (() => {
+                    const umbral = estado.umbral_disparo ?? 0.45;
+                    return (
+                        <section className="section" style={{ marginTop: 24 }}>
+                            <h2 className="section-title">
+                                Votaciones Actuales
+                                <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 400, color: 'var(--text-secondary)' }}>
+                                    umbral {umbral}
+                                </span>
+                            </h2>
+                            <div className="table-container">
+                                <table className="prism-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Activo</th>
+                                            <th style={{ textAlign: 'center' }}>Trend</th>
+                                            <th style={{ textAlign: 'center' }}>NLP</th>
+                                            <th style={{ textAlign: 'center' }}>Sniper</th>
+                                            <th style={{ textAlign: 'center' }}>Hurst</th>
+                                            <th style={{ textAlign: 'center' }}>Macro</th>
+                                            <th style={{ textAlign: 'center' }}>Veredicto</th>
+                                            <th style={{ minWidth: 130 }}>Falta</th>
+                                            <th>Decisión</th>
+                                            <th>Hora</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {estado.votos_workers.map((w, i) => {
+                                            const v      = parseFloat(w.veredicto) || 0;
+                                            const absV   = Math.abs(v);
+                                            const falta  = umbral - absV;
+                                            const pct    = Math.min((absV / umbral) * 100, 100);
+                                            const dispara = falta <= 0;
+                                            const cerca   = !dispara && falta <= 0.08;
+                                            const barColor = dispara ? '#16a34a' : cerca ? '#d97706' : '#6366f1';
+                                            const dir    = v > 0 ? '▲' : v < 0 ? '▼' : '—';
+                                            const decColor = w.decision === 'EJECUTADO' ? '#16a34a'
+                                                           : w.decision === 'IGNORADO'  ? 'var(--text-secondary)'
+                                                           : '#d97706';
+                                            return (
+                                                <tr key={i} style={{ background: dispara ? 'rgba(16,185,129,0.04)' : undefined }}>
+                                                    <td><span className="symbol">{w.simbolo}</span></td>
+                                                    <CeldaVoto voto={w.trend} />
+                                                    <CeldaVoto voto={w.nlp} />
+                                                    <CeldaVoto voto={w.sniper} />
+                                                    <CeldaVoto voto={w.hurst} />
+                                                    <CeldaVoto voto={w.macro} />
+                                                    <td style={{ textAlign: 'center', fontFamily: 'monospace', fontWeight: 700, fontSize: 12,
+                                                        color: dispara ? '#16a34a' : cerca ? '#d97706' : 'var(--text-secondary)' }}>
+                                                        {dir} {v >= 0 ? '+' : ''}{v.toFixed(3)}
+                                                    </td>
+                                                    <td style={{ padding: '8px 16px', minWidth: 130 }}>
+                                                        {dispara ? (
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                <div style={{ flex: 1, height: 5, background: '#16a34a', borderRadius: 3 }} />
+                                                                <span style={{ fontSize: 10, fontWeight: 700, color: '#16a34a', whiteSpace: 'nowrap' }}>✓ DISPARA</span>
+                                                            </div>
+                                                        ) : (
+                                                            <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                                                <div style={{ height: 5, background: 'var(--bg-primary)', borderRadius: 3, overflow: 'hidden' }}>
+                                                                    <div style={{ height: '100%', width: `${pct}%`, background: barColor, borderRadius: 3, transition: 'width 0.5s' }} />
+                                                                </div>
+                                                                <span style={{ fontSize: 10, color: barColor, fontFamily: 'monospace', fontWeight: 700 }}>
+                                                                    −{falta.toFixed(3)}{cerca ? ' ⚡' : ''}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td>
+                                                        <span style={{ fontSize: 11, fontWeight: 700, color: decColor }}>
+                                                            {w.decision || '—'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="time">{toChileTime(w.tiempo, 'time')}</td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                    );
+                })()}
+
             </main>
         </div>
-
-        {/* FAB mobile — abre panel de acciones */}
-        <button className="mobile-fab" onClick={() => setMobileMenuOpen(o => !o)}>
-            <RefreshCw size={18} />
-        </button>
         </>
     );
 };

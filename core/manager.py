@@ -3,6 +3,7 @@ import os
 import time
 import threading
 from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 from pathlib import Path
 import MetaTrader5 as mt5
 
@@ -341,6 +342,20 @@ class Manager:
 
         veredicto = round(max(-1.0, min(1.0, veredicto)), 4)
 
+        # --- F1: BLOQUEO TENDENCIA PERSISTENTE (V18.2) ---
+        # Tendencia fuerte + Hurst persistente = entrada tardia en movimiento agotado.
+        # Historico 82 trades: 19 casos con este patron -> 15.8% WR, -$252 PnL.
+        if v_trend >= 0.6 and h_estado == 'PERSISTENTE':
+            motivo = (f"BLOQUEADO F1: Trend sobreextendido ({v_trend:.2f}) con Hurst PERSISTENTE "
+                      f"({h_val:.4f}). Entrada tardia en tendencia agotada.")
+            print(f"[GERENTE] 🚫 F1 Trend+Persistente: Trend={v_trend:.2f} H={h_val:.4f} — BLOQUEADO")
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+                                    veredicto, "BLOQUEADO_TENDENCIA_PERSISTENTE", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
+            return {"decision": "BLOQUEADO_TENDENCIA_PERSISTENTE", "veredicto": veredicto, "motivo": motivo}
+
         # 6. Decisión y Telemetría Extra
         # Black Swan Emergency
         umbral_base = float(params.get("GERENTE.umbral_disparo", 0.45))
@@ -348,6 +363,14 @@ class Manager:
 
         if v_cross['black_swan']:
             print(f"[GERENTE] 🚨 MODO EMERGENCIA: DXY Volátil. Umbral elevado a {umbral}")
+
+        # --- F2: UMBRAL ELEVADO POR ACTIVO (V18.2) ---
+        # Activos con historial negativo requieren mayor conviccion para disparar.
+        # Configurable en BD: parametro GERENTE.umbral_EURUSD, GERENTE.umbral_NZDUSD, etc.
+        umbral_simbolo = float(params.get(f"GERENTE.umbral_{simbolo_interno}", 0.0))
+        if umbral_simbolo > umbral:
+            umbral = umbral_simbolo
+            print(f"[GERENTE] 📊 F2 Umbral elevado para {simbolo_interno}: {umbral:.2f}")
 
         # --- IA CONSCIENCE (V7.5) ---
         gemini_thought = self.nlp.obtener_razonamiento(simbolo_interno)
@@ -404,6 +427,36 @@ class Manager:
                                     v_macro=v_macro)
             return {
                 "decision": "IGNORADO",
+                "veredicto": veredicto,
+                "motivo": motivo,
+                "votos": {
+                    "trend":  round(float(v_trend), 4),
+                    "nlp":    round(float(v_nlp), 4),
+                    "sniper": round(float(v_struct_voto), 4),
+                    "hurst":  round(float(h_val), 4),
+                    "volume": round(float(v_volume['voto']), 4),
+                    "cross":  round(float(v_cross['voto']), 4),
+                    "macro":  round(float(v_macro), 4),
+                },
+            }
+
+        # --- F3: BLOQUEO HORARIO SANTIAGO 17-20h (V18.2) ---
+        # Historico 82 trades: 9 trades en 17-20h Santiago -> 11.1% WR, -$88 PnL.
+        # Configurable en BD: GERENTE.hora_bloqueo_inicio / GERENTE.hora_bloqueo_fin
+        hora_santiago = datetime.now(ZoneInfo('America/Santiago')).hour
+        hora_bloqueo_inicio = int(float(params.get("GERENTE.hora_bloqueo_inicio", 17)))
+        hora_bloqueo_fin    = int(float(params.get("GERENTE.hora_bloqueo_fin",    20)))
+        if hora_bloqueo_inicio <= hora_santiago <= hora_bloqueo_fin:
+            motivo = (f"Veredicto {veredicto:+.4f} aprobado pero hora {hora_santiago}:xx Santiago "
+                      f"en zona bloqueada ({hora_bloqueo_inicio}-{hora_bloqueo_fin}h).")
+            print(f"[GERENTE] 🕐 F3 Horario bloqueado: {hora_santiago}h Santiago")
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+                                    veredicto, "BLOQUEADO_HORARIO_SANTIAGO", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
+            return {
+                "decision": "BLOQUEADO_HORARIO_SANTIAGO",
                 "veredicto": veredicto,
                 "motivo": motivo,
                 "votos": {

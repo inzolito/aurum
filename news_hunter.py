@@ -172,6 +172,8 @@ class NewsHunter:
                     self._procesar_entrada(entry, es_cripto=True)
             except Exception as e_feed:
                 print(f"[HUNTER] Error procesando feed cripto {url}: {e_feed}")
+        # D1: Validar cobertura macro al final de cada ciclo de patrullaje
+        self._validar_cobertura_macro()
 
     def _procesar_entrada(self, entry, es_cripto=False):
         titulo = getattr(entry, 'title', 'Sin titulo')
@@ -357,8 +359,11 @@ class NewsHunter:
             f"- peso: float entre 0.1 y 1.0 (intensidad del régimen).\n"
             f"- activos_afectados: JSON con TODOS los activos de la lista. "
             f'Ejemplo: [{{"simbolo":"XAUUSD","dir":"UP"}},{{"simbolo":"AUDCAD","dir":"DOWN"}}]\n'
-            f"  Reglas de dirección: RISK_OFF→AUD/EUR/GBP/cripto=DOWN, JPY/XAU/XAG=UP.\n"
-            f"  RISK_ON→lo opuesto. Incluir TODOS los activos (dir=NEUTRAL si no aplica).\n"
+            f"  Reglas de dirección por tipo de activo:\n"
+            f"  RISK_OFF → Índices (US30,USTEC,US500,GER40,FTSGBP,JPXJPY)=DOWN, AUD/EUR/GBP/cripto=DOWN, JPY/XAU/XAG/XPT=UP.\n"
+            f"  RISK_ON  → Índices=UP, AUD/EUR/GBP/cripto=UP, JPY/XAU/XAG/XPT=DOWN.\n"
+            f"  Incluir TODOS los activos de la lista. Usar dir=NEUTRAL SOLO si el activo es genuinamente independiente del régimen.\n"
+            f"  Nunca omitir índices en regímenes geopolíticos, monetarios o de mercado.\n"
             f"- expira_horas: número entero de horas hasta que expira (null si indefinido).\n"
             f"- nombre: conciso como concepto estructural (ej: 'Fed Hawkish Q1-2026').\n\n"
             f"Responde SOLO en JSON (sin markdown):\n"
@@ -439,6 +444,77 @@ class NewsHunter:
                 activo=False,
             )
             print(f"[HUNTER-MACRO] DISIPADO régimen macro #{id_existente}.")
+
+    def _validar_cobertura_macro(self):
+        """
+        D1 — Validador de cobertura macro universal.
+
+        Compara todos los activos activos (producción + lab) contra los regímenes
+        macro activos. Reporta los activos que no tienen cobertura explícita
+        (dir != NEUTRAL) en ningún régimen. Si hay activos críticos sin cobertura,
+        envía alerta por Telegram.
+
+        Se llama al final de cada ciclo de patrullaje.
+        """
+        try:
+            activos_db  = self.db.get_activos() or []
+            activos_lab = self.db.get_activos_lab_only() or []
+            simbolos_activos = {a["simbolo"] for a in activos_db + activos_lab}
+
+            if not simbolos_activos:
+                return
+
+            regimenes = self.db.get_regimenes_macro_activos() or []
+
+            if not regimenes:
+                print(f"[VALIDATOR] ℹ️ Sin regímenes macro activos — "
+                      f"{len(simbolos_activos)} activos sin contexto macro.")
+                return
+
+            # Construir set de símbolos con cobertura efectiva (dir != NEUTRAL)
+            simbolos_cubiertos = set()
+            tiene_global = False
+
+            for r in regimenes:
+                activos_json = r.get("activos_afectados")
+                if not activos_json:
+                    # Régimen global (activos_afectados=NULL) aplica a todos
+                    tiene_global = True
+                    break
+                try:
+                    activos_lista = json.loads(activos_json)
+                    for a in activos_lista:
+                        if a.get("dir", "NEUTRAL").upper() not in ("NEUTRAL", ""):
+                            simbolos_cubiertos.add(a.get("simbolo", ""))
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if tiene_global:
+                return  # Régimen global cubre todos los activos
+
+            sin_cobertura = simbolos_activos - simbolos_cubiertos
+            if not sin_cobertura:
+                return
+
+            lista = ", ".join(sorted(sin_cobertura))
+            print(f"[VALIDATOR] ⚠️ Sin cobertura macro explícita: {lista}")
+
+            # Alerta Telegram solo para activos críticos de trading
+            activos_criticos = {"US30", "USTEC", "US500", "GER40", "FTSGBP",
+                                 "JPXJPY", "XAUUSD", "XAGUSD", "XPTUSD",
+                                 "BTCUSD", "ETHUSD"}
+            sin_cobertura_critica = sin_cobertura & activos_criticos
+            if sin_cobertura_critica:
+                lista_critica = ", ".join(sorted(sin_cobertura_critica))
+                _enviar_telegram(
+                    f"⚠️ <b>VALIDATOR MACRO</b>\n\n"
+                    f"Activos sin cobertura macro explícita:\n"
+                    f"<code>{lista_critica}</code>\n\n"
+                    f"Revisar Config → MacroSensor o esperar próxima noticia relevante."
+                )
+
+        except Exception as e:
+            print(f"[VALIDATOR] Error en validación de cobertura macro: {e}")
 
 if __name__ == "__main__":
     # Prevenir instancias duplicadas via Named Mutex en Windows

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Settings, Save, CheckCircle, AlertCircle, Power, X, TrendingUp, TrendingDown } from 'lucide-react';
+import { Settings, Save, CheckCircle, AlertCircle, Power, X, TrendingUp, TrendingDown, Stethoscope, RotateCcw, DatabaseZap, RefreshCw } from 'lucide-react';
 import SideNav from '../components/SideNav';
 
 const DESCRIPCIONES = {
@@ -205,6 +205,12 @@ const Config = ({ setAuth, botVersion }) => {
     const [activos, setActivos] = useState([]);
     const [togglingActivo, setTogglingActivo] = useState({});
     const [modalActivo, setModalActivo] = useState(null);
+    const [testing,   setTesting]   = useState(false);
+    const [testResult,   setTestResult]   = useState(null);
+    const [restarting, setRestarting] = useState(false);
+    const [restartResult, setRestartResult] = useState(null);
+    const [syncing,   setSyncing]   = useState(false);
+    const [syncResult,   setSyncResult]   = useState(null);
     const [deploying, setDeploying] = useState(false);
     const [deployResult, setDeployResult] = useState(null);
 
@@ -266,6 +272,36 @@ const Config = ({ setAuth, botVersion }) => {
             setActivos(a => a.map(x => x.simbolo === simbolo ? { ...x, estado: nuevoEstado } : x));
         } catch {}
         finally { setTogglingActivo(t => ({ ...t, [simbolo]: false })); }
+    };
+
+    const handleTest = async () => {
+        setTesting(true); setTestResult(null);
+        try {
+            const res = await axios.post('/api/control/test-bot', {}, { headers, timeout: 15000 });
+            const svcs = res.data.services || {};
+            const lines = Object.entries(svcs).map(([k, v]) => `${k}: ${v}`).join('\n');
+            setTestResult({ ok: res.data.status === 'ok', msg: lines || 'Sin datos.' });
+        } catch (e) { setTestResult({ ok: false, msg: e.message }); }
+        finally { setTesting(false); }
+    };
+
+    const handleRestart = async () => {
+        if (!window.confirm('¿Reiniciar los servicios del bot? (aurum-core, aurum-hunter, aurum-telegram)')) return;
+        setRestarting(true); setRestartResult(null);
+        try {
+            const res = await axios.post('/api/control/restart-bot', {}, { headers, timeout: 35000 });
+            setRestartResult({ ok: res.data.status === 'ok', msg: res.data.output || 'Servicios reiniciados.' });
+        } catch (e) { setRestartResult({ ok: false, msg: e.message }); }
+        finally { setRestarting(false); }
+    };
+
+    const handleSync = async () => {
+        setSyncing(true); setSyncResult(null);
+        try {
+            const res = await axios.post('/api/control/sync-mt5', {}, { headers, timeout: 130000 });
+            setSyncResult({ ok: res.data.status === 'ok', msg: res.data.output });
+        } catch (e) { setSyncResult({ ok: false, msg: e.message }); }
+        finally { setSyncing(false); }
     };
 
     const handleLogout = () => { localStorage.removeItem('token'); setAuth(false); };
@@ -446,45 +482,139 @@ const Config = ({ setAuth, botVersion }) => {
                     </div>
                 </section>
 
-                {/* Deploy */}
+                {/* Herramientas del Bot */}
                 <section className="section" style={{ marginBottom: 24 }}>
-                    <h2 className="section-title">Actualizar servidor</h2>
-                    <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 12 }}>
-                        Ejecuta <code>git pull</code> en el servidor y reinicia los servicios con el código más reciente.
-                    </p>
-                    <button
-                        onClick={async () => {
-                            setDeploying(true);
-                            setDeployResult(null);
-                            try {
-                                const res = await axios.post('/api/control/deploy', {}, { headers });
-                                setDeployResult({ ok: res.data.returncode === 0, msg: res.data.output });
-                            } catch (e) {
-                                setDeployResult({ ok: false, msg: e.response?.data?.detail || e.message });
-                            } finally {
-                                setDeploying(false);
-                            }
-                        }}
-                        disabled={deploying}
-                        style={{
-                            background: deploying ? 'var(--bg-primary)' : 'var(--accent-primary)',
-                            color: deploying ? 'var(--text-secondary)' : '#fff',
-                            border: 'none', borderRadius: 7, padding: '8px 20px',
-                            fontWeight: 700, fontSize: 13, cursor: deploying ? 'not-allowed' : 'pointer',
-                        }}
-                    >
-                        {deploying ? 'Desplegando...' : 'Deploy'}
-                    </button>
-                    {deployResult && (
-                        <pre style={{
-                            marginTop: 12, padding: 12, borderRadius: 6, fontSize: 11,
-                            background: deployResult.ok ? '#14532d33' : '#7f1d1d33',
-                            color: deployResult.ok ? '#4ade80' : '#f87171',
-                            whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 200, overflowY: 'auto',
-                        }}>
-                            {deployResult.msg}
-                        </pre>
-                    )}
+                    <h2 className="section-title">Herramientas del Bot</h2>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+
+                        {/* Test Bot */}
+                        <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <Stethoscope size={15} color="var(--text-secondary)" />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Test Bot</span>
+                            </div>
+                            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                                Verifica conectividad MT5, BD y servicios activos.
+                            </p>
+                            <button onClick={handleTest} disabled={testing} style={{
+                                background: testing ? 'var(--bg-secondary)' : '#1e40af22',
+                                color: testing ? 'var(--text-secondary)' : '#3b82f6',
+                                border: '1px solid #3b82f633', borderRadius: 6, padding: '6px 14px',
+                                fontWeight: 700, fontSize: 11, cursor: testing ? 'not-allowed' : 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 5,
+                            }}>
+                                <Stethoscope size={11} />{testing ? 'Comprobando...' : 'Ejecutar'}
+                            </button>
+                            {testResult && (
+                                <pre style={{
+                                    marginTop: 8, padding: 8, borderRadius: 5, fontSize: 10,
+                                    background: testResult.ok ? '#14532d33' : '#7f1d1d33',
+                                    color: testResult.ok ? '#4ade80' : '#f87171',
+                                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflowY: 'auto',
+                                }}>{testResult.msg}</pre>
+                            )}
+                        </div>
+
+                        {/* Reiniciar Bot */}
+                        <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <RotateCcw size={15} color="var(--text-secondary)" />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Reiniciar Bot</span>
+                            </div>
+                            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                                Reinicia los servicios aurum-core, hunter y telegram.
+                            </p>
+                            <button onClick={handleRestart} disabled={restarting} style={{
+                                background: restarting ? 'var(--bg-secondary)' : '#78350f22',
+                                color: restarting ? 'var(--text-secondary)' : '#f59e0b',
+                                border: '1px solid #f59e0b33', borderRadius: 6, padding: '6px 14px',
+                                fontWeight: 700, fontSize: 11, cursor: restarting ? 'not-allowed' : 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 5,
+                            }}>
+                                <RotateCcw size={11} />{restarting ? 'Reiniciando...' : 'Reiniciar'}
+                            </button>
+                            {restartResult && (
+                                <pre style={{
+                                    marginTop: 8, padding: 8, borderRadius: 5, fontSize: 10,
+                                    background: restartResult.ok ? '#14532d33' : '#7f1d1d33',
+                                    color: restartResult.ok ? '#4ade80' : '#f87171',
+                                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflowY: 'auto',
+                                }}>{restartResult.msg}</pre>
+                            )}
+                        </div>
+
+                        {/* Sync MT5 */}
+                        <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <DatabaseZap size={15} color="var(--text-secondary)" />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>Sync MT5</span>
+                            </div>
+                            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                                Sincroniza posiciones y balance desde MetaTrader 5.
+                            </p>
+                            <button onClick={handleSync} disabled={syncing} style={{
+                                background: syncing ? 'var(--bg-secondary)' : '#14532d22',
+                                color: syncing ? 'var(--text-secondary)' : '#22c55e',
+                                border: '1px solid #22c55e33', borderRadius: 6, padding: '6px 14px',
+                                fontWeight: 700, fontSize: 11, cursor: syncing ? 'not-allowed' : 'pointer',
+                                display: 'flex', alignItems: 'center', gap: 5,
+                            }}>
+                                <DatabaseZap size={11} />{syncing ? 'Sincronizando...' : 'Sincronizar'}
+                            </button>
+                            {syncResult && (
+                                <pre style={{
+                                    marginTop: 8, padding: 8, borderRadius: 5, fontSize: 10,
+                                    background: syncResult.ok ? '#14532d33' : '#7f1d1d33',
+                                    color: syncResult.ok ? '#4ade80' : '#f87171',
+                                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflowY: 'auto',
+                                }}>{syncResult.msg}</pre>
+                            )}
+                        </div>
+
+                        {/* El Meteorito — Deploy */}
+                        <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 14 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                <RefreshCw size={15} color="var(--text-secondary)" />
+                                <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>El Meteorito</span>
+                            </div>
+                            <p style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
+                                <code>git pull</code> + reinicio completo de servicios. Usa con cuidado.
+                            </p>
+                            <button
+                                onClick={async () => {
+                                    setDeploying(true);
+                                    setDeployResult(null);
+                                    try {
+                                        const res = await axios.post('/api/control/deploy', {}, { headers });
+                                        setDeployResult({ ok: res.data.returncode === 0, msg: res.data.output });
+                                    } catch (e) {
+                                        setDeployResult({ ok: false, msg: e.response?.data?.detail || e.message });
+                                    } finally {
+                                        setDeploying(false);
+                                    }
+                                }}
+                                disabled={deploying}
+                                style={{
+                                    background: deploying ? 'var(--bg-secondary)' : 'var(--accent-primary)',
+                                    color: deploying ? 'var(--text-secondary)' : '#fff',
+                                    border: 'none', borderRadius: 6, padding: '6px 14px',
+                                    fontWeight: 700, fontSize: 11, cursor: deploying ? 'not-allowed' : 'pointer',
+                                    display: 'flex', alignItems: 'center', gap: 5,
+                                }}
+                            >
+                                <RefreshCw size={11} />{deploying ? 'Desplegando...' : 'Deploy'}
+                            </button>
+                            {deployResult && (
+                                <pre style={{
+                                    marginTop: 8, padding: 8, borderRadius: 5, fontSize: 10,
+                                    background: deployResult.ok ? '#14532d33' : '#7f1d1d33',
+                                    color: deployResult.ok ? '#4ade80' : '#f87171',
+                                    whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 120, overflowY: 'auto',
+                                }}>{deployResult.msg}</pre>
+                            )}
+                        </div>
+
+                    </div>
                 </section>
 
                 {/* Modal rendimiento */}

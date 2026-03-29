@@ -102,6 +102,18 @@ class LabEvaluator:
         umbral = float(params.get("LAB.umbral_disparo",
                                    params.get("GERENTE.umbral_disparo", 0.45)))
 
+        # A3: Filtro universal — NLP=0.00 indica ausencia de datos de noticias.
+        # "Sin información = sin trade" aplica a todos los labs sin excepción.
+        v_nlp = float(votos.get("nlp", 0.0))
+        if abs(v_nlp) < 0.05:
+            motivo = (f"[LAB] FILTRO_NLP: voto NLP={v_nlp:+.2f} — "
+                      f"sin datos de noticias. Entrada bloqueada universalmente.")
+            self.db.guardar_lab_senal(
+                lab_id, activo_id, {**votos, "veredicto": veredicto},
+                "IGNORADO", motivo, umbral, pesos_usados
+            )
+            return
+
         # 3. Decidir
         if abs(veredicto) < umbral:
             motivo = f"[LAB] Veredicto {veredicto:+.4f} insuficiente (umbral: {umbral})"
@@ -126,11 +138,43 @@ class LabEvaluator:
         direccion = "COMPRA" if veredicto > 0 else "VENTA"
         tipo_orden = "BUY" if veredicto > 0 else "SELL"
 
+        # A4: Filtro universal — Trend en contradicción con la dirección decidida.
+        # No entrar largo cuando el análisis técnico es bajista, ni viceversa.
+        v_trend = float(votos.get("trend", 0.0))
+        if tipo_orden == "BUY" and v_trend < -0.10:
+            motivo = (f"[LAB] FILTRO_TREND: BUY rechazado — "
+                      f"Trend={v_trend:+.2f} indica tendencia bajista.")
+            self.db.guardar_lab_senal(
+                lab_id, activo_id, {**votos, "veredicto": veredicto},
+                "IGNORADO", motivo, umbral, pesos_usados
+            )
+            return
+        if tipo_orden == "SELL" and v_trend > +0.10:
+            motivo = (f"[LAB] FILTRO_TREND: SELL rechazado — "
+                      f"Trend={v_trend:+.2f} indica tendencia alcista.")
+            self.db.guardar_lab_senal(
+                lab_id, activo_id, {**votos, "veredicto": veredicto},
+                "IGNORADO", motivo, umbral, pesos_usados
+            )
+            return
+
         # 6. Anti-duplicado
         posiciones_abiertas = self.db.get_lab_operaciones_abiertas(lab_id)
         ya_abierta = any(p["activo_id"] == activo_id for p in posiciones_abiertas)
         if ya_abierta:
             motivo = f"[LAB] Posicion ya abierta en {simbolo} — anti-duplicado activo"
+            self.db.guardar_lab_senal(
+                lab_id, activo_id, {**votos, "veredicto": veredicto},
+                "CANCELADO_RIESGO", motivo, umbral, pesos_usados
+            )
+            return
+
+        # A5: Cooldown universal — ≥3 SLs en las últimas 4h en este lab+activo.
+        # Evita acumular pérdidas consecutivas sin pausa cuando el mercado
+        # está en contratendencia con las señales del sistema.
+        if self._en_cooldown(lab_id, activo_id):
+            motivo = (f"[LAB] COOLDOWN: ≥3 SLs en las últimas 4h para {simbolo} "
+                      f"en este lab. Pausando entradas 4h.")
             self.db.guardar_lab_senal(
                 lab_id, activo_id, {**votos, "veredicto": veredicto},
                 "CANCELADO_RIESGO", motivo, umbral, pesos_usados
@@ -174,7 +218,7 @@ class LabEvaluator:
         p_trend  = float(params.get("TENDENCIA.peso_voto", 0.50))
         p_nlp    = float(params.get("NLP.peso_voto",       0.30))
         p_sniper = float(params.get("SNIPER.peso_voto",    0.20))
-        p_macro  = float(params.get("MACRO.peso_voto",     0.20))
+        p_macro  = max(0.10, float(params.get("MACRO.peso_voto", 0.20)))  # B1: mínimo 0.10 forzado
 
         v_trend  = float(votos.get("trend",  0.0))
         v_nlp    = float(votos.get("nlp",    0.0))
@@ -422,6 +466,10 @@ class LabEvaluator:
             → Muestra progreso hacia el TP como fracción del capital.
         - Fallback: porcentaje del precio.
         """
+        # C1: guard — capital negativo o cero produce signos incoherentes
+        if capital_usado <= 0:
+            return 0.0, 0.0
+
         if tipo == "BUY":
             diff = precio_salida - precio_entrada
         else:
@@ -431,14 +479,15 @@ class LabEvaluator:
             sl_dist = abs(precio_entrada - sl)
             if sl_dist > 0:
                 pnl = round((diff / sl_dist) * capital_usado, 2)
-                roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
+                roe = round((pnl / capital_usado) * 100.0, 2)
                 return pnl, roe
-            # sl_dist = 0 → breakeven: usar TP como referencia de escala
+            # sl_dist = 0 → breakeven activo: usar TP como referencia de escala.
+            # ROE = (diff / tp_dist) * 100 — signo siempre consistente con PnL.
             if tp is not None:
                 tp_dist = abs(tp - precio_entrada)
                 if tp_dist > 0:
                     pnl = round((diff / tp_dist) * capital_usado, 2)
-                    roe = round((pnl / capital_usado) * 100.0, 2) if capital_usado else 0.0
+                    roe = round((pnl / capital_usado) * 100.0, 2)
                     return pnl, roe
 
         # Fallback: porcentaje del precio (sin SL disponible)
@@ -474,3 +523,29 @@ class LabEvaluator:
                 return float(row[0]) if row else 3000.0
             except Exception:
                 return 3000.0
+
+    def _en_cooldown(self, lab_id: int, activo_id: int) -> bool:
+        """
+        A5: Retorna True si el activo acumula ≥3 SLs en las últimas 4h en este lab.
+        Previene entradas repetidas cuando el mercado está en contratendencia.
+        """
+        if not self.db.cursor:
+            return False
+        try:
+            with self.db._lock:
+                self.db.cursor.execute("""
+                    SELECT COUNT(*) FROM lab_operaciones
+                    WHERE lab_id    = %s
+                      AND activo_id = %s
+                      AND resultado = 'SL'
+                      AND tiempo_salida >= NOW() - INTERVAL '4 hours'
+                """, (lab_id, activo_id))
+                row = self.db.cursor.fetchone()
+                return (row[0] if row else 0) >= 3
+        except Exception as e:
+            print(f"[LAB] Error verificando cooldown lab={lab_id} activo={activo_id}: {e}")
+            try:
+                self.db.conn.rollback()
+            except Exception:
+                pass
+            return False
