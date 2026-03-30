@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Clock, Activity, Wallet, DollarSign, Cpu, ChevronDown, ChevronRight } from 'lucide-react';
+import { Clock, TrendingUp, Wallet, DollarSign, Cpu, ChevronDown, ChevronRight } from 'lucide-react';
 import SideNav from '../components/SideNav';
 import MarketPulse from '../components/MarketPulse';
 import { toChileTime } from '../utils/time';
@@ -248,10 +248,27 @@ const Control = ({ setAuth, botVersion }) => {
                         </div>
                     </div>
                     <div className="stat-card">
-                        <div className="stat-icon"><Activity size={22} /></div>
+                        <div className="stat-icon"><TrendingUp size={22} /></div>
                         <div className="stat-body">
-                            <p className="stat-label">Posiciones Abiertas</p>
-                            <p className="stat-value">{estado?.posiciones_abiertas ?? '---'}</p>
+                            <p className="stat-label">Sesión</p>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                                    <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 32 }}>Hoy</span>
+                                    <span className={`stat-value ${(estado?.pnl_sesion_hoy ?? 0) >= 0 ? 'bullish' : 'bearish'}`} style={{ fontSize: 16 }}>
+                                        {estado?.pnl_sesion_hoy != null
+                                            ? `${estado.pnl_sesion_hoy >= 0 ? '+' : ''}$${estado.pnl_sesion_hoy.toFixed(2)}`
+                                            : '---'}
+                                    </span>
+                                </div>
+                                <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+                                    <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 32 }}>Ayer</span>
+                                    <span style={{ fontSize: 13, fontWeight: 600, color: (estado?.pnl_sesion_ayer ?? 0) >= 0 ? 'var(--success)' : 'var(--danger)', opacity: 0.7 }}>
+                                        {estado?.pnl_sesion_ayer != null
+                                            ? `${estado.pnl_sesion_ayer >= 0 ? '+' : ''}$${estado.pnl_sesion_ayer.toFixed(2)}`
+                                            : '---'}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
                     </div>
                     <div className="stat-card">
@@ -279,6 +296,11 @@ const Control = ({ setAuth, botVersion }) => {
                                     ? `${(estado.pnl_flotante >= 0 ? '+' : '')}$${estado.pnl_flotante.toFixed(2)}`
                                     : '---'}
                             </p>
+                            {(estado?.posiciones_abiertas ?? 0) > 0 && (
+                                <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 2 }}>
+                                    {estado.posiciones_abiertas} posición{estado.posiciones_abiertas !== 1 ? 'es' : ''} abierta{estado.posiciones_abiertas !== 1 ? 's' : ''}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>

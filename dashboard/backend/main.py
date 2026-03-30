@@ -264,14 +264,28 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
 
         try:
             db.cursor.execute("""
-                SELECT COUNT(*), COALESCE(SUM(pnl_usd), 0)
+                SELECT
+                    COALESCE(SUM(pnl_usd) FILTER (
+                        WHERE resultado_final IS NOT NULL
+                        AND (tiempo_entrada AT TIME ZONE 'America/Santiago')::date
+                            = (NOW() AT TIME ZONE 'America/Santiago')::date
+                    ), 0),
+                    COALESCE(SUM(pnl_usd) FILTER (
+                        WHERE resultado_final IS NOT NULL
+                        AND (tiempo_entrada AT TIME ZONE 'America/Santiago')::date
+                            = (NOW() AT TIME ZONE 'America/Santiago')::date - INTERVAL '1 day'
+                    ), 0),
+                    COUNT(*) FILTER (WHERE resultado_final IS NOT NULL
+                        AND (tiempo_entrada AT TIME ZONE 'America/Santiago')::date
+                            = (NOW() AT TIME ZONE 'America/Santiago')::date)
                 FROM registro_operaciones
-                WHERE DATE(tiempo_entrada) = CURRENT_DATE
             """)
             row = db.cursor.fetchone()
             if row:
-                result["trades_hoy"] = row[0] or 0
-                result["pnl_hoy"] = float(row[1] or 0)
+                result["pnl_sesion_hoy"]  = round(float(row[0] or 0), 2)
+                result["pnl_sesion_ayer"] = round(float(row[1] or 0), 2)
+                result["trades_hoy"]      = int(row[2] or 0)
+                result["pnl_hoy"]         = result["pnl_sesion_hoy"]
         except Exception:
             db.conn.rollback()
 
