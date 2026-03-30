@@ -260,24 +260,9 @@ class DBConnector:
             except Exception as e:
                 print(f"[DB-SURVIVAL] Error en consulta: {e}. Usando lista pre-cargada.")
 
-        # --- FALLBACK HARDCODED (Modo Supervivencia V13.1) ---
-        print("[DB-SECURITY] Utilizando lista de activos HARDCODED (Fallo de DB).")
-        fallback_list = [
-            {"id": 1, "simbolo": "XAUUSD", "nombre": "Oro", "categoria": "COMMODITIES", "simbolo_broker": "XAUUSD_i"},
-            {"id": 2, "simbolo": "XAGUSD", "nombre": "Plata", "categoria": "COMMODITIES", "simbolo_broker": "XAGUSD_i"},
-            {"id": 3, "simbolo": "US30", "nombre": "Dow Jones", "categoria": "INDICES", "simbolo_broker": "DJIUSD"},
-            {"id": 4, "simbolo": "US500", "nombre": "S&P 500", "categoria": "INDICES", "simbolo_broker": "SPXUSD"},
-            {"id": 5, "simbolo": "USTEC", "nombre": "Nasdaq 100", "categoria": "INDICES", "simbolo_broker": "NDXUSD"},
-            {"id": 6, "simbolo": "EURUSD", "nombre": "Euro/Dolar", "categoria": "FOREX", "simbolo_broker": "EURUSD_i"},
-            {"id": 7, "simbolo": "GBPUSD", "nombre": "Libra/Dolar", "categoria": "FOREX", "simbolo_broker": "GBPUSD_i"},
-            {"id": 8, "simbolo": "USDJPY", "nombre": "Dolar/Yen", "categoria": "FOREX", "simbolo_broker": "USDJPY_i"},
-            {"id": 9, "simbolo": "GBPJPY", "nombre": "Libra/Yen", "categoria": "FOREX", "simbolo_broker": "GBPJPY_i"},
-            {"id": 10, "simbolo": "XTIUSD", "nombre": "Petroleo WTI", "categoria": "COMMODITIES", "simbolo_broker": "XTIUSD_i"},
-            {"id": 11, "simbolo": "AUDUSD", "nombre": "Dolar Australiano/Dolar", "categoria": "FOREX", "simbolo_broker": "AUDUSD_i"},
-            {"id": 12, "simbolo": "USDCAD", "nombre": "Dolar/Dolar Canadiense", "categoria": "FOREX", "simbolo_broker": "USDCAD_i"},
-            {"id": 13, "simbolo": "GEREUR", "nombre": "DAX 40 (GER40)", "categoria": "INDICES", "simbolo_broker": "GEREUR"},
-        ]
-        return fallback_list
+        # Si la BD no responde, no operar — nunca hardcodear activos.
+        print("[DB-SECURITY] Sin conexión a BD. No se operará en este ciclo.")
+        return []
 
     # Alias de compatibilidad hacia atras
     def obtener_activos_encendidos(self) -> list:
