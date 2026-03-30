@@ -613,7 +613,7 @@ async def get_historial(
                        ro.precio_entrada, ro.stop_loss, ro.take_profit,
                        ro.take_profit_1, ro.tp1_alcanzado, ro.pnl_parcial,
                        ro.pnl_usd, ro.tiempo_entrada, ro.resultado_final,
-                       ro.precio_salida,
+                       ro.precio_actual,
                        ro.veredicto_apertura, ro.probabilidad_est, ro.divergencia_precision,
                        ro.justificacion_entrada,
                        ap.tipo_fallo, ap.worker_culpable, ap.descripcion, ap.correccion_sugerida,
@@ -632,7 +632,7 @@ async def get_historial(
             """, params)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
                     "tp1", "tp1_alcanzado", "pnl_parcial",
-                    "pnl_usd", "apertura", "resultado", "precio_salida",
+                    "pnl_usd", "apertura", "resultado", "precio_salida",  # precio_salida = precio_actual
                     "veredicto", "probabilidad",
                     "divergencia", "justificacion_entrada",
                     "tipo_fallo", "worker_culpable", "descripcion_fallo", "correccion",
