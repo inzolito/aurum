@@ -292,13 +292,19 @@ class Manager:
             4
         )
 
-        # --- PENALIZACIÓN DE HURST (V10.5) ---
-        if 0.45 <= h_val <= 0.55:
-            print(f"[GERENTE] ⚠️ Mercado en RUIDO (H: {h_val:.4f}). Penalización -0.15.")
-            if veredicto > 0:
-                veredicto = max(0.0, veredicto - 0.15)
-            elif veredicto < 0:
-                veredicto = min(0.0, veredicto + 0.15)
+        # --- BLOQUEO HURST (V18.4) ---
+        # Solo se opera cuando el mercado muestra tendencia real (PERSISTENTE, H > 0.55).
+        # RUIDO (0.45-0.55) y ANTIPERSISTENTE (< 0.45) son mercados sin dirección o con reversión.
+        if h_estado != 'PERSISTENTE':
+            motivo = (f"Hurst {h_estado} (H: {h_val:.4f}). Mercado sin tendencia real. "
+                      f"Solo se opera con Hurst PERSISTENTE.")
+            print(f"[GERENTE] 🚫 MERCADO_LATERAL: Hurst {h_estado} ({h_val:.4f}) — BLOQUEADO")
+            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+                                    veredicto, "MERCADO_LATERAL", motivo,
+                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+                                    v_macro=v_macro)
+            return {"decision": "MERCADO_LATERAL", "veredicto": veredicto, "motivo": motivo}
 
         # --- PENALIZACIÓN DE SPREAD (P-3) ---
         ajuste_spread = v_spread.get("ajuste", 0.0)
