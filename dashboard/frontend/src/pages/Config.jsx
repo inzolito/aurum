@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Settings, Save, CheckCircle, AlertCircle, Power, X, TrendingUp, TrendingDown, Stethoscope, RotateCcw, DatabaseZap, RefreshCw } from 'lucide-react';
+import { Settings, Save, CheckCircle, AlertCircle, Power, X, TrendingUp, TrendingDown, Stethoscope, RotateCcw, DatabaseZap, RefreshCw, History, ChevronDown, ChevronRight, RotateCw } from 'lucide-react';
 import SideNav from '../components/SideNav';
 
 const DESCRIPCIONES = {
@@ -213,6 +213,13 @@ const Config = ({ setAuth, botVersion }) => {
     const [syncResult,   setSyncResult]   = useState(null);
     const [deploying, setDeploying] = useState(false);
     const [deployResult, setDeployResult] = useState(null);
+    const [versiones, setVersiones] = useState([]);
+    const [versionExpandida, setVersionExpandida] = useState(null);
+    const [versionParams, setVersionParams] = useState({});
+    const [restaurando, setRestaurando] = useState(null);
+    const [restaurarResult, setRestaurarResult] = useState(null);
+    const [nuevaVersion, setNuevaVersion] = useState({ numero: '', descripcion: '' });
+    const [guardandoVersion, setGuardandoVersion] = useState(false);
 
     const token = localStorage.getItem('token');
     const headers = { Authorization: `Bearer ${token}` };
@@ -246,7 +253,54 @@ const Config = ({ setAuth, botVersion }) => {
         } catch {}
     };
 
-    useEffect(() => { fetchParametros(); fetchActivos(); }, []);
+    const fetchVersiones = async () => {
+        try {
+            const res = await axios.get('/api/config/versiones', { headers });
+            setVersiones(res.data.versiones);
+        } catch {}
+    };
+
+    const handleExpandVersion = async (id) => {
+        if (versionExpandida === id) { setVersionExpandida(null); return; }
+        setVersionExpandida(id);
+        if (!versionParams[id]) {
+            try {
+                const res = await axios.get(`/api/config/versiones/${id}/parametros`, { headers });
+                setVersionParams(p => ({ ...p, [id]: res.data.parametros }));
+            } catch {}
+        }
+    };
+
+    const handleRestaurar = async (id, version) => {
+        if (!window.confirm(`¿Restaurar parámetros de ${version}? Esto sobreescribe la configuración actual del bot.`)) return;
+        setRestaurando(id);
+        setRestaurarResult(null);
+        try {
+            const res = await axios.post(`/api/config/versiones/${id}/restaurar`, {}, { headers });
+            setRestaurarResult({ ok: true, msg: `Parámetros de ${version} restaurados (${res.data.restaurados} valores).` });
+            fetchParametros();
+        } catch (e) {
+            setRestaurarResult({ ok: false, msg: e.response?.data?.detail || e.message });
+        } finally {
+            setRestaurando(null);
+        }
+    };
+
+    const handleGuardarVersion = async () => {
+        if (!nuevaVersion.numero || !nuevaVersion.descripcion) return;
+        setGuardandoVersion(true);
+        try {
+            await axios.post('/api/config/versiones', { numero_version: nuevaVersion.numero, descripcion: nuevaVersion.descripcion }, { headers });
+            setNuevaVersion({ numero: '', descripcion: '' });
+            fetchVersiones();
+        } catch (e) {
+            alert(e.response?.data?.detail || e.message);
+        } finally {
+            setGuardandoVersion(false);
+        }
+    };
+
+    useEffect(() => { fetchParametros(); fetchActivos(); fetchVersiones(); }, []);
 
     const handleSave = async (nombre) => {
         const err = validar(nombre, editValues[nombre]);
@@ -614,6 +668,102 @@ const Config = ({ setAuth, botVersion }) => {
                             )}
                         </div>
 
+                    </div>
+                </section>
+
+                {/* Historial de Versiones */}
+                <section className="section" style={{ marginBottom: 24 }}>
+                    <h2 className="section-title"><History size={15} style={{ marginRight: 6, verticalAlign: 'middle' }} />Historial de Versiones</h2>
+
+                    {/* Crear nueva versión */}
+                    <div style={{ background: 'var(--bg-primary)', borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                        <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>
+                            Registrar versión actual
+                        </p>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            <input
+                                value={nuevaVersion.numero}
+                                onChange={e => setNuevaVersion(v => ({ ...v, numero: e.target.value }))}
+                                placeholder="Ej: V18.4"
+                                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: 'var(--text-primary)', width: 90 }}
+                            />
+                            <input
+                                value={nuevaVersion.descripcion}
+                                onChange={e => setNuevaVersion(v => ({ ...v, descripcion: e.target.value }))}
+                                placeholder="Descripción del cambio"
+                                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: 6, padding: '6px 10px', fontSize: 12, color: 'var(--text-primary)', flex: 1, minWidth: 200 }}
+                            />
+                            <button
+                                onClick={handleGuardarVersion}
+                                disabled={guardandoVersion || !nuevaVersion.numero || !nuevaVersion.descripcion}
+                                style={{ background: 'var(--accent-primary)', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 14px', fontWeight: 700, fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5 }}
+                            >
+                                <Save size={11} />{guardandoVersion ? 'Guardando...' : 'Guardar'}
+                            </button>
+                        </div>
+                        <p style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 6 }}>
+                            Registra la versión actual y guarda una copia de todos los parámetros del bot en este momento.
+                        </p>
+                    </div>
+
+                    {/* Resultado restaurar */}
+                    {restaurarResult && (
+                        <div style={{ padding: '8px 12px', borderRadius: 6, marginBottom: 10, fontSize: 11, fontWeight: 600,
+                            background: restaurarResult.ok ? '#14532d33' : '#7f1d1d33',
+                            color: restaurarResult.ok ? '#4ade80' : '#f87171' }}>
+                            {restaurarResult.msg}
+                        </div>
+                    )}
+
+                    {/* Lista de versiones */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                        {versiones.map(v => {
+                            const esActiva = v.estado === 'ACTIVA';
+                            const expandida = versionExpandida === v.id;
+                            const params = versionParams[v.id] || [];
+                            const tieneParams = v.params_guardados > 0;
+                            const estadoColor = esActiva ? '#4ade80' : v.estado === 'OBSOLETA' ? '#f59e0b' : 'var(--text-secondary)';
+                            return (
+                                <div key={v.id} style={{ background: 'var(--bg-primary)', borderRadius: 8, border: esActiva ? '1px solid #4ade8033' : '1px solid var(--border-color)' }}>
+                                    <div
+                                        style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: tieneParams ? 'pointer' : 'default' }}
+                                        onClick={() => tieneParams && handleExpandVersion(v.id)}
+                                    >
+                                        {tieneParams
+                                            ? (expandida ? <ChevronDown size={13} color="var(--text-secondary)" /> : <ChevronRight size={13} color="var(--text-secondary)" />)
+                                            : <span style={{ width: 13 }} />
+                                        }
+                                        <span style={{ fontWeight: 700, fontSize: 13, color: 'var(--text-primary)', minWidth: 60 }}>{v.version}</span>
+                                        <span style={{ fontSize: 11, color: estadoColor, fontWeight: 600, minWidth: 60 }}>{v.estado}</span>
+                                        <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>{v.descripcion}</span>
+                                        <span style={{ fontSize: 10, color: 'var(--text-secondary)', marginRight: 8 }}>
+                                            {tieneParams ? `${v.params_guardados} params` : 'sin params'}
+                                        </span>
+                                        {tieneParams && !esActiva && (
+                                            <button
+                                                onClick={e => { e.stopPropagation(); handleRestaurar(v.id, v.version); }}
+                                                disabled={restaurando === v.id}
+                                                style={{ background: '#78350f22', color: '#f59e0b', border: '1px solid #f59e0b33', borderRadius: 5, padding: '4px 10px', fontSize: 10, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}
+                                            >
+                                                <RotateCw size={10} />{restaurando === v.id ? 'Restaurando...' : 'Restaurar'}
+                                            </button>
+                                        )}
+                                    </div>
+                                    {expandida && params.length > 0 && (
+                                        <div style={{ padding: '0 14px 12px 37px', borderTop: '1px solid var(--border-color)' }}>
+                                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '4px 16px', marginTop: 10 }}>
+                                                {params.map(p => (
+                                                    <div key={p.nombre} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
+                                                        <span style={{ color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{p.nombre}</span>
+                                                        <span style={{ color: 'var(--text-primary)', fontWeight: 700, fontFamily: 'monospace' }}>{p.valor}</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
                 </section>
 

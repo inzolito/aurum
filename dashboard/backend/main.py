@@ -729,6 +729,10 @@ _PARAM_RANGOS = {
     "SNIPER.peso_voto":         (0.00, 0.80),
 }
 
+class VersionCreate(BaseModel):
+    numero_version: str
+    descripcion: str
+
 class ParamUpdate(BaseModel):
     nombre: str
     valor: float
@@ -762,6 +766,125 @@ async def update_parametro(body: ParamUpdate, token: str = Depends(oauth2_scheme
     except Exception as e:
         db.conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/config/versiones")
+async def get_versiones(token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                CREATE TABLE IF NOT EXISTS historial_parametros (
+                    id SERIAL PRIMARY KEY,
+                    version_id INTEGER REFERENCES versiones_sistema(id),
+                    nombre_parametro VARCHAR(100) NOT NULL,
+                    modulo VARCHAR(50),
+                    valor NUMERIC(12,4),
+                    descripcion TEXT,
+                    guardado_en TIMESTAMPTZ DEFAULT NOW()
+                )
+            """)
+            db.conn.commit()
+            db.cursor.execute("""
+                SELECT vs.id, vs.numero_version, vs.descripcion, vs.estado, vs.fecha_despliegue,
+                       COUNT(hp.id) as params_guardados
+                FROM versiones_sistema vs
+                LEFT JOIN historial_parametros hp ON hp.version_id = vs.id
+                GROUP BY vs.id, vs.numero_version, vs.descripcion, vs.estado, vs.fecha_despliegue
+                ORDER BY vs.id DESC
+            """)
+            rows = db.cursor.fetchall()
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"versiones": [
+        {"id": r[0], "version": r[1], "descripcion": r[2], "estado": r[3],
+         "fecha": r[4].isoformat() if r[4] else None, "params_guardados": int(r[5])}
+        for r in rows
+    ]}
+
+
+@app.get("/api/config/versiones/{version_id}/parametros")
+async def get_version_parametros(version_id: int, token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            db.cursor.execute("""
+                SELECT nombre_parametro, modulo, valor, descripcion
+                FROM historial_parametros
+                WHERE version_id = %s
+                ORDER BY modulo, nombre_parametro
+            """, (version_id,))
+            rows = db.cursor.fetchall()
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"parametros": [
+        {"nombre": r[0], "modulo": r[1], "valor": float(r[2]) if r[2] is not None else None, "descripcion": r[3]}
+        for r in rows
+    ]}
+
+
+@app.post("/api/config/versiones")
+async def crear_version(body: VersionCreate, token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    """Crea una nueva versión y guarda una copia de todos los parámetros actuales."""
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            # Marcar versiones anteriores como OBSOLETA
+            db.cursor.execute("UPDATE versiones_sistema SET estado = 'OBSOLETA' WHERE estado = 'ACTIVA'")
+            # Crear nueva versión
+            db.cursor.execute(
+                "INSERT INTO versiones_sistema (numero_version, descripcion, estado, fecha_despliegue) VALUES (%s, %s, 'ACTIVA', NOW()) RETURNING id",
+                (body.numero_version, body.descripcion)
+            )
+            new_id = db.cursor.fetchone()[0]
+            # Guardar copia de parámetros actuales
+            db.cursor.execute("""
+                INSERT INTO historial_parametros (version_id, nombre_parametro, modulo, valor, descripcion)
+                SELECT %s, nombre_parametro, modulo, valor::numeric, descripcion
+                FROM parametros_sistema
+            """, (new_id,))
+            db.conn.commit()
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "version_id": new_id, "version": body.numero_version}
+
+
+@app.post("/api/config/versiones/{version_id}/restaurar")
+async def restaurar_version(version_id: int, token: str = Depends(oauth2_scheme), db: DBConnector = Depends(get_db)):
+    """Restaura los parámetros guardados de una versión anterior."""
+    payload = decode_access_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Token inválido o expirado")
+    with db._lock:
+        try:
+            db.cursor.execute("SELECT COUNT(*) FROM historial_parametros WHERE version_id = %s", (version_id,))
+            count = db.cursor.fetchone()[0]
+            if count == 0:
+                raise HTTPException(status_code=404, detail="Esta versión no tiene parámetros guardados")
+            # Restaurar cada parámetro
+            db.cursor.execute("""
+                UPDATE parametros_sistema ps
+                SET valor = hp.valor::text
+                FROM historial_parametros hp
+                WHERE hp.version_id = %s AND hp.nombre_parametro = ps.nombre_parametro
+            """, (version_id,))
+            db.conn.commit()
+            db._params_last_refresh = 0
+        except HTTPException:
+            raise
+        except Exception as e:
+            db.conn.rollback()
+            raise HTTPException(status_code=500, detail=str(e))
+    return {"ok": True, "restaurados": count}
 
 
 @app.get("/api/config/activos")
