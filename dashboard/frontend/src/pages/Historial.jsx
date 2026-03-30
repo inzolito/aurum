@@ -342,6 +342,7 @@ const Historial = ({ setAuth, botVersion }) => {
                                     <th></th>
                                     <th>Apertura</th>
                                     <th>Activo</th>
+                                    <th>Ver.</th>
                                     <th>Tipo</th>
                                     <th>Lotes</th>
                                     <th>Entrada</th>
@@ -352,7 +353,6 @@ const Historial = ({ setAuth, botVersion }) => {
                                     <th>Prob.</th>
                                     <th>Resultado</th>
                                     <th>P&L</th>
-                                    <th>Versión</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -369,15 +369,21 @@ const Historial = ({ setAuth, botVersion }) => {
                                                 <td style={{ width: 24, color: 'var(--text-secondary)' }}>
                                                     {hasDetail ? (expandedRow === i ? <ChevronDown size={14}/> : <ChevronRight size={14}/>) : null}
                                                 </td>
-                                                <td className="time">{toChileTime(t.apertura, 'datetime')}</td>
-                                                <td style={{ minWidth: 140 }}>
-                                                    <span className="symbol">{t.simbolo}</span>
-                                                    <PriceBar
-                                                        sl={t.sl} tp={t.tp} entry={t.precio_entrada}
-                                                        current={t.precio_salida ?? (t.resultado === 'GANADO' ? t.tp : t.sl)}
-                                                        pnl={t.pnl_usd ?? 0}
-                                                        tp1={t.tp1}
-                                                    />
+                                                <td className="time" style={{ whiteSpace: 'nowrap', fontSize: 11 }}>
+                                                    {(() => {
+                                                        const d = new Date(t.apertura);
+                                                        const now = new Date();
+                                                        const sameDay = d.toLocaleDateString('es-CL', { timeZone: 'America/Santiago' }) === now.toLocaleDateString('es-CL', { timeZone: 'America/Santiago' });
+                                                        return sameDay
+                                                            ? d.toLocaleTimeString('es-CL', { timeZone: 'America/Santiago', hour: '2-digit', minute: '2-digit' })
+                                                            : d.toLocaleString('es-CL', { timeZone: 'America/Santiago', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                                                    })()}
+                                                </td>
+                                                <td><span className="symbol">{t.simbolo}</span></td>
+                                                <td>
+                                                    {t.version
+                                                        ? <span style={{ fontSize: 10, padding: '2px 6px', borderRadius: 6, background: 'var(--bg-tertiary)', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: 600 }}>{t.version}</span>
+                                                        : <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>—</span>}
                                                 </td>
                                                 <td className={`verdict ${t.tipo === 'COMP' ? 'bullish' : 'bearish'}`}>
                                                     {t.tipo === 'COMP' ? 'BUY' : 'SELL'}
@@ -403,11 +409,6 @@ const Historial = ({ setAuth, botVersion }) => {
                                                 </td>
                                                 <td className={`verdict ${(t.pnl_usd ?? 0) >= 0 ? 'bullish' : 'bearish'}`}>
                                                     {t.pnl_usd != null ? `${t.pnl_usd >= 0 ? '+' : ''}$${t.pnl_usd?.toFixed(2)}` : '---'}
-                                                </td>
-                                                <td>
-                                                    {t.version
-                                                        ? <span style={{ fontSize: 11, padding: '2px 8px', borderRadius: 8, background: 'var(--bg-tertiary)', color: 'var(--accent-primary)', fontFamily: 'monospace', fontWeight: 600 }}>{t.version}</span>
-                                                        : <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>—</span>}
                                                 </td>
                                             </tr>
                                             {expandedRow === i && hasDetail && (
