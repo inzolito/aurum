@@ -353,16 +353,17 @@ async def get_control_posiciones(token: str = Depends(oauth2_scheme), db: DBConn
                        ro.take_profit_1, ro.tp1_alcanzado, ro.pnl_parcial,
                        ro.pnl_usd, ro.tiempo_entrada, ro.justificacion_entrada,
                        ro.veredicto_apertura, ro.probabilidad_est,
-                       ro.precio_actual
+                       ro.precio_actual, vs.numero_version
                 FROM registro_operaciones ro
                 JOIN activos a ON a.id = ro.activo_id
+                LEFT JOIN versiones_sistema vs ON vs.id = ro.version_id
                 WHERE ro.resultado_final IS NULL AND ro.ticket_mt5 != 999999
                 ORDER BY ro.tiempo_entrada DESC
             """)
             cols = ["simbolo", "ticket", "tipo", "lotes", "precio_entrada", "sl", "tp",
                     "tp1", "tp1_alcanzado", "pnl_parcial",
                     "pnl_usd", "apertura", "justificacion_entrada", "veredicto", "probabilidad",
-                    "precio_actual"]
+                    "precio_actual", "version"]
             rows = db.cursor.fetchall()
             posiciones = []
             import json as _json

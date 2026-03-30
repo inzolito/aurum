@@ -70,45 +70,37 @@ const PriceBar = ({ entry, sl, tp, tp1, precioActual, pnl }) => {
 
     // Fills: profit siempre llena hacia la derecha, loss hacia la izquierda
     const fills = [];
+    const GREEN = 'rgb(153,218,177)';
+    const GREEN_LIGHT = 'rgba(153,218,177,0.45)';   // post-TP1, más suave
+
     if (profitable) {
         if (pastTp1) {
-            fills.push({ left: entryPct, width: tp1Pct - entryPct, color: '#86efac' });       // entry→TP1 verde pastel
-            fills.push({ left: tp1Pct,   width: currentPct - tp1Pct, color: '#bbf7d0' });     // TP1→actual verde claro
+            fills.push({ left: entryPct, width: tp1Pct - entryPct, color: GREEN });
+            fills.push({ left: tp1Pct,   width: currentPct - tp1Pct, color: GREEN_LIGHT });
         } else {
-            fills.push({ left: entryPct, width: currentPct - entryPct, color: '#86efac' });
+            fills.push({ left: entryPct, width: currentPct - entryPct, color: GREEN });
         }
     } else {
-        fills.push({ left: currentPct, width: entryPct - currentPct, color: '#fca5a5' });     // loss rojo pastel
+        fills.push({ left: currentPct, width: entryPct - currentPct, color: '#fca5a5' });
     }
 
     return (
         <div style={{ minWidth: 150, width: '100%' }}>
-            {/* Label entrada centrado en su posición */}
             <div style={{ position: 'relative', height: 13, marginBottom: 2 }}>
                 <span style={{ position: 'absolute', left: `${entryPct}%`, fontSize: 9, color: '#6b7280', transform: 'translateX(-50%)', whiteSpace: 'nowrap' }}>
                     {fmt(entry)}
                 </span>
             </div>
-            {/* Barra — mismo estilo que votaciones */}
             <div style={{ position: 'relative', height: 6, borderRadius: 3, background: 'var(--bg-primary)', overflow: 'hidden' }}>
-                {/* Zona suave TP1→TP cuando ya pasó TP1 */}
-                {pastTp1 && tp1Pct != null && (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: `${100 - tp1Pct}%`, background: 'rgba(134,239,172,0.18)', borderRadius: '0 3px 3px 0' }} />
-                )}
                 {fills.map((f, i) => (
                     <div key={i} style={{ position: 'absolute', top: 0, bottom: 0, left: `${f.left}%`, width: `${Math.max(f.width, 0)}%`, background: f.color, borderRadius: 3, transition: 'left 0.5s, width 0.5s' }} />
                 ))}
                 {/* Marker entrada */}
                 <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${entryPct}%`, width: 1.5, background: '#94a3b8', opacity: 0.7 }} />
-                {/* Marker TP1 */}
-                {tp1Pct != null && (
-                    <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${tp1Pct}%`, width: 2, background: '#34d399', opacity: 0.95 }} />
-                )}
             </div>
-            {/* SL siempre izquierda, TP siempre derecha */}
             <div style={{ position: 'relative', height: 11 }}>
                 <span style={{ position: 'absolute', left: 0, fontSize: 8, color: '#fca5a5', whiteSpace: 'nowrap' }}>{fmt(sl)}</span>
-                <span style={{ position: 'absolute', right: 0, fontSize: 8, color: '#86efac', whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
+                <span style={{ position: 'absolute', right: 0, fontSize: 8, color: GREEN, whiteSpace: 'nowrap' }}>{fmt(tp)}</span>
             </div>
         </div>
     );
@@ -324,13 +316,14 @@ const Control = ({ setAuth, botVersion }) => {
                                     <th>Prob.</th>
                                     <th>P&L</th>
                                     <th>Apertura</th>
+                                    <th>Versión</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="9" className="text-center">Cargando...</td></tr>
+                                    <tr><td colSpan="10" className="text-center">Cargando...</td></tr>
                                 ) : posiciones.length === 0 ? (
-                                    <tr><td colSpan="9" className="text-center">Sin posiciones abiertas</td></tr>
+                                    <tr><td colSpan="10" className="text-center">Sin posiciones abiertas</td></tr>
                                 ) : (
                                     posiciones.map((p, i) => {
                                         const inSession = isAssetInSession(p.simbolo);
@@ -368,10 +361,11 @@ const Control = ({ setAuth, botVersion }) => {
                                                 {p.pnl_usd != null ? `${p.pnl_usd >= 0 ? '+' : ''}$${p.pnl_usd?.toFixed(2)}` : '---'}
                                             </td>
                                             <td className="time">{toChileTime(p.apertura, 'time')}</td>
+                                            <td style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{p.version || '—'}</td>
                                         </tr>
                                         {expandedRow === i && p.analisis && (
                                             <tr key={`detail-${i}`}>
-                                                <td colSpan="9" style={{ padding: 0 }}>
+                                                <td colSpan="10" style={{ padding: 0 }}>
                                                     <TradeDetail a={p.analisis} ticket={p.ticket} />
                                                 </td>
                                             </tr>
