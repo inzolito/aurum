@@ -23,6 +23,52 @@ class RiskModule:
     # Pilar 1: Gestión de Riesgo Unificada por Capital
     # ------------------------------------------------------------------
 
+    def _pip_value_usd(self, info) -> float:
+        """
+        Calcula el valor en USD de 1 punto de precio por 1 lote estándar.
+        Siempre convierte a USD usando tipo de cambio en vivo desde MT5.
+        Moneda maestra: USD.
+
+        Lógica:
+          - 1 punto = info.point (ej: 0.001 para EURJPY, 0.00001 para EURUSD)
+          - 1 lote  = info.trade_contract_size unidades (ej: 100,000)
+          - Ganancia bruta por punto = contract_size * point  (en moneda de cotización)
+          - Si cotización es USD → directo.
+          - Si cotización es otra divisa → convertir usando par DIVISA/USD o USD/DIVISA en vivo.
+        """
+        profit_currency = info.currency_profit   # moneda en que se liquida el instrumento
+        contract_size   = info.trade_contract_size
+        point           = info.point
+        ganancia_bruta  = contract_size * point  # en profit_currency
+
+        if profit_currency == "USD":
+            return ganancia_bruta
+
+        # Buscar tipo de cambio a USD en vivo
+        # Primero intentamos DIVISA/USD directo (ej: GBPUSD, EURUSD, NZDUSD, AUDUSD)
+        pair_directo  = f"{profit_currency}USD"
+        pair_inverso  = f"USD{profit_currency}"
+
+        tick = mt5_lib.symbol_info_tick(pair_directo)
+        if tick and tick.bid > 0:
+            rate = (tick.ask + tick.bid) / 2.0
+            valor = ganancia_bruta * rate   # divisa → USD multiplicando
+            print(f"[RISK-FX] {info.name}: {profit_currency}/USD via {pair_directo} = {rate:.5f} → ${valor:.6f}/punto/lote")
+            return valor
+
+        # Si no existe el par directo, buscamos el inverso (ej: USDJPY, USDCAD, USDCNH)
+        tick = mt5_lib.symbol_info_tick(pair_inverso)
+        if tick and tick.bid > 0:
+            rate = (tick.ask + tick.bid) / 2.0
+            valor = ganancia_bruta / rate   # divisa → USD dividiendo
+            print(f"[RISK-FX] {info.name}: {profit_currency}/USD via {pair_inverso} invertido = {rate:.5f} → ${valor:.6f}/punto/lote")
+            return valor
+
+        # Fallback: usar trade_tick_value de MT5 (menos fiable pero mejor que nada)
+        fallback = info.trade_tick_value / info.trade_tick_size if info.trade_tick_size > 0 else 0
+        print(f"[RISK-FX] {info.name}: sin par de conversión para {profit_currency}. Fallback tick_value=${fallback:.6f}")
+        return fallback
+
     def calcular_riesgo_completo(
         self, simbolo_broker: str, direccion: str, veredicto: float
     ) -> tuple[float, float, float] | tuple[None, None, None]:
@@ -67,12 +113,11 @@ class RiskModule:
 
         dist_tp = dist_sl * RR_RATIO
 
-        # 3. Valor monetario por punto por 1 lote (normaliza todos los instrumentos)
-        #    tick_value = ganancia en USD por 1 tick de movimiento con 1 lote
-        #    tick_size  = tamaño de 1 tick en puntos del precio
-        valor_punto_por_lote = info.trade_tick_value / info.trade_tick_size
+        # 3. Valor por punto por lote en USD — cálculo propio, nunca confiar en trade_tick_value
+        #    de MetaAPI ya que no siempre convierte correctamente pares cruzados.
+        valor_punto_por_lote = self._pip_value_usd(info)
         if valor_punto_por_lote <= 0:
-            print(f"[RISK] Error: tick_value/tick_size inválido para {simbolo_broker}")
+            print(f"[RISK] Error: pip value USD inválido para {simbolo_broker}")
             return None, None, None
 
         # 4. Capital y riesgo en dólares
