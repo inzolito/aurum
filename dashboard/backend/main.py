@@ -27,17 +27,22 @@ _FILTRO_VERSION_MINIMA = 17.01
 _filtro_version_id_cache: Optional[int] = None
 
 def _version_min_id(cursor) -> int:
-    """Retorna el version_id mínimo (de versiones_sistema) para versiones >= V17.01. Cacheado."""
+    """Retorna el version_id mínimo para versiones >= V17. Cacheado.
+    Usa solo el primer segmento numérico para evitar fallo con formatos como v1.0.0."""
     global _filtro_version_id_cache
     if _filtro_version_id_cache is None:
         try:
+            # Extrae solo el primer número del version string (ej: "v1.0.0"→1, "V18.4"→18, "17.2"→17)
             cursor.execute("""
                 SELECT MIN(id) FROM versiones_sistema
-                WHERE CAST(REGEXP_REPLACE(REPLACE(UPPER(numero_version), 'V', ''), '[^0-9.]', '', 'g') AS NUMERIC) >= %s
-            """, (_FILTRO_VERSION_MINIMA,))
+                WHERE CAST(
+                    NULLIF(REGEXP_REPLACE(REPLACE(UPPER(numero_version), 'V', ''), '[^0-9].*', ''), '')
+                AS INTEGER) >= %s
+            """, (17,))
             row = cursor.fetchone()
             _filtro_version_id_cache = int(row[0]) if row and row[0] else 1
         except Exception:
+            cursor.connection.rollback()
             _filtro_version_id_cache = 1
     return _filtro_version_id_cache
 
