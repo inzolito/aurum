@@ -254,9 +254,9 @@ const Control = ({ setAuth, botVersion }) => {
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
                                     <span style={{ fontSize: 11, color: 'var(--text-secondary)', minWidth: 32 }}>Hoy</span>
-                                    <span className={`stat-value ${(estado?.pnl_sesion_hoy ?? 0) >= 0 ? 'bullish' : 'bearish'}`} style={{ fontSize: 16 }}>
+                                    <span className={`stat-value ${((estado?.pnl_sesion_hoy ?? 0) + (estado?.pnl_flotante ?? 0)) >= 0 ? 'bullish' : 'bearish'}`} style={{ fontSize: 16 }}>
                                         {estado?.pnl_sesion_hoy != null
-                                            ? `${estado.pnl_sesion_hoy >= 0 ? '+' : ''}$${estado.pnl_sesion_hoy.toFixed(2)}`
+                                            ? (() => { const t = (estado.pnl_sesion_hoy) + (estado.pnl_flotante ?? 0); return `${t >= 0 ? '+' : ''}$${t.toFixed(2)}`; })()
                                             : '---'}
                                     </span>
                                 </div>
