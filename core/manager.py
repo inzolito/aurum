@@ -293,15 +293,15 @@ class Manager:
             4
         )
 
-        # --- BLOQUEO HURST (V18.4) ---
-        # Solo se opera cuando el mercado muestra tendencia real (PERSISTENTE, H > 0.55).
-        # RUIDO (0.45-0.55) y ANTIPERSISTENTE (< 0.45) son mercados sin dirección o con reversión.
-        if h_estado != 'PERSISTENTE':
-            if abs(veredicto) >= 0.80:
-                print(f"[GERENTE] 🛡️ EXCEPCIÓN HURST: Veredicto extremo ({veredicto:+.4f}) en mercado {h_estado}. Ignorando filtro de ruido.")
+        # --- BLOQUEO HURST (V19.1 — Relajado) ---
+        # Solo se bloquea en ANTIPERSISTENTE (H < 0.45) = mercado de reversión real.
+        # RUIDO (0.45-0.55) ahora puede operar si el veredicto es suficiente.
+        if h_estado == 'ANTIPERSISTENTE':
+            if abs(veredicto) >= 0.55:
+                print(f"[GERENTE] 🛡️ EXCEPCIÓN HURST: Veredicto ({veredicto:+.4f}) en mercado {h_estado}. Ignorando filtro.")
             else:
-                motivo = (f"Hurst {h_estado} (H: {h_val:.4f}). Mercado sin tendencia real. "
-                          f"Solo se opera con Hurst PERSISTENTE.")
+                motivo = (f"Hurst {h_estado} (H: {h_val:.4f}). Mercado de reversión. "
+                          f"Solo se bloquea ANTIPERSISTENTE.")
                 print(f"[GERENTE] 🚫 MERCADO_LATERAL: Hurst {h_estado} ({h_val:.4f}) — BLOQUEADO")
                 self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
                                         veredicto, "MERCADO_LATERAL", motivo,
@@ -355,12 +355,11 @@ class Manager:
 
         veredicto = round(max(-1.0, min(1.0, veredicto)), 4)
 
-        # --- F1: BLOQUEO TENDENCIA PERSISTENTE (V18.2) ---
-        # Tendencia fuerte + Hurst persistente = entrada tardia en movimiento agotado.
-        # Historico 82 trades: 19 casos con este patron -> 15.8% WR, -$252 PnL.
-        if v_trend_voto >= 0.6 and h_estado == 'PERSISTENTE':
-            if veredicto >= 0.75:
-                print(f"[GERENTE] 🛡️ EXCEPCIÓN F1: Veredicto extremo ({veredicto:.4f}). Anulando bloqueo por agotamiento.")
+        # --- F1: BLOQUEO TENDENCIA EXTREMA (V19.1 — Suavizado) ---
+        # Solo bloquear tendencias verdaderamente extremas/agotadas (>= 0.85).
+        if v_trend_voto >= 0.85 and h_estado == 'PERSISTENTE':
+            if veredicto >= 0.60:
+                print(f"[GERENTE] 🛡️ EXCEPCIÓN F1: Veredicto ({veredicto:.4f}). Anulando bloqueo por agotamiento.")
             else:
                 motivo = (f"BLOQUEADO F1: Trend sobreextendido ({v_trend_voto:.2f}) con Hurst PERSISTENTE "
                           f"({h_val:.4f}). Entrada tardia en tendencia agotada.")
