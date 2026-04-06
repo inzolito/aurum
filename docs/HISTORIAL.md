@@ -6,6 +6,37 @@ Log cronológico de todo lo resuelto. Las entradas más recientes van arriba.
 
 ---
 
+## 2026-04-06 (V19.0 — Upgrade Reporte Técnico IA & Hurst Sniper)
+
+### Contexto: Refactor de Reportes y Excepción de Alta Convicción
+El usuario solicitó transformar los reportes de IA de simples resúmenes de PnL a análisis técnicos profundos. Se inyectaron indicadores directos en la justificación de los trades y se habilitó la excepción Hurst Sniper.
+
+### Cambios Aplicados
+
+#### 1. Enriquecimiento de Datos Técnicos (`workers/worker_trend.py`)
+El `TrendWorker` ahora retorna un diccionario con `ema_fast`, `ema_slow`, `rsi` y `precio`. Esto permite que el Manager y el LabEvaluator tengan acceso a los indicadores brutos sin recalcular.
+
+#### 2. Excepción Hurst Sniper (`core/manager.py`)
+Se implementó un bypass para el filtro de ruido: si el veredicto ensemble tiene una convicción ≥ 0.80, se ignora el bloqueo de `MERCADO_LATERAL` (Hurst < 0.55), permitiendo entradas de alta precisión en momentos de rotura violenta.
+
+#### 3. Inyección de Contexto [AT] (`core/manager.py` + `core/lab_evaluator.py`)
+Se añadió un tag `[AT: EMA_F:X EMA_S:Y RSI:Z SMC:W]` en la justificación de cada trade (columna `motivo` en auditoría y `justificacion_entrada` en lab). Este contexto viaja con el trade para ser analizado por la IA.
+
+#### 4. Refactor de Extracción de Datos (`scripts/extract_lab_data.py`)
+El script de extracción ahora:
+- Parsea el bloque `[AT: ...]` de las justificaciones.
+- Añade la columna **"Contexto AT"** al reporte Markdown final.
+- Limpia la justificación para evitar redundancia técnica.
+
+#### 5. Optimización de Prompts (`AGENT_PROMPTS.md`)
+Se reescribió el prompt del analista de laboratorio para forzar un enfoque cuantitativo. Ahora la IA debe auditar:
+- Efectividad del Sniper vs Hurst.
+- Divergencias RSI/EMA.
+- Estructuras SMC (BOS/CHoCH).
+- Prohibición de resumir tablas de PnL.
+
+---
+
 ## 2026-03-27 (V18.2 — Filtros de Calidad de Señal)
 
 ### Contexto: análisis de 94 trades (V17.2 → V18.1, últimas 2 semanas)
