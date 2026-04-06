@@ -108,7 +108,14 @@ class TrendWorker:
         voto_final = round(max(-1.0, min(1.0, voto)), 2)
         print(f"[TREND] {simbolo_interno} | EMA{ema_rapida_p}={fast_now:.2f} EMA{ema_lenta_p}={slow_now:.2f} "
               f"RSI={rsi_now:.1f} | Voto: {voto_final:+.2f}")
-        return voto_final
+        
+        return {
+            'voto': voto_final,
+            'ema_fast': round(float(fast_now), 4),
+            'ema_slow': round(float(slow_now), 4),
+            'rsi': round(float(rsi_now), 2),
+            'precio': round(float(cierre_actual), 4)
+        }
 
 
 # ------------------------------------------------------------------

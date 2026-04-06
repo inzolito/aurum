@@ -182,8 +182,9 @@ class LabEvaluator:
             return
 
         # 7. Guardar señal aprobada
+        tech_ctx = f"[AT: EMA_F:{votos.get('ema_fast')} EMA_S:{votos.get('ema_slow')} RSI:{votos.get('rsi')} SMC:{votos.get('smc_estado')}]"
         motivo = (
-            f"[LAB] Veredicto {veredicto:+.4f} >= umbral {umbral}. "
+            f"[LAB] Veredicto {veredicto:+.4f} >= umbral {umbral}. {tech_ctx} "
             f"Señal de {direccion}. "
             f"Trend={votos.get('trend',0):+.2f} "
             f"NLP={votos.get('nlp',0):+.2f} "
