@@ -333,13 +333,34 @@ async def get_control_estado(token: str = Depends(oauth2_scheme), db: DBConnecto
         except Exception:
             db.conn.rollback()
 
+    def safe_float(v):
+        try:
+            return round(float(v or 0), 3)
+        except (ValueError, TypeError):
+            return 0.0
+
     result["umbral_disparo"] = umbral
-    result["votos_workers"] = [{"simbolo": r[0], "trend": round(float(r[1] or 0), 2),
-                                  "nlp": round(float(r[2] or 0), 2), "sniper": round(float(r[3] or 0), 2),
-                                  "volumen": round(float(r[4] or 0), 2), "cross": round(float(r[5] or 0), 2),
-                                  "decision": r[6], "tiempo": r[7].isoformat() if r[7] else None,
-                                  "veredicto": round(float(r[8] or 0), 3),
-                                  "hurst": round(float(r[9] or 0), 2), "macro": round(float(r[10] or 0), 2)} for r in rows]
+    
+    votos_res = []
+    for r in rows:
+        try:
+            votos_res.append({
+                "simbolo": r[0],
+                "trend": safe_float(r[1]),
+                "nlp": safe_float(r[2]),
+                "sniper": safe_float(r[3]),
+                "volumen": safe_float(r[4]),
+                "cross": safe_float(r[5]),
+                "decision": r[6],
+                "tiempo": r[7].isoformat() if r[7] else None,
+                "veredicto": safe_float(r[8]),
+                "hurst": safe_float(r[9]),
+                "macro": safe_float(r[10])
+            })
+        except Exception:
+            pass
+
+    result["votos_workers"] = votos_res
 
     return result
 
