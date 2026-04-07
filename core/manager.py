@@ -265,7 +265,7 @@ class Manager:
             result = {"decision": "SEÑALES_DIVIDIDAS", "motivo": motivo}
             if modo_simulacion:
                 result["votos"] = {
-                    "trend": round(float(v_trend), 4), "nlp": round(float(v_nlp), 4),
+                    "trend": round(float(v_trend_voto), 4), "nlp": round(float(v_nlp), 4),
                     "sniper": round(float(v_struct['voto']), 4),
                     "hurst": round(float(h_val), 4),
                     "volume": round(float(v_volume['voto']), 4),
@@ -659,7 +659,7 @@ class Manager:
 
                 notificar_rechazo_broker(simbolo_interno, retcode, causa)
                 
-                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+                self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
                                         veredicto, "RECHAZO_MT5", err_msg,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                         v_hurst=h_val, v_sniper=v_struct['voto'],
@@ -676,7 +676,7 @@ class Manager:
                     err_msg = f"Discrepancia MT5: Ticket {ticket} reportado como DONE pero no aparece en posiciones abiertas."
                     print(f"[GERENTE] 🚨 {err_msg}")
                     notificar_error_critico("DISCREPANCIA_BROKER", err_msg)
-                    self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0, veredicto, "RECHAZO_MT5", err_msg,
+                    self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0, veredicto, "RECHAZO_MT5", err_msg,
                                             v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                             v_hurst=h_val, v_sniper=v_struct['voto'],
                                             v_macro=v_macro)
@@ -796,7 +796,7 @@ class Manager:
                 except Exception as e_reg:
                     print(f"[GERENTE] Error actualizando precision inicial: {e_reg}")
 
-                self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+                self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
                                         veredicto, "EJECUTADO", motivo,
                                         v_vol=v_volume['voto'], v_cross=v_cross['voto'],
                                         v_hurst=h_val, v_sniper=v_struct['voto'],
@@ -807,7 +807,7 @@ class Manager:
                     "veredicto": veredicto,
                     "motivo": motivo,
                     "votos": {
-                        "trend":  round(float(v_trend), 4),
+                        "trend":  round(float(v_trend_voto), 4),
                         "nlp":    round(float(v_nlp), 4),
                         "sniper": round(float(v_struct_voto), 4),
                         "hurst":  round(float(h_val), 4),

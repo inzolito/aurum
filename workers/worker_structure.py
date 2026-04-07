@@ -1,7 +1,9 @@
 import time
 import pandas as pd
 import numpy as np
-import MetaTrader5 as mt5
+
+# MT5 Timeframe constant (evita importar MetaTrader5 directamente)
+_TF_M15 = 15
 
 class StructureWorker:
     """
@@ -39,8 +41,8 @@ class StructureWorker:
         if not simbolo_broker:
             return {'voto': 0.0, 'ob_precio': 0.0, 'estado_smc': "Error Config", 'sniper_veredicto': "Simbolo no mapeado"}
 
-        # Pedimos 300 velas para tener suficiente contexto de swings
-        df = self.mt5.obtener_velas(simbolo_broker, 300)
+        # M15: 200 velas = 50 horas de estructura institucional (BOS/OB/FVG significativos)
+        df = self.mt5.obtener_velas(simbolo_broker, 200, _TF_M15)
         if df is None or df.empty:
             return {'voto': 0.0, 'ob_precio': 0.0, 'estado_smc': "Sin Datos", 'sniper_veredicto': "Error MT5"}
 
@@ -139,7 +141,7 @@ class StructureWorker:
         if bos_bullish:
             estado_smc = "BOS Alcista Confirmado"
             # ¿Estamos en el OB (o cerca, 0.05%)?
-            if ob_precio > 0 and abs(precio_actual - ob_precio) / ob_precio < 0.0005:
+            if ob_precio > 0 and abs(precio_actual - ob_precio) / ob_precio < 0.0015:
                 voto = 1.0
                 veredicto = "🎯 ENTRADA EN ORDER BLOCK"
             elif fvg_presente:
@@ -151,7 +153,7 @@ class StructureWorker:
 
         elif bos_bearish:
             estado_smc = "BOS Bajista Confirmado"
-            if ob_precio > 0 and abs(precio_actual - ob_precio) / ob_precio < 0.0005:
+            if ob_precio > 0 and abs(precio_actual - ob_precio) / ob_precio < 0.0015:
                 voto = -1.0 # Venta fuerte
                 veredicto = "🎯 ENTRADA EN ORDER BLOCK"
             elif fvg_presente:
