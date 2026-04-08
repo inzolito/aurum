@@ -28,17 +28,13 @@ class RiskModule:
         Calcula el valor en USD de 1 punto de precio por 1 lote estándar.
         Siempre convierte a USD usando tipo de cambio en vivo desde MT5.
         Moneda maestra: USD.
-
-        Lógica:
-          - 1 punto = info.point (ej: 0.001 para EURJPY, 0.00001 para EURUSD)
-          - 1 lote  = info.trade_contract_size unidades (ej: 100,000)
-          - Ganancia bruta por punto = contract_size * point  (en moneda de cotización)
-          - Si cotización es USD → directo.
-          - Si cotización es otra divisa → convertir usando par DIVISA/USD o USD/DIVISA en vivo.
+        Calcula cuántos USD paga 1 punto de movimiento (info.point) por 1 LOTE (contract_size).
         """
-        # Proteccion contra omitidos por broker (Indices/Crypto)
         profit_currency = getattr(info, 'currency_profit', getattr(info, 'currency_margin', getattr(info, 'currency_base', 'USD')))
-        contract_size   = getattr(info, 'trade_contract_size', 1.0)
+        if not profit_currency:
+            profit_currency = "USD"
+            
+        contract_size   = getattr(info, 'contract_size', getattr(info, 'trade_contract_size', 100000.0))
         point           = getattr(info, 'point', 0.00001)
         ganancia_bruta  = contract_size * point  # en profit_currency
 
