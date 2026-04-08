@@ -36,9 +36,10 @@ class RiskModule:
           - Si cotización es USD → directo.
           - Si cotización es otra divisa → convertir usando par DIVISA/USD o USD/DIVISA en vivo.
         """
-        profit_currency = info.currency_profit   # moneda en que se liquida el instrumento
-        contract_size   = info.trade_contract_size
-        point           = info.point
+        # Proteccion contra omitidos por broker (Indices/Crypto)
+        profit_currency = getattr(info, 'currency_profit', getattr(info, 'currency_margin', getattr(info, 'currency_base', 'USD')))
+        contract_size   = getattr(info, 'trade_contract_size', 1.0)
+        point           = getattr(info, 'point', 0.00001)
         ganancia_bruta  = contract_size * point  # en profit_currency
 
         if profit_currency == "USD":
@@ -134,7 +135,13 @@ class RiskModule:
         riesgo_ajustado = riesgo_usd * factor_conv * factor_noticias
 
         # 7. Lotes: cuántos necesito para que la pérdida en SL = riesgo_ajustado
-        dollar_risk_per_lot = dist_sl * valor_punto_por_lote
+        # dist_sl es diferencia de precio absoluto. valor_punto_por_lote es $ por 1 info.point.
+        puntos_sl = dist_sl / info.point if info.point > 0 else dist_sl
+        dollar_risk_per_lot = puntos_sl * valor_punto_por_lote
+        if dollar_risk_per_lot <= 0:
+            print(f"[RISK] Error matematico: risk_per_lot es 0 para {simbolo_broker}")
+            return None, None, None
+            
         lotes = riesgo_ajustado / dollar_risk_per_lot
 
         # 8. Respetar límites del broker (volume_min, volume_max, volume_step)

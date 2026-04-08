@@ -255,7 +255,7 @@ class Manager:
         v_macro = self.macro.votar(simbolo_interno, self._regimenes_cache)
 
         # 5. Reflejo de Combate: Alerta de Divergencia
-        if self._detectar_divergencia(simbolo_interno, v_trend_voto, v_nlp):
+        if self._detectar_divergencia(simbolo_interno, v_trend_voto, v_nlp, params):
             motivo = f"Bloqueado por DIVERGENCIA extrema entre Trend e IA."
             self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
                                     0.0, "SEÑALES_DIVIDIDAS", motivo,
@@ -568,8 +568,8 @@ class Manager:
                 sl=sl,
                 tp=tp,
                 veredicto=veredicto,
-                v_trend=v_trend,
-                v_nlp=v_nlp,
+                v_trend=float(v_trend_voto),
+                v_nlp=float(v_nlp),
                 balance=balance,
                 equity=equity,
                 hurst_h=h_val,
@@ -756,8 +756,8 @@ class Manager:
                     precio=precio_real,
                     sl=sl, tp=tp,
                     veredicto=veredicto,
-                    v_trend=v_trend,
-                    v_nlp=v_nlp,
+                    v_trend=float(v_trend_voto),
+                    v_nlp=float(v_nlp),
                     balance=balance_real,
                     equity=equity_real,
                     hurst_h=h_val,
@@ -780,7 +780,7 @@ class Manager:
                     fuerza_dominante=fuerza_dominante,
                     image_path=self.visualizer.generar_reporte_grafico(
                         simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
-                        {"Trend": v_trend, "NLP": v_nlp, "Flow": 0.0, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
+                        {"Trend": v_trend_voto, "NLP": v_nlp, "Flow": 0.0, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
                         v_struct['ob_precio'], v_volume['poc']
                     )
                 )
@@ -1182,14 +1182,20 @@ class Manager:
             print(f"[GERENTE] ERROR midiendo volatilidad: {e}")
             return 1.0
 
-    def _detectar_divergencia(self, simbolo: str, v_trend: float, v_nlp: float) -> bool:
+    def _detectar_divergencia(self, simbolo: str, v_trend: float, v_nlp: float, params: dict = None) -> bool:
         """
         Detecta si hay una contradiccion severa entre el analisis tecnico puro
-        (TrendWorker al maximo) y el analisis macroeconomico (NLPWorker).
+        y el analisis macroeconomico (NLPWorker), basado en umbrales configurables en BD (V19.3).
         """
+        if params is None:
+            params = {}
+
+        umbral_trend = float(params.get("GERENTE.div_trend", 0.70))
+        umbral_nlp   = float(params.get("GERENTE.div_nlp", 0.15))
+
         # Condiciones de divergencia: precio explotando pero IA dice neutral/contrario
-        divergencia_alcista = (v_trend >= 0.70) and (v_nlp <= 0.15)
-        divergencia_bajista = (v_trend <= -0.70) and (v_nlp >= -0.15)
+        divergencia_alcista = (v_trend >= umbral_trend) and (v_nlp <= umbral_nlp)
+        divergencia_bajista = (v_trend <= -umbral_trend) and (v_nlp >= -umbral_nlp)
 
         if divergencia_alcista or divergencia_bajista:
             # notificar_divergencia(simbolo, v_trend, v_nlp)
