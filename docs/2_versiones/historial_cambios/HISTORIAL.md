@@ -6,6 +6,23 @@ Log cronológico de todo lo resuelto. Las entradas más recientes van arriba.
 
 ---
 
+## 2026-04-07 (V19.2 — Estrategia Multi-Temporal MTF 3-Pantallas)
+
+### Contexto: El bot operaba con visión de túnel en M1
+El TrendWorker solo analizaba 100 velas de 1 minuto. Esto causaba entradas contra la estructura macro — comprar techos de H4 porque M1 mostraba un micro-rebote alcista.
+
+### Cambios Aplicados
+- **TrendWorker reescrito** con cascada Top-Down: H4 (EMA50+RSI14) → H1 (MACD histograma) → M5 (gatillo EMA9+vela). M1 eliminado.
+- **Sniper migrado de M1 a M15**: BOS/OB/FVG ahora detectan niveles institucionales reales (50h de estructura vs 5h).
+- **5 bugs corregidos** en manager.py: `float(v_trend)` sobre dict en paths de auditoría y simulación.
+- **53 tests nuevos** (`tests/test_mtf.py`), todos pasando.
+
+**Regla cardinal:** H4 siempre manda. Si M5 contradice H4, penalización del 70%.
+
+**Detalle completo:** `docs/2_versiones/historial_cambios/V19.2_MTF_MULTI_TEMPORAL.md`
+
+---
+
 ## 2026-04-06 (V19.0 — Upgrade Reporte Técnico IA & Hurst Sniper)
 
 ### Contexto: Refactor de Reportes y Excepción de Alta Convicción

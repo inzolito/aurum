@@ -1,0 +1,513 @@
+﻿diff --git a/AGENT_PROMPTS.md b/AGENT_PROMPTS.md
+new file mode 100644
+index 0000000..e9a1d41
+--- /dev/null
++++ b/AGENT_PROMPTS.md
+@@ -0,0 +1,37 @@
++# AGENT_PROMPTS ÔÇö Gu├¡a de Prompts para Aurum
++
++Este documento contiene prompts optimizados para que agentes de IA analicen los datos del sistema de forma estructurada y eficiente.
++
++## ­ƒòÁ´©Å An├ílisis T├®cnico-Cuantitativo (Lab & Producci├│n)
++Usa este prompt cuando necesites que un agente analice el archivo `remote_lab_report.md` o datos de auditor├¡a.
++
++**Prompt:**
++> "Act├║a como un analista cuantitativo (Quanteer) senior. Analiza los datos adjuntos priorizando la estructura t├®cnica sobre el PnL. 
++> 
++> **Tu misi├│n es auditar:**
++> 1. **Filtro Hurst Sniper:** Identifica trades ejecutados con convicci├│n extrema (abs > 0.80) que ignoraron el Hurst. ┬┐Fue una decisi├│n acertada basada en la aceleraci├│n del precio?
++> 2. **Contexto AT (EMA/RSI):** Analiza la columna 'Contexto AT'. ┬┐Se est├ín tomando compras con el RSI sobrecomprado o ventas por debajo de las EMAs r├ípidas? Detecta divergencias t├®cnicas.
++> 3. **Estructura SMC:** Eval├║a la efectividad de las se├▒ales basadas en CHoCH/BOS vs OB/FVG. ┬┐Qu├® tipo de estructura de mercado est├í entregando los mejores ratios de acierto?
++> 4. **An├ílisis de Justificaci├│n (No PnL):** NO resumas la tabla de PnL. Enf├│cate en si la justificaci├│n de la IA captur├│ correctamente el cambio de estructura antes del movimiento. 
++> 5. **Correlaci├│n de Volatilidad:** ┬┐C├│mo afecta el ATR/V spread a la precisi├│n del Sniper?
++> 
++> Presenta tus hallazgos como una 'Auditor├¡a de Ingenier├¡a de Trading' y sugiere ajustes espec├¡ficos en los umbrales de disparo y pesos de workers."
++
++---
++
++## ­ƒöì Auditor├¡a de Conexiones
++Usa este prompt si sospechas de fallos en la comunicaci├│n con GCP.
++
++**Prompt:**
++> "Verifica el estado de la conexi├│n remota con `aurum-server`. No intentes conexi├│n directa a la IP externa. Usa el comando `uptime` a trav├®s del t├║nel IAP (`--tunnel-through-iap`) para validar si la instancia responde y cu├ínto tiempo lleva activa. Si falla, reporta el c├│digo de error de `gcloud`."
++
++---
++
++## ­ƒôê Resumen Semanal de PnL
++Usa este prompt para generar estad├¡sticas r├ípidas de rentabilidad.
++
++**Prompt:**
++> "Calcula el ROE% acumulado y el PnL Total del archivo `remote_lab_report.md`. Separa los resultados por Laboratorio y por Activo. Identifica el 'Mejor Trade' y el 'Peor Trade' de la semana bas├índote en el porcentaje de retorno."
++
++---
++*Este documento crecer├í con nuevos prompts a medida que identifiquemos tareas recurrentes.*
+diff --git a/core/lab_evaluator.py b/core/lab_evaluator.py
+index dda9e57..e47b06e 100644
+--- a/core/lab_evaluator.py
++++ b/core/lab_evaluator.py
+@@ -182,8 +182,9 @@ class LabEvaluator:
+             return
+ 
+         # 7. Guardar se├▒al aprobada
++        tech_ctx = f"[AT: EMA_F:{votos.get('ema_fast')} EMA_S:{votos.get('ema_slow')} RSI:{votos.get('rsi')} SMC:{votos.get('smc_estado')}]"
+         motivo = (
+-            f"[LAB] Veredicto {veredicto:+.4f} >= umbral {umbral}. "
++            f"[LAB] Veredicto {veredicto:+.4f} >= umbral {umbral}. {tech_ctx} "
+             f"Se├▒al de {direccion}. "
+             f"Trend={votos.get('trend',0):+.2f} "
+             f"NLP={votos.get('nlp',0):+.2f} "
+diff --git a/core/manager.py b/core/manager.py
+index 5da5e80..18b868d 100644
+--- a/core/manager.py
++++ b/core/manager.py
+@@ -206,8 +206,9 @@ class Manager:
+ 
+         # Calcular Veredicto T├®cnico preliminar para decidir el motor NLP
+         # Pesos t├®cnicos: Trend(35%), Volume(15%), Cross(15%), Structure(10%) -> Total 75%
++        v_trend_voto = float(v_trend['voto'])
+         tecnico_veredicto = round(
+-            (v_trend * 0.35) +
++            (v_trend_voto * 0.35) +
+             (v_volume['voto'] * 0.15) +
+             (v_cross['voto'] * 0.15) +
+             (v_struct['voto'] * 0.10),
+@@ -254,9 +255,9 @@ class Manager:
+         v_macro = self.macro.votar(simbolo_interno, self._regimenes_cache)
+ 
+         # 5. Reflejo de Combate: Alerta de Divergencia
+-        if self._detectar_divergencia(simbolo_interno, v_trend, v_nlp):
++        if self._detectar_divergencia(simbolo_interno, v_trend_voto, v_nlp):
+             motivo = f"Bloqueado por DIVERGENCIA extrema entre Trend e IA."
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
++            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+                                     0.0, "SE├æALES_DIVIDIDAS", motivo,
+                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                     v_hurst=h_val, v_sniper=v_struct['voto'],
+@@ -286,25 +287,28 @@ class Manager:
+             v_struct_voto = 0.0
+ 
+         veredicto = round(
+-            (v_trend * p_trend) +
++            (v_trend_voto * p_trend) +
+             (v_nlp * p_nlp) +
+             (v_struct_voto * p_sniper),
+             4
+         )
+ 
+-        # --- BLOQUEO HURST (V18.4) ---
+-        # Solo se opera cuando el mercado muestra tendencia real (PERSISTENTE, H > 0.55).
+-        # RUIDO (0.45-0.55) y ANTIPERSISTENTE (< 0.45) son mercados sin direcci├│n o con reversi├│n.
+-        if h_estado != 'PERSISTENTE':
+-            motivo = (f"Hurst {h_estado} (H: {h_val:.4f}). Mercado sin tendencia real. "
+-                      f"Solo se opera con Hurst PERSISTENTE.")
+-            print(f"[GERENTE] ­ƒÜ½ MERCADO_LATERAL: Hurst {h_estado} ({h_val:.4f}) ÔÇö BLOQUEADO")
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+-                                    veredicto, "MERCADO_LATERAL", motivo,
+-                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+-                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+-                                    v_macro=v_macro)
+-            return {"decision": "MERCADO_LATERAL", "veredicto": veredicto, "motivo": motivo}
++        # --- BLOQUEO HURST (V19.1 ÔÇö Relajado) ---
++        # Solo se bloquea en ANTIPERSISTENTE (H < 0.45) = mercado de reversi├│n real.
++        # RUIDO (0.45-0.55) ahora puede operar si el veredicto es suficiente.
++        if h_estado == 'ANTIPERSISTENTE':
++            if abs(veredicto) >= 0.55:
++                print(f"[GERENTE] ­ƒøí´©Å EXCEPCI├ôN HURST: Veredicto ({veredicto:+.4f}) en mercado {h_estado}. Ignorando filtro.")
++            else:
++                motivo = (f"Hurst {h_estado} (H: {h_val:.4f}). Mercado de reversi├│n. "
++                          f"Solo se bloquea ANTIPERSISTENTE.")
++                print(f"[GERENTE] ­ƒÜ½ MERCADO_LATERAL: Hurst {h_estado} ({h_val:.4f}) ÔÇö BLOQUEADO")
++                self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
++                                        veredicto, "MERCADO_LATERAL", motivo,
++                                        v_vol=v_volume['voto'], v_cross=v_cross['voto'],
++                                        v_hurst=h_val, v_sniper=v_struct['voto'],
++                                        v_macro=v_macro)
++                return {"decision": "MERCADO_LATERAL", "veredicto": veredicto, "motivo": motivo}
+ 
+         # --- PENALIZACI├ôN DE SPREAD (P-3) ---
+         ajuste_spread = v_spread.get("ajuste", 0.0)
+@@ -341,7 +345,7 @@ class Manager:
+ 
+         # --- FUERZA DOMINANTE (V17.2) ---
+         pesos_votos = {
+-            "Trend": abs(v_trend * p_trend),
++            "Trend": abs(v_trend_voto * p_trend),
+             "NLP": abs(v_nlp * p_nlp),
+             "Sniper": abs(v_struct_voto * p_sniper)
+         }
+@@ -351,19 +355,21 @@ class Manager:
+ 
+         veredicto = round(max(-1.0, min(1.0, veredicto)), 4)
+ 
+-        # --- F1: BLOQUEO TENDENCIA PERSISTENTE (V18.2) ---
+-        # Tendencia fuerte + Hurst persistente = entrada tardia en movimiento agotado.
+-        # Historico 82 trades: 19 casos con este patron -> 15.8% WR, -$252 PnL.
+-        if v_trend >= 0.6 and h_estado == 'PERSISTENTE':
+-            motivo = (f"BLOQUEADO F1: Trend sobreextendido ({v_trend:.2f}) con Hurst PERSISTENTE "
+-                      f"({h_val:.4f}). Entrada tardia en tendencia agotada.")
+-            print(f"[GERENTE] ­ƒÜ½ F1 Trend+Persistente: Trend={v_trend:.2f} H={h_val:.4f} ÔÇö BLOQUEADO")
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
+-                                    veredicto, "MERCADO_TENDENCIA", motivo,
+-                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+-                                    v_hurst=h_val, v_sniper=v_struct['voto'],
+-                                    v_macro=v_macro)
+-            return {"decision": "MERCADO_TENDENCIA", "veredicto": veredicto, "motivo": motivo}
++        # --- F1: BLOQUEO TENDENCIA EXTREMA (V19.1 ÔÇö Suavizado) ---
++        # Solo bloquear tendencias verdaderamente extremas/agotadas (>= 0.85).
++        if v_trend_voto >= 0.85 and h_estado == 'PERSISTENTE':
++            if veredicto >= 0.60:
++                print(f"[GERENTE] ­ƒøí´©Å EXCEPCI├ôN F1: Veredicto ({veredicto:.4f}). Anulando bloqueo por agotamiento.")
++            else:
++                motivo = (f"BLOQUEADO F1: Trend sobreextendido ({v_trend_voto:.2f}) con Hurst PERSISTENTE "
++                          f"({h_val:.4f}). Entrada tardia en tendencia agotada.")
++                print(f"[GERENTE] ­ƒÜ½ F1 Trend+Persistente: Trend={v_trend_voto:.2f} H={h_val:.4f} ÔÇö BLOQUEADO")
++                self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
++                                        veredicto, "MERCADO_TENDENCIA", motivo,
++                                        v_vol=v_volume['voto'], v_cross=v_cross['voto'],
++                                        v_hurst=h_val, v_sniper=v_struct['voto'],
++                                        v_macro=v_macro)
++                return {"decision": "MERCADO_TENDENCIA", "veredicto": veredicto, "motivo": motivo}
+ 
+         # 6. Decisi├│n y Telemetr├¡a Extra
+         # Black Swan Emergency
+@@ -412,7 +418,7 @@ class Manager:
+                 # Generar Telemetr├¡a Gr├ífica (V7.5)
+                 df_viz = self.mt5.obtener_velas(simbolo_broker, 100)
+                 votos_map = {
+-                    "Trend": v_trend, "NLP": v_nlp, "Flow": 0.0,
++                    "Trend": v_trend_voto, "NLP": v_nlp, "Flow": 0.0,
+                     "Volume": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']
+                 }
+                 img_path = self.visualizer.generar_reporte_grafico(simbolo_interno, df_viz, votos_map, v_struct['ob_precio'], v_volume['poc'])
+@@ -429,7 +435,7 @@ class Manager:
+             else:
+                 motivo = f"Veredicto {veredicto:+.4f} insufficiente (Umbral: {umbral})"
+             
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
++            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+                                     veredicto, "CONFIANZA_BAJA", motivo,
+                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                     v_hurst=h_val, v_sniper=v_struct['voto'],
+@@ -439,13 +445,17 @@ class Manager:
+                 "veredicto": veredicto,
+                 "motivo": motivo,
+                 "votos": {
+-                    "trend":  round(float(v_trend), 4),
++                    "trend":  round(float(v_trend_voto), 4),
+                     "nlp":    round(float(v_nlp), 4),
+                     "sniper": round(float(v_struct_voto), 4),
+                     "hurst":  round(float(h_val), 4),
+                     "volume": round(float(v_volume['voto']), 4),
+                     "cross":  round(float(v_cross['voto']), 4),
+                     "macro":  round(float(v_macro), 4),
++                    "ema_fast": v_trend['ema_fast'],
++                    "ema_slow": v_trend['ema_slow'],
++                    "rsi": v_trend['rsi'],
++                    "smc_estado": v_struct['estado_smc']
+                 },
+             }
+ 
+@@ -459,7 +469,7 @@ class Manager:
+             motivo = (f"Veredicto {veredicto:+.4f} aprobado pero hora {hora_santiago}:xx Santiago "
+                       f"en zona bloqueada ({hora_bloqueo_inicio}-{hora_bloqueo_fin}h).")
+             print(f"[GERENTE] ­ƒòÉ F3 Horario bloqueado: {hora_santiago}h Santiago")
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
++            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+                                     veredicto, "FUERA_DE_HORARIO", motivo,
+                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                     v_hurst=h_val, v_sniper=v_struct['voto'],
+@@ -469,13 +479,17 @@ class Manager:
+                 "veredicto": veredicto,
+                 "motivo": motivo,
+                 "votos": {
+-                    "trend":  round(float(v_trend), 4),
++                    "trend":  round(float(v_trend_voto), 4),
+                     "nlp":    round(float(v_nlp), 4),
+                     "sniper": round(float(v_struct_voto), 4),
+                     "hurst":  round(float(h_val), 4),
+                     "volume": round(float(v_volume['voto']), 4),
+                     "cross":  round(float(v_cross['voto']), 4),
+                     "macro":  round(float(v_macro), 4),
++                    "ema_fast": v_trend['ema_fast'],
++                    "ema_slow": v_trend['ema_slow'],
++                    "rsi": v_trend['rsi'],
++                    "smc_estado": v_struct['estado_smc']
+                 },
+             }
+ 
+@@ -483,7 +497,7 @@ class Manager:
+         # Los workers ya votaron. Este check solo bloquea la ORDEN, no el an├ílisis.
+         if not self.risk.verificar_ventana_ejecucion(simbolo_interno):
+             motivo = f"Veredicto {veredicto:+.4f} aprobado pero ejecucion bloqueada (horario/arranque de sesion)."
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
++            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+                                     veredicto, "FUERA_DE_HORARIO", motivo,
+                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                     v_hurst=h_val, v_sniper=v_struct['voto'],
+@@ -493,13 +507,17 @@ class Manager:
+                 "veredicto": veredicto,
+                 "motivo": motivo,
+                 "votos": {
+-                    "trend":  round(float(v_trend), 4),
++                    "trend":  round(float(v_trend_voto), 4),
+                     "nlp":    round(float(v_nlp), 4),
+                     "sniper": round(float(v_struct_voto), 4),
+                     "hurst":  round(float(h_val), 4),
+                     "volume": round(float(v_volume['voto']), 4),
+                     "cross":  round(float(v_cross['voto']), 4),
+                     "macro":  round(float(v_macro), 4),
++                    "ema_fast": v_trend['ema_fast'],
++                    "ema_slow": v_trend['ema_slow'],
++                    "rsi": v_trend['rsi'],
++                    "smc_estado": v_struct['estado_smc']
+                 },
+             }
+ 
+@@ -512,7 +530,7 @@ class Manager:
+         lotes, sl, tp = self.risk.calcular_riesgo_completo(simbolo_broker, direccion, veredicto)
+         if lotes is None:
+             motivo = "Error calculando riesgo unificado (lotes/SL/TP). Orden abortada."
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
++            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+                                     veredicto, "BLOQUEO_EXPOSICION", motivo,
+                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                     v_hurst=h_val, v_sniper=v_struct['voto'],
+@@ -521,11 +539,12 @@ class Manager:
+ 
+         print(f"[GERENTE] Riesgo V16 -> Conviccion: {abs(veredicto)*100:.1f}% | Lotes: {lotes} | SL: {sl:.4f} | TP: {tp:.4f}")
+ 
+-        # 7. Justificaci├│n Glass Box
++        # 7. Justificaci├│n Glass Box (V2.0: Enriquecida con contexto t├®cnico)
++        tech_ctx = f"[AT: EMA_F:{v_trend['ema_fast']} EMA_S:{v_trend['ema_slow']} RSI:{v_trend['rsi']} SMC:{v_struct['estado_smc']}]"
+         motivo = (
+-            f"Veredicto Ensemble: {veredicto:+.4f} supera umbral {umbral}. "
++            f"Veredicto Ensemble: {veredicto:+.4f} supera umbral {umbral}. {tech_ctx} "
+             f"Se├▒al de {direccion}. "
+-            f"Votos: Trend={v_trend:+.2f} ({p_trend:.0%}), "
++            f"Votos: Trend={v_trend_voto:+.2f} ({p_trend:.0%}), "
+             f"NLP={v_nlp:+.2f} ({p_nlp:.0%}), "
+             f"Sniper={v_struct_voto:+.2f} ({p_sniper:.0%}). "
+             f"SL={sl:.2f}  TP={tp:.2f}  Lotes={lotes}."
+@@ -573,11 +592,11 @@ class Manager:
+                 fuerza_dominante=fuerza_dominante,
+                 image_path=self.visualizer.generar_reporte_grafico(
+                     simbolo_interno, self.mt5.obtener_velas(simbolo_broker, 100), 
+-                    {"Trend": v_trend, "NLP": v_nlp, "Flow": 0.0, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
++                    {"Trend": v_trend_voto, "NLP": v_nlp, "Flow": 0.0, "Vol": v_volume['voto'], "Cross": v_cross['voto'], "Struct": v_struct['voto']},
+                     v_struct['ob_precio'], v_volume['poc']
+                 )
+             )
+-            self._guardar_auditoria(simbolo_interno, v_trend, v_nlp, 0.0,
++            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+                                     veredicto, "EJECUTADO", motivo,
+                                     v_vol=v_volume['voto'], v_cross=v_cross['voto'],
+                                     v_hurst=h_val, v_sniper=v_struct['voto'],
+@@ -588,13 +607,17 @@ class Manager:
+                 "veredicto": veredicto,
+                 "motivo": motivo,
+                 "votos": {
+-                    "trend":  round(float(v_trend), 4),
++                    "trend":  round(float(v_trend_voto), 4),
+                     "nlp":    round(float(v_nlp), 4),
+                     "sniper": round(float(v_struct_voto), 4),
+                     "hurst":  round(float(h_val), 4),
+                     "volume": round(float(v_volume['voto']), 4),
+                     "cross":  round(float(v_cross['voto']), 4),
+                     "macro":  round(float(v_macro), 4),
++                    "ema_fast": v_trend['ema_fast'],
++                    "ema_slow": v_trend['ema_slow'],
++                    "rsi": v_trend['rsi'],
++                    "smc_estado": v_struct['estado_smc']
+                 },
+             }
+         else:
+diff --git a/docs/HISTORIAL.md b/docs/HISTORIAL.md
+index 0ef8e25..fc94502 100644
+--- a/docs/HISTORIAL.md
++++ b/docs/HISTORIAL.md
+@@ -6,6 +6,37 @@ Log cronol├│gico de todo lo resuelto. Las entradas m├ís recientes van arriba.
+ 
+ ---
+ 
++## 2026-04-06 (V19.0 ÔÇö Upgrade Reporte T├®cnico IA & Hurst Sniper)
++
++### Contexto: Refactor de Reportes y Excepci├│n de Alta Convicci├│n
++El usuario solicit├│ transformar los reportes de IA de simples res├║menes de PnL a an├ílisis t├®cnicos profundos. Se inyectaron indicadores directos en la justificaci├│n de los trades y se habilit├│ la excepci├│n Hurst Sniper.
++
++### Cambios Aplicados
++
++#### 1. Enriquecimiento de Datos T├®cnicos (`workers/worker_trend.py`)
++El `TrendWorker` ahora retorna un diccionario con `ema_fast`, `ema_slow`, `rsi` y `precio`. Esto permite que el Manager y el LabEvaluator tengan acceso a los indicadores brutos sin recalcular.
++
++#### 2. Excepci├│n Hurst Sniper (`core/manager.py`)
++Se implement├│ un bypass para el filtro de ruido: si el veredicto ensemble tiene una convicci├│n ÔëÑ 0.80, se ignora el bloqueo de `MERCADO_LATERAL` (Hurst < 0.55), permitiendo entradas de alta precisi├│n en momentos de rotura violenta.
++
++#### 3. Inyecci├│n de Contexto [AT] (`core/manager.py` + `core/lab_evaluator.py`)
++Se a├▒adi├│ un tag `[AT: EMA_F:X EMA_S:Y RSI:Z SMC:W]` en la justificaci├│n de cada trade (columna `motivo` en auditor├¡a y `justificacion_entrada` en lab). Este contexto viaja con el trade para ser analizado por la IA.
++
++#### 4. Refactor de Extracci├│n de Datos (`scripts/extract_lab_data.py`)
++El script de extracci├│n ahora:
++- Parsea el bloque `[AT: ...]` de las justificaciones.
++- A├▒ade la columna **"Contexto AT"** al reporte Markdown final.
++- Limpia la justificaci├│n para evitar redundancia t├®cnica.
++
++#### 5. Optimizaci├│n de Prompts (`AGENT_PROMPTS.md`)
++Se reescribi├│ el prompt del analista de laboratorio para forzar un enfoque cuantitativo. Ahora la IA debe auditar:
++- Efectividad del Sniper vs Hurst.
++- Divergencias RSI/EMA.
++- Estructuras SMC (BOS/CHoCH).
++- Prohibici├│n de resumir tablas de PnL.
++
++---
++
+ ## 2026-03-27 (V18.2 ÔÇö Filtros de Calidad de Se├▒al)
+ 
+ ### Contexto: an├ílisis de 94 trades (V17.2 ÔåÆ V18.1, ├║ltimas 2 semanas)
+diff --git a/scripts/extract_lab_data.py b/scripts/extract_lab_data.py
+new file mode 100644
+index 0000000..9da63c2
+--- /dev/null
++++ b/scripts/extract_lab_data.py
+@@ -0,0 +1,122 @@
++import psycopg2
++import os
++import json
++from datetime import datetime, timedelta
++from dotenv import load_dotenv
++
++# Cargar variables de entorno
++load_dotenv('/opt/aurum/.env')
++
++def extract_data():
++    conn = None
++    try:
++        conn = psycopg2.connect(
++            host='localhost',
++            port=os.getenv('DB_PORT', 5432),
++            dbname=os.getenv('DB_NAME'),
++            user=os.getenv('DB_USER'),
++            password=os.getenv('DB_PASS'),
++            connect_timeout=10
++        )
++        cur = conn.cursor()
++
++        query = """
++        SELECT 
++            l.nombre as lab_nombre,
++            a.simbolo,
++            lo.tipo_orden,
++            lo.precio_entrada,
++            lo.precio_salida,
++            lo.resultado,
++            lo.pnl_virtual,
++            lo.roe_pct,
++            lo.tiempo_entrada,
++            lo.tiempo_salida,
++            ls.voto_tendencia,
++            ls.voto_nlp,
++            ls.voto_sniper,
++            ls.voto_macro,
++            ls.voto_final_ponderado,
++            lo.justificacion_entrada
++        FROM lab_operaciones lo
++        JOIN laboratorios l ON l.id = lo.lab_id
++        JOIN activos a ON a.id = lo.activo_id
++        LEFT JOIN lab_senales ls ON ls.id = lo.lab_senal_id
++        WHERE lo.tiempo_entrada >= NOW() - INTERVAL '7 days'
++        ORDER BY lo.tiempo_entrada DESC;
++        """
++
++        cur.execute(query)
++        rows = cur.fetchall()
++
++        if not rows:
++            return "No se encontraron trades en la ├║ltima semana."
++
++        # Formatear el reporte en Markdown
++        report = "# Reporte de Trades de Laboratorio - ├Ültima Semana\n\n"
++        report += f"Generado el: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n"
++        
++        report += "| Lab | Activo | Tipo | Entrada | Salida | Res | PnL | ROE% | Tiempo Entrada | V.Trend | V.NLP | V.Sniper | Contexto AT | Justificaci├│n |\n"
++        report += "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n"
++
++        for row in rows:
++            lab_nombre, simbolo, tipo, entrada, salida, res, pnl, roe, t_in, t_out, v_t, v_n, v_s, v_m, v_f, just = row
++            
++            # Parsear justificaci├│n IA y Contexto T├®cnico
++            ia_texto = ""
++            at_ctx = ""
++            if just:
++                try:
++                    just_json = json.loads(just)
++                    # El campo ia_texto suele venir del NLPWorker
++                    ia_texto = just_json.get('ia_texto', '').replace('\n', ' ')
++                    # El motivo_lab (o motivo_produccion) ahora contiene [AT: ...]
++                    motivo = just_json.get('motivo_lab', just_json.get('motivo', '')).replace('\n', ' ')
++                    
++                    if "[AT:" in motivo:
++                        try:
++                            at_ctx = motivo.split("[AT:")[1].split("]")[0].strip()
++                        except:
++                            at_ctx = "Error parsing AT"
++                    
++                    if not ia_texto:
++                        ia_texto = motivo
++                except:
++                    ia_texto = just.replace('\n', ' ')
++                    if "[AT:" in ia_texto:
++                        try:
++                            at_ctx = ia_texto.split("[AT:")[1].split("]")[0].strip()
++                        except:
++                          at_ctx = "Error parsing AT"
++
++            # Formatear valores
++            entrada = f"{entrada:.4f}" if entrada else "ÔÇö"
++            salida = f"{salida:.4f}" if salida else "ÔÇö"
++            pnl = f"{pnl:+.2f}" if pnl is not None else "ÔÇö"
++            roe = f"{roe:+.2f}%" if roe is not None else "ÔÇö"
++            t_in = t_in.strftime('%Y-%m-%d %H:%M') if t_in else "ÔÇö"
++            
++            v_t = f"{v_t:+.2f}" if v_t is not None else "ÔÇö"
++            v_n = f"{v_n:+.2f}" if v_n is not None else "ÔÇö"
++            v_s = f"{v_s:+.2f}" if v_s is not None else "ÔÇö"
++
++            # Limpiar el ia_texto para que no sea redundante si ya sacamos el AT
++            ia_texto_limpio = ia_texto.split("[AT:")[0].strip() if "[AT:" in ia_texto else ia_texto
++            if not ia_texto_limpio:
++                ia_texto_limpio = ia_texto
++
++            report += f"| {lab_nombre} | {simbolo} | {tipo} | {entrada} | {salida} | {res or 'OPEN'} | {pnl} | {roe} | {t_in} | {v_t} | {v_n} | {v_s} | {at_ctx} | {ia_texto_limpio[:100]}... |\n"
++
++        return report
++
++    except Exception as e:
++        return f"Error en la extracci├│n: {e}"
++    finally:
++        if conn:
++            conn.close()
++
++if __name__ == "__main__":
++    markdown_report = extract_data()
++    print(markdown_report)
++    with open('/tmp/temp_lab_report.md', 'w', encoding='utf-8') as f:
++        f.write(markdown_report)
+diff --git a/workers/worker_trend.py b/workers/worker_trend.py
+index 5089e1e..11e08ae 100644
+--- a/workers/worker_trend.py
++++ b/workers/worker_trend.py
+@@ -108,7 +108,14 @@ class TrendWorker:
+         voto_final = round(max(-1.0, min(1.0, voto)), 2)
+         print(f"[TREND] {simbolo_interno} | EMA{ema_rapida_p}={fast_now:.2f} EMA{ema_lenta_p}={slow_now:.2f} "
+               f"RSI={rsi_now:.1f} | Voto: {voto_final:+.2f}")
+-        return voto_final
++        
++        return {
++            'voto': voto_final,
++            'ema_fast': round(float(fast_now), 4),
++            'ema_slow': round(float(slow_now), 4),
++            'rsi': round(float(rsi_now), 2),
++            'precio': round(float(cierre_actual), 4)
++        }
+ 
+ 
+ # ------------------------------------------------------------------
