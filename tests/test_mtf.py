@@ -151,10 +151,10 @@ class TestAlineacionMTF:
         # Contra-tendencia: -0.5 * 0.3 = -0.15
         assert voto == -0.15
 
-    def test_h4_lateral_descuento_50(self, worker):
-        """H4 lateral → voto M5 con descuento 50%"""
+    def test_h4_lateral_descuento_30(self, worker):
+        """H4 lateral → voto M5 con descuento 30% (V19.4)"""
         voto = worker._calcular_voto_mtf(voto_m5=0.8, sesgo_h4=0.0, mult_h1=1.0)
-        assert voto == 0.4   # 0.8 * 0.5
+        assert voto == 0.56   # 0.8 * 0.7
 
     def test_h1_no_confirma_mult_bajo(self, worker):
         """H4 alcista + H1 contra-tendencia (mult=0.4) → voto debil"""

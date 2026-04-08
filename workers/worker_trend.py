@@ -289,8 +289,8 @@ class TrendWorker:
                 # Alineado: aplicar multiplicador H1 + sesgo H4
                 voto = voto_m5 * mult_h1 + sesgo_h4
         else:
-            # H4 lateral: M5 opera con descuento del 50%
-            voto = voto_m5 * 0.5
+            # H4 lateral: M5 opera con descuento del 30% (V19.4 — era 50%, demasiado agresivo)
+            voto = voto_m5 * 0.7
 
         return round(max(-1.0, min(1.0, voto)), 2)
 

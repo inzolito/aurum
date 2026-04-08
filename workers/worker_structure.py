@@ -148,7 +148,7 @@ class StructureWorker:
                 voto = 0.5
                 veredicto = "🧲 Atraccion por FVG"
             else:
-                voto = 0.0  # Estructura alcista presente pero sin zona de entrada — neutral, no penalizar
+                voto = 0.20  # V19.4: BOS confirmado aporta convicción base (antes 0.0 mataba el veredicto)
                 veredicto = "⏳ BOS Alcista sin OB/FVG (Esperar)"
 
         elif bos_bearish:
@@ -160,7 +160,7 @@ class StructureWorker:
                 voto = -0.5
                 veredicto = "🧲 Atraccion por FVG"
             else:
-                voto = 0.0  # Estructura bajista presente pero sin zona de entrada — neutral, no penalizar
+                voto = -0.20  # V19.4: BOS confirmado aporta convicción base (antes 0.0 mataba el veredicto)
                 veredicto = "⏳ BOS Bajista sin OB/FVG (Esperar)"
         else:
             voto = 0.0  # Sin estructura clara — el Sniper no tiene opinión, deja decidir a Trend+NLP

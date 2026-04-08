@@ -310,31 +310,40 @@ class Manager:
                                         v_macro=v_macro)
                 return {"decision": "MERCADO_LATERAL", "veredicto": veredicto, "motivo": motivo}
 
+        # --- V19.4: PENALIZACIONES CON TOPE ACUMULADO ---
+        # Antes: Spread(-0.25) + VIX(-0.20) + Cross(-0.15) podían sumar -0.60 y matar cualquier señal.
+        # Ahora: el acumulado de penalizaciones se limita a ±0.15 (configurable en BD).
+        max_penalizacion = float(params.get("GERENTE.max_penalizacion", 0.15))
+        penalizacion_acumulada = 0.0
+
         # --- PENALIZACIÓN DE SPREAD (P-3) ---
         ajuste_spread = v_spread.get("ajuste", 0.0)
         if ajuste_spread != 0.0:
             print(f"[GERENTE] 📉 Spread {v_spread['estado']} ({v_spread['ratio']:.1f}x). Ajuste: {ajuste_spread:+.2f}")
-            if veredicto > 0:
-                veredicto = max(0.0, veredicto + ajuste_spread)
-            elif veredicto < 0:
-                veredicto = min(0.0, veredicto - ajuste_spread)
+            penalizacion_acumulada += ajuste_spread
 
         # --- PENALIZACIÓN DE VOLATILIDAD VIX/ATR (P-4) ---
         ajuste_vix = v_vix.get("ajuste", 0.0)
         if ajuste_vix != 0.0:
             print(f"[GERENTE] 📊 Volatilidad {v_vix['nivel']} (ATR×{v_vix['ratio']:.1f}). Ajuste: {ajuste_vix:+.2f}")
-            if veredicto > 0:
-                veredicto = max(0.0, veredicto + ajuste_vix)
-            elif veredicto < 0:
-                veredicto = min(0.0, veredicto - ajuste_vix)
+            penalizacion_acumulada += ajuste_vix
 
         # --- AJUSTE CROSS INTERMARKET (P-5) ---
-        # Cross devuelve float: negativo si contradice la dirección, positivo si la confirma.
-        # Ejemplo: DXY fuerte + BUY en plata → Cross=-1.0 → ajuste=-0.15 → veredicto reducido.
         ajuste_cross = v_cross.get("ajuste", 0.0)
         if isinstance(ajuste_cross, (int, float)) and ajuste_cross != 0.0:
-            veredicto = round(max(-1.0, min(1.0, veredicto + ajuste_cross)), 4)
-            print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f} → Veredicto: {veredicto:+.4f}")
+            print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f}")
+            penalizacion_acumulada += ajuste_cross
+
+        # Aplicar penalización acumulada con tope
+        if penalizacion_acumulada != 0.0:
+            penalizacion_capped = max(-max_penalizacion, min(max_penalizacion, penalizacion_acumulada))
+            if penalizacion_acumulada != penalizacion_capped:
+                print(f"[GERENTE] 🛡️ Penalización recortada: {penalizacion_acumulada:+.2f} → {penalizacion_capped:+.2f} (tope ±{max_penalizacion})")
+            if veredicto > 0:
+                veredicto = round(max(0.0, veredicto + penalizacion_capped), 4)
+            elif veredicto < 0:
+                veredicto = round(min(0.0, veredicto - abs(penalizacion_capped)), 4)
+            print(f"[GERENTE] 📊 Penalización total: {penalizacion_capped:+.2f} → Veredicto: {veredicto:+.4f}")
 
         # --- MACRO WORKER V18.1: Ajuste de contexto macro estructural ---
         p_macro = float(params.get("MACRO.peso_voto", 0.20))
@@ -494,32 +503,13 @@ class Manager:
             }
 
         # 6. Aprobado — verificar ventana de ejecución (D1 V14)
-        # Los workers ya votaron. Este check solo bloquea la ORDEN, no el análisis.
-        if not self.risk.verificar_ventana_ejecucion(simbolo_interno):
-            motivo = f"Veredicto {veredicto:+.4f} aprobado pero ejecucion bloqueada (horario/arranque de sesion)."
-            self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
-                                    veredicto, "FUERA_DE_HORARIO", motivo,
-                                    v_vol=v_volume['voto'], v_cross=v_cross['voto'],
-                                    v_hurst=h_val, v_sniper=v_struct['voto'],
-                                    v_macro=v_macro)
-            return {
-                "decision": "FUERA_DE_HORARIO",
-                "veredicto": veredicto,
-                "motivo": motivo,
-                "votos": {
-                    "trend":  round(float(v_trend_voto), 4),
-                    "nlp":    round(float(v_nlp), 4),
-                    "sniper": round(float(v_struct_voto), 4),
-                    "hurst":  round(float(h_val), 4),
-                    "volume": round(float(v_volume['voto']), 4),
-                    "cross":  round(float(v_cross['voto']), 4),
-                    "macro":  round(float(v_macro), 4),
-                    "ema_fast": v_trend['ema_fast'],
-                    "ema_slow": v_trend['ema_slow'],
-                    "rsi": v_trend['rsi'],
-                    "smc_estado": v_struct['estado_smc']
-                },
-            }
+        # DESHABILITADO TEMPORALMENTE (V19.3.2) — horarios_operativos puede estar
+        # bloqueando ALL producción. Re-habilitar cuando se confirmen los horarios en BD.
+        # if not self.risk.verificar_ventana_ejecucion(simbolo_interno):
+        #     motivo = f"Veredicto {veredicto:+.4f} aprobado pero ejecucion bloqueada (horario/arranque de sesion)."
+        #     self._guardar_auditoria(simbolo_interno, v_trend_voto, v_nlp, 0.0,
+        #                             veredicto, "FUERA_DE_HORARIO", motivo, ...)
+        #     return {"decision": "FUERA_DE_HORARIO", ...}
 
         # 6b. Calcular dirección y lotaje
         direccion = "COMPRA" if veredicto > 0 else "VENTA"
