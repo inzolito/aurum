@@ -150,8 +150,10 @@ def process_open(db, activos, open_pos):
             db.cursor.execute("""
                 INSERT INTO registro_operaciones
                     (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
-                     precio_entrada, stop_loss, take_profit, take_profit_1, tiempo_entrada)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                     precio_entrada, stop_loss, take_profit, take_profit_1, tiempo_entrada,
+                     version_id)
+                SELECT %s,%s,%s,%s,%s,%s,%s,%s,%s,
+                       (SELECT id FROM versiones_sistema WHERE estado = 'ACTIVA' ORDER BY id DESC LIMIT 1)
             """, (
                 activo_id, ticket, tipo,
                 float(_g(p, 'volume', default=0) or 0),

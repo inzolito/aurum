@@ -311,18 +311,17 @@ const Control = ({ setAuth, botVersion }) => {
                                     <th>Activo</th>
                                     <th>Operaci&oacute;n</th>
                                     <th style={{ minWidth: 160 }}>SL / Entrada / TP</th>
-                                    <th>Veredicto</th>
                                     <th>Parcial</th>
                                     <th>P&L</th>
                                     <th>Apertura</th>
-                                    <th>V.</th>
+                                    <th>Versi&oacute;n</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {loading ? (
-                                    <tr><td colSpan="9" className="text-center">Cargando...</td></tr>
+                                    <tr><td colSpan="8" className="text-center">Cargando...</td></tr>
                                 ) : posiciones.length === 0 ? (
-                                    <tr><td colSpan="9" className="text-center">Sin posiciones abiertas</td></tr>
+                                    <tr><td colSpan="8" className="text-center">Sin posiciones abiertas</td></tr>
                                 ) : (
                                     posiciones.map((p, i) => {
                                         const inSession = isAssetInSession(p.simbolo);
@@ -352,14 +351,9 @@ const Control = ({ setAuth, botVersion }) => {
                                                     pnl={p.pnl_usd}
                                                 />
                                             </td>
-                                            <td className={(p.veredicto ?? 0) >= 0 ? 'verdict bullish' : 'verdict bearish'}>
-                                                {p.veredicto != null
-                                                    ? `${p.veredicto >= 0 ? '+' : ''}${p.veredicto?.toFixed(3)} ${p.probabilidad != null ? `(${p.probabilidad?.toFixed(0)}%)` : ''}`
-                                                    : <span style={{ opacity: 0.4 }}>sync</span>}
-                                            </td>
-                                            <td className={`verdict ${(p.pnl_parcial ?? 0) >= 0 ? 'bullish' : ''}`} style={{ fontSize: 11 }}>
+                                            <td className={`verdict ${(p.pnl_parcial ?? 0) > 0 ? 'bullish' : ''}`} style={{ fontSize: 11 }}>
                                                 {p.tp1_alcanzado
-                                                    ? <>{p.pnl_parcial != null ? `+$${p.pnl_parcial?.toFixed(2)}` : 'TP1'} <span style={{ fontSize: 9, opacity: 0.5 }}>&#10003;</span></>
+                                                    ? <>{p.pnl_parcial != null && p.pnl_parcial > 0 ? `+$${p.pnl_parcial?.toFixed(2)}` : 'TP1'} <span style={{ fontSize: 9, opacity: 0.5 }}>&#10003;</span></>
                                                     : p.tp1 != null
                                                         ? <span style={{ opacity: 0.4 }}>TP1 pend.</span>
                                                         : <span style={{ opacity: 0.25 }}>&mdash;</span>}
@@ -368,11 +362,11 @@ const Control = ({ setAuth, botVersion }) => {
                                                 {p.pnl_usd != null ? `${p.pnl_usd >= 0 ? '+' : ''}$${p.pnl_usd?.toFixed(2)}` : '---'}
                                             </td>
                                             <td className="time">{toChileTime(p.apertura, 'time')}</td>
-                                            <td style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{p.version || <span style={{ opacity: 0.3 }}>&mdash;</span>}</td>
+                                            <td style={{ fontSize: 10, color: 'var(--text-secondary)', fontFamily: 'monospace' }}>{p.version || '—'}</td>
                                         </tr>
                                         {expandedRow === i && p.analisis && (
                                             <tr key={`detail-${i}`}>
-                                                <td colSpan="9" style={{ padding: 0 }}>
+                                                <td colSpan="8" style={{ padding: 0 }}>
                                                     <TradeDetail a={p.analisis} ticket={p.ticket} />
                                                 </td>
                                             </tr>
