@@ -310,40 +310,39 @@ class Manager:
                                         v_macro=v_macro)
                 return {"decision": "MERCADO_LATERAL", "veredicto": veredicto, "motivo": motivo}
 
-        # --- V19.4: PENALIZACIONES CON TOPE ACUMULADO ---
-        # Antes: Spread(-0.25) + VIX(-0.20) + Cross(-0.15) podían sumar -0.60 y matar cualquier señal.
-        # Ahora: el acumulado de penalizaciones se limita a ±0.15 (configurable en BD).
+        # --- V19.4: PENALIZACIONES DE CONVICCIÓN (Spread + VIX) CON TOPE ---
+        # Spread y VIX son reductores de convicción: siempre acercan el veredicto a 0.
+        # Cross es direccional: empuja el veredicto según el mercado intermarket.
+        # Se aplican por separado para no mezclar lógicas.
         max_penalizacion = float(params.get("GERENTE.max_penalizacion", 0.15))
-        penalizacion_acumulada = 0.0
 
         # --- PENALIZACIÓN DE SPREAD (P-3) ---
         ajuste_spread = v_spread.get("ajuste", 0.0)
         if ajuste_spread != 0.0:
             print(f"[GERENTE] 📉 Spread {v_spread['estado']} ({v_spread['ratio']:.1f}x). Ajuste: {ajuste_spread:+.2f}")
-            penalizacion_acumulada += ajuste_spread
 
         # --- PENALIZACIÓN DE VOLATILIDAD VIX/ATR (P-4) ---
         ajuste_vix = v_vix.get("ajuste", 0.0)
         if ajuste_vix != 0.0:
             print(f"[GERENTE] 📊 Volatilidad {v_vix['nivel']} (ATR×{v_vix['ratio']:.1f}). Ajuste: {ajuste_vix:+.2f}")
-            penalizacion_acumulada += ajuste_vix
 
-        # --- AJUSTE CROSS INTERMARKET (P-5) ---
+        # Acumular solo Spread + VIX (siempre negativos o zero) y aplicar con tope
+        penal_conv = ajuste_spread + ajuste_vix
+        if penal_conv != 0.0:
+            penal_capped = max(-max_penalizacion, penal_conv)
+            if penal_conv != penal_capped:
+                print(f"[GERENTE] 🛡️ Penalización recortada: {penal_conv:+.2f} → {penal_capped:+.2f} (tope -{max_penalizacion})")
+            if veredicto > 0:
+                veredicto = round(max(0.0, veredicto + penal_capped), 4)
+            elif veredicto < 0:
+                veredicto = round(min(0.0, veredicto - penal_capped), 4)
+            print(f"[GERENTE] 📊 Penalización convicción: {penal_capped:+.2f} → Veredicto: {veredicto:+.4f}")
+
+        # --- AJUSTE CROSS INTERMARKET (P-5): Direccional, no se capea ---
         ajuste_cross = v_cross.get("ajuste", 0.0)
         if isinstance(ajuste_cross, (int, float)) and ajuste_cross != 0.0:
-            print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f}")
-            penalizacion_acumulada += ajuste_cross
-
-        # Aplicar penalización acumulada con tope
-        if penalizacion_acumulada != 0.0:
-            penalizacion_capped = max(-max_penalizacion, min(max_penalizacion, penalizacion_acumulada))
-            if penalizacion_acumulada != penalizacion_capped:
-                print(f"[GERENTE] 🛡️ Penalización recortada: {penalizacion_acumulada:+.2f} → {penalizacion_capped:+.2f} (tope ±{max_penalizacion})")
-            if veredicto > 0:
-                veredicto = round(max(0.0, veredicto + penalizacion_capped), 4)
-            elif veredicto < 0:
-                veredicto = round(min(0.0, veredicto - abs(penalizacion_capped)), 4)
-            print(f"[GERENTE] 📊 Penalización total: {penalizacion_capped:+.2f} → Veredicto: {veredicto:+.4f}")
+            veredicto = round(max(-1.0, min(1.0, veredicto + ajuste_cross)), 4)
+            print(f"[GERENTE] 🌍 Cross {v_cross['divergencia']} (DXY {v_cross['var_dxy']:+.2f}%). Ajuste: {ajuste_cross:+.2f} → Veredicto: {veredicto:+.4f}")
 
         # --- MACRO WORKER V18.1: Ajuste de contexto macro estructural ---
         p_macro = float(params.get("MACRO.peso_voto", 0.20))

@@ -70,8 +70,22 @@ else
     echo "    .env encontrado y asegurado."
 fi
 
-# 6. Instalar servicios systemd
-echo "[6/7] Instalando servicios systemd..."
+# 6. Sudoers — permitir que aurum_bot reinicie servicios sin password
+echo "[6/8] Configurando sudoers para $AURUM_USER..."
+sudo tee /etc/sudoers.d/aurum_bot > /dev/null << 'SUDOERS'
+# Aurum Bot — restart/status de servicios sin password (requerido por dashboard)
+aurum_bot ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart aurum-core
+aurum_bot ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart aurum-hunter
+aurum_bot ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart aurum-telegram
+aurum_bot ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart aurum-dashboard
+aurum_bot ALL=(ALL) NOPASSWD: /usr/bin/systemctl is-active *
+aurum_bot ALL=(ALL) NOPASSWD: /usr/bin/systemctl status *
+SUDOERS
+sudo chmod 440 /etc/sudoers.d/aurum_bot
+echo "    Sudoers configurado."
+
+# 7. Instalar servicios systemd
+echo "[7/8] Instalando servicios systemd..."
 for SERVICE_FILE in "$AURUM_DIR/scripts/services/"*.service; do
     SERVICE_NAME=$(basename "$SERVICE_FILE")
     sudo cp "$SERVICE_FILE" "/etc/systemd/system/$SERVICE_NAME"
@@ -80,8 +94,8 @@ done
 
 sudo systemctl daemon-reload
 
-# 7. Habilitar e iniciar servicios
-echo "[7/7] Habilitando servicios..."
+# 8. Habilitar e iniciar servicios
+echo "[8/8] Habilitando servicios..."
 sudo systemctl enable aurum-core.service
 sudo systemctl enable aurum-hunter.service
 sudo systemctl enable aurum-telegram.service
