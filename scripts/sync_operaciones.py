@@ -142,18 +142,23 @@ def process_open(db, activos, open_pos):
         ptype = _g(p, 'type', 'positionType', default='')
         tipo  = 'COMP' if 'BUY' in str(ptype).upper() else 'VENT'
 
+        precio_entrada = float(_g(p, 'openPrice', 'price', default=0) or 0)
+        tp_val = float(_g(p, 'takeProfit', 'tp', default=0) or 0)
+        tp1_val = round((precio_entrada + tp_val) / 2.0, 5) if precio_entrada and tp_val else None
+
         with db._lock:
             db.cursor.execute("""
                 INSERT INTO registro_operaciones
                     (activo_id, ticket_mt5, tipo_orden, volumen_lotes,
-                     precio_entrada, stop_loss, take_profit, tiempo_entrada)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                     precio_entrada, stop_loss, take_profit, take_profit_1, tiempo_entrada)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
                 activo_id, ticket, tipo,
                 float(_g(p, 'volume', default=0) or 0),
-                float(_g(p, 'openPrice', 'price', default=0) or 0),
+                precio_entrada,
                 float(_g(p, 'stopLoss', 'sl', default=0) or 0),
-                float(_g(p, 'takeProfit', 'tp', default=0) or 0),
+                tp_val,
+                tp1_val,
                 _ts(_g(p, 'time', 'openTime')),
             ))
         count += 1
